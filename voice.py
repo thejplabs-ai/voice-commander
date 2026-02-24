@@ -594,18 +594,24 @@ class OnboardingWindow:
         self._root.configure(fg_color="#01010D")
         self._root.protocol("WM_DELETE_WINDOW", self._on_close)
 
+        # Container scrollável — permite rolar em monitores pequenos
+        scroll = ctk.CTkScrollableFrame(self._root, fg_color="transparent",
+                                        scrollbar_button_color="#2A2A3A",
+                                        scrollbar_button_hover_color="#3A3A5A")
+        scroll.pack(fill="both", expand=True)
+
         # Header
-        h = ctk.CTkFrame(self._root, fg_color="transparent")
+        h = ctk.CTkFrame(scroll, fg_color="transparent")
         h.pack(fill="x", padx=16, pady=(20, 8))
         ctk.CTkLabel(h, text="🎙 Voice Commander",
                      font=("Segoe UI", 20, "bold"), text_color="#FFFFFF").pack(anchor="w")
         ctk.CTkLabel(h, text="Configuração inicial",
                      font=("Segoe UI", 12), text_color="#808080").pack(anchor="w")
-        ctk.CTkFrame(self._root, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
+        ctk.CTkFrame(scroll, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
             fill="x", padx=16, pady=(0, 8))
 
         # Licença (opcional)
-        f1 = ctk.CTkFrame(self._root, fg_color="#0D0C25", corner_radius=12)
+        f1 = ctk.CTkFrame(scroll, fg_color="#0D0C25", corner_radius=12)
         f1.pack(fill="x", padx=16, pady=(0, 8))
         lic_header = ctk.CTkFrame(f1, fg_color="transparent")
         lic_header.pack(fill="x", padx=20, pady=(12, 4))
@@ -638,7 +644,7 @@ class OnboardingWindow:
             anchor="w", padx=20, pady=(2, 12))
 
         # Gemini API
-        f2 = ctk.CTkFrame(self._root, fg_color="#0D0C25", corner_radius=12)
+        f2 = ctk.CTkFrame(scroll, fg_color="#0D0C25", corner_radius=12)
         f2.pack(fill="x", padx=16, pady=(0, 8))
         ctk.CTkLabel(f2, text="GEMINI API KEY",
                      font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
@@ -666,7 +672,7 @@ class OnboardingWindow:
         ctk.CTkFrame(f2, height=12, fg_color="transparent").pack()
 
         # Footer
-        ffoot = ctk.CTkFrame(self._root, fg_color="transparent")
+        ffoot = ctk.CTkFrame(scroll, fg_color="transparent")
         ffoot.pack(fill="x", padx=16, pady=(0, 16))
         self._start_btn = ctk.CTkButton(
             ffoot, text="Começar a usar", width=352, height=42,
