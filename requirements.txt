@@ -13,3 +13,4 @@ keyboard==0.13.5
 google-genai==1.63.0
 pystray==0.19.5
 Pillow==11.1.0
+customtkinter==5.2.2

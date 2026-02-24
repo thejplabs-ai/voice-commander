@@ -17,6 +17,7 @@ Proteções contra garbling:
 
 import os
 import sys
+import pathlib
 import glob
 import json
 import builtins
@@ -134,6 +135,35 @@ _DEFAULT_QUERY_SYSTEM_PROMPT = (
     "Vá direto ao ponto sem rodeios desnecessários. "
     "O texto pode misturar português e inglês — responda no mesmo idioma da pergunta."
 )
+
+
+def _apply_taskbar_icon(root, ico_path: pathlib.Path) -> None:
+    """Força o ícone correto no taskbar do Windows via Win32 API.
+
+    GetParent(winfo_id()) retorna 0 para janelas top-level no Tk/CTk — por isso
+    usamos FindWindowW pelo título da janela, que devolve o HWND real que o
+    Windows usa para o botão na taskbar.
+    """
+    if not ico_path.exists():
+        return
+    try:
+        root.update_idletasks()
+        title = root.title()
+        # FindWindowW procura pelo título exato — retorna o HWND da janela top-level
+        hwnd = ctypes.windll.user32.FindWindowW(None, title)
+        if not hwnd:
+            # Fallback: tentar winfo_id() direto (funciona em alguns ambientes)
+            hwnd = root.winfo_id()
+        if not hwnd:
+            return
+        LR_LOADFROMFILE, IMAGE_ICON, WM_SETICON = 0x10, 1, 0x0080
+        for size, kind in ((32, 1), (16, 0)):
+            hicon = ctypes.windll.user32.LoadImageW(
+                None, str(ico_path), IMAGE_ICON, size, size, LR_LOADFROMFILE)
+            if hicon:
+                ctypes.windll.user32.SendMessageW(hwnd, WM_SETICON, kind, hicon)
+    except Exception:
+        pass
 
 
 def load_config() -> dict:
@@ -465,7 +495,7 @@ def _update_tray_state(state: str, mode: str | None = None) -> None:
 
 
 def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
-    """Menu item 'Status' — exibe MessageBox com info atual."""
+    """Menu item 'Status' — abre popup CTk (ou MessageBox fallback) com info atual."""
     state_labels = {
         "idle":       "Idle (aguardando hotkey)",
         "recording":  "Gravando...",
@@ -481,15 +511,81 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
     gemini_status = "Ativo" if _GEMINI_API_KEY else "Desativado"
     state_label = state_labels.get(_tray_state, _tray_state)
     mode_label  = mode_labels.get(_tray_last_mode, _tray_last_mode)
-    msg = (
-        f"Voice Commander — JP Labs\n\n"
-        f"Estado:      {state_label}\n"
-        f"Último modo: {mode_label}\n"
-        f"Gemini:      {gemini_status}\n"
-        f"Whisper:     {_CONFIG.get('WHISPER_MODEL', 'small')}\n"
-        f"Log:         {_log_path}"
-    )
-    ctypes.windll.user32.MessageBoxW(0, msg, "Voice Commander — Status", 0x40)
+
+    if _ctk_available:
+        # Popup CTk com botão Fechar e protocolo WM_DELETE_WINDOW — fecha corretamente
+        def _show_ctk_status():
+            try:
+                import customtkinter as _ctk
+                _ctk.set_appearance_mode("dark")
+                _ctk.set_default_color_theme("dark-blue")
+                win = _ctk.CTk()
+                win.title("Voice Commander — Status")
+                win.attributes("-topmost", True)
+                win.configure(fg_color="#01010D")
+                win.resizable(False, False)
+                _icon = pathlib.Path(__file__).parent / "build" / "icon.ico"
+                if _icon.exists():
+                    win.iconbitmap(str(_icon))
+                    _apply_taskbar_icon(win, _icon)
+                # Protocolo de fechamento — garante que o X fecha a janela
+                win.protocol("WM_DELETE_WINDOW", win.destroy)
+
+                pad_x, pad_y = 28, 12
+                _ctk.CTkLabel(win, text="Voice Commander",
+                              font=("Segoe UI", 16, "bold"),
+                              text_color="#FFFFFF").pack(anchor="w", padx=pad_x, pady=(20, 2))
+                _ctk.CTkFrame(win, height=1, fg_color="#2A2A3A",
+                              corner_radius=0).pack(fill="x", padx=pad_x, pady=(0, 12))
+
+                rows = [
+                    ("Estado",       state_label),
+                    ("Último modo",  mode_label),
+                    ("Gemini",       gemini_status),
+                    ("Whisper",      _CONFIG.get("WHISPER_MODEL", "small")),
+                    ("Log",          _log_path),
+                ]
+                for label, value in rows:
+                    row = _ctk.CTkFrame(win, fg_color="transparent")
+                    row.pack(fill="x", padx=pad_x, pady=(0, pad_y))
+                    _ctk.CTkLabel(row, text=f"{label}:",
+                                  font=("Segoe UI", 11), text_color="#808080",
+                                  width=90, anchor="w").pack(side="left")
+                    _ctk.CTkLabel(row, text=value,
+                                  font=("Segoe UI", 11, "bold"), text_color="#FFFFFF",
+                                  anchor="w", wraplength=240, justify="left").pack(
+                        side="left", padx=(4, 0))
+
+                _ctk.CTkButton(win, text="Fechar", width=180, height=38,
+                               corner_radius=8, fg_color="#6B2FF8",
+                               hover_color="#5A28D6",
+                               font=("Segoe UI", 12, "bold"),
+                               command=win.destroy).pack(pady=(8, 20))
+
+                win.update_idletasks()
+                sw = win.winfo_screenwidth()
+                sh = win.winfo_screenheight()
+                w  = win.winfo_reqwidth()  + 16
+                h  = win.winfo_reqheight() + 16
+                x  = (sw - w) // 2
+                y  = (sh - h) // 2
+                win.geometry(f"{w}x{h}+{x}+{y}")
+                win.mainloop()
+            except Exception as exc:
+                print(f"[WARN] Falha ao abrir popup de status: {exc}")
+
+        threading.Thread(target=_show_ctk_status, daemon=True).start()
+    else:
+        # Fallback: MessageBox nativa (só um botão OK — fecha ao clicar OK)
+        msg = (
+            f"Voice Commander — JP Labs\n\n"
+            f"Estado:      {state_label}\n"
+            f"Último modo: {mode_label}\n"
+            f"Gemini:      {gemini_status}\n"
+            f"Whisper:     {_CONFIG.get('WHISPER_MODEL', 'small')}\n"
+            f"Log:         {_log_path}"
+        )
+        ctypes.windll.user32.MessageBoxW(0, msg, "Voice Commander — Status", 0x40)
 
 
 def _tray_on_quit(icon, item) -> None:  # type: ignore[type-arg]
@@ -592,6 +688,10 @@ class OnboardingWindow:
         self._root.title("Voice Commander — Configuração Inicial")
         self._root.attributes("-topmost", True)
         self._root.configure(fg_color="#01010D")
+        _icon = pathlib.Path(__file__).parent / "build" / "icon.ico"
+        if _icon.exists():
+            self._root.iconbitmap(str(_icon))
+            _apply_taskbar_icon(self._root, _icon)
         self._root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # Container scrollável — permite rolar em monitores pequenos
@@ -923,6 +1023,10 @@ class SettingsWindow:
         self._root.title("Voice Commander — Configurações")
         self._root.attributes("-topmost", True)
         self._root.configure(fg_color="#01010D")
+        _icon = pathlib.Path(__file__).parent / "build" / "icon.ico"
+        if _icon.exists():
+            self._root.iconbitmap(str(_icon))
+            _apply_taskbar_icon(self._root, _icon)
 
         # Container scrollável — permite rolar em monitores pequenos
         self._scroll = ctk.CTkScrollableFrame(
@@ -1771,6 +1875,13 @@ def _mark_onboarding_done() -> None:
 
 def main() -> None:
     global _CONFIG, _GEMINI_API_KEY
+
+    # Faz o Windows tratar o processo como "VoiceCommander" no taskbar
+    # (sem isso, agrupa pelo executável pythonw.exe e mostra ícone do Python)
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("VoiceCommander.App")
+    except Exception:
+        pass
 
     # Carrega configurações uma vez (antes da rotação para ter LOG_KEEP_SESSIONS)
     _CONFIG = load_config()
