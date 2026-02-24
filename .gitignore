@@ -20,6 +20,9 @@ logs/
 # Histórico de transcrições (dado pessoal)
 history.jsonl
 
+# Estado local do onboarding (por máquina)
+.onboarding_done
+
 # Windows
 Thumbs.db
 desktop.ini

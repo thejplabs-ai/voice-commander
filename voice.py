@@ -603,12 +603,42 @@ class OnboardingWindow:
         # Header
         h = ctk.CTkFrame(scroll, fg_color="transparent")
         h.pack(fill="x", padx=16, pady=(20, 8))
-        ctk.CTkLabel(h, text="🎙 Voice Commander",
+        ctk.CTkLabel(h, text="Voice Commander",
                      font=("Segoe UI", 20, "bold"), text_color="#FFFFFF").pack(anchor="w")
-        ctk.CTkLabel(h, text="Configuração inicial",
+        ctk.CTkLabel(h, text="Configuração inicial — leva menos de 1 minuto",
                      font=("Segoe UI", 12), text_color="#808080").pack(anchor="w")
         ctk.CTkFrame(scroll, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
             fill="x", padx=16, pady=(0, 8))
+
+        # Como funciona
+        finfo = ctk.CTkFrame(scroll, fg_color="#0D0C25", corner_radius=12)
+        finfo.pack(fill="x", padx=16, pady=(0, 8))
+        ctk.CTkLabel(finfo, text="COMO FUNCIONA",
+                     font=("Segoe UI", 10, "bold"), text_color="#6B2FF8").pack(
+            anchor="w", padx=20, pady=(12, 6))
+        steps = [
+            ("1", "Ctrl+Shift+Space",    "Pressione para iniciar a gravação de voz"),
+            ("2", "Fale normalmente",     "O app grava enquanto a tecla estiver ativa"),
+            ("3", "Pressione novamente",  "Solta o atalho — o texto é transcrito e colado"),
+        ]
+        for num, title, desc in steps:
+            row = ctk.CTkFrame(finfo, fg_color="transparent")
+            row.pack(fill="x", padx=20, pady=(0, 6))
+            ctk.CTkLabel(row, text=num,
+                         font=("Segoe UI", 11, "bold"), text_color="#6B2FF8",
+                         width=18).pack(side="left", anchor="n", pady=2)
+            col = ctk.CTkFrame(row, fg_color="transparent")
+            col.pack(side="left", padx=(6, 0), fill="x", expand=True)
+            ctk.CTkLabel(col, text=title,
+                         font=("Segoe UI", 11, "bold"), text_color="#FFFFFF",
+                         anchor="w").pack(anchor="w")
+            ctk.CTkLabel(col, text=desc,
+                         font=("Segoe UI", 10), text_color="#808080",
+                         anchor="w").pack(anchor="w")
+        ctk.CTkLabel(finfo,
+                     text="4 modos: Transcrever  |  Prompt simples  |  Prompt COSTAR  |  Query Gemini",
+                     font=("Segoe UI", 10), text_color="#4A4A6A",
+                     wraplength=320, justify="left").pack(anchor="w", padx=20, pady=(0, 12))
 
         # Licença (opcional)
         f1 = ctk.CTkFrame(scroll, fg_color="#0D0C25", corner_radius=12)
@@ -764,10 +794,11 @@ class OnboardingWindow:
                 text_color="#4A4A6A")
 
     def _finish(self):
-        """Salva as chaves e fecha o wizard."""
+        """Salva as chaves, grava sentinel e fecha o wizard."""
         license_key = self._license_entry.get().strip()
         gemini_key = self._gemini_entry.get().strip()
         _save_env({"LICENSE_KEY": license_key, "GEMINI_API_KEY": gemini_key})
+        _mark_onboarding_done()
         self._root.destroy()
         self._root = None
 
@@ -844,6 +875,7 @@ class SettingsWindow:
 
     def __init__(self):
         self._root = None
+        self._scroll = None  # CTkScrollableFrame — container de todo o conteúdo
         self._api_entry = None
         self._license_entry = None
         self._license_status_label = None
@@ -892,6 +924,14 @@ class SettingsWindow:
         self._root.attributes("-topmost", True)
         self._root.configure(fg_color="#01010D")
 
+        # Container scrollável — permite rolar em monitores pequenos
+        self._scroll = ctk.CTkScrollableFrame(
+            self._root, fg_color="transparent",
+            scrollbar_button_color="#2A2A3A",
+            scrollbar_button_hover_color="#3A3A5A",
+        )
+        self._scroll.pack(fill="both", expand=True)
+
         self._build_header()
         self._build_status()
         self._build_commands()
@@ -914,7 +954,7 @@ class SettingsWindow:
         self._root.resizable(True, True)
 
     def _card(self) -> "ctk.CTkFrame":
-        f = ctk.CTkFrame(self._root, fg_color="#0D0C25", corner_radius=12)
+        f = ctk.CTkFrame(self._scroll, fg_color="#0D0C25", corner_radius=12)
         f.pack(fill="x", padx=16, pady=(0, 8))
         return f
 
@@ -929,14 +969,14 @@ class SettingsWindow:
             side="left", fill="x", expand=True, pady=9)
 
     def _build_header(self):
-        h = ctk.CTkFrame(self._root, fg_color="transparent")
+        h = ctk.CTkFrame(self._scroll, fg_color="transparent")
         h.pack(fill="x", padx=16, pady=(20, 8))
-        ctk.CTkLabel(h, text="🎙 Voice Commander",
+        ctk.CTkLabel(h, text="Voice Commander",
                      font=("Segoe UI", 20, "bold"), text_color="#FFFFFF").pack(anchor="w")
         ctk.CTkLabel(h, text="v1.3",
                      font=("Segoe UI", 12), text_color="#808080").pack(anchor="w")
         # Separador sutil abaixo do header
-        ctk.CTkFrame(self._root, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
+        ctk.CTkFrame(self._scroll, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
             fill="x", padx=16, pady=(0, 8))
 
     def _build_status(self):
@@ -1051,7 +1091,7 @@ class SettingsWindow:
         self._eye_btn.pack(side="left", padx=(8, 0))
 
     def _build_footer(self):
-        f = ctk.CTkFrame(self._root, fg_color="transparent")
+        f = ctk.CTkFrame(self._scroll, fg_color="transparent")
         f.pack(fill="x", padx=16, pady=(0, 16))
         self._save_btn = ctk.CTkButton(f, text="Salvar", width=172, height=42,
                                        corner_radius=8, fg_color="#6B2FF8",
@@ -1693,6 +1733,42 @@ def _license_check_loop() -> None:
             _LICENSE_EXPIRED_NOTIFIED = True
 
 
+def _needs_onboarding() -> bool:
+    """
+    Retorna True se o onboarding deve ser exibido.
+
+    Critérios (qualquer um é suficiente):
+    1. Nenhum .env existe ainda (primeira execução real)
+    2. .env existe mas GEMINI_API_KEY não está configurada
+    3. Arquivo sentinel .onboarding_done NÃO existe
+       — garante que o onboarding seja exibido mesmo se o .env foi
+         criado externamente sem a chave, ou se o usuário fechou o
+         wizard antes de completar.
+    """
+    env_path      = os.path.join(_BASE_DIR, ".env")
+    sentinel_path = os.path.join(_BASE_DIR, ".onboarding_done")
+
+    # Sem sentinel → nunca completou o onboarding
+    if not os.path.exists(sentinel_path):
+        return True
+
+    # Completou antes mas a chave sumiu (ex: usuário editou .env manualmente)
+    if not _CONFIG.get("GEMINI_API_KEY"):
+        return True
+
+    return False
+
+
+def _mark_onboarding_done() -> None:
+    """Cria arquivo sentinel indicando que o onboarding foi concluído com sucesso."""
+    sentinel_path = os.path.join(_BASE_DIR, ".onboarding_done")
+    try:
+        with open(sentinel_path, "w", encoding="utf-8") as f:
+            f.write(datetime.datetime.now().isoformat() + "\n")
+    except Exception:
+        pass
+
+
 def main() -> None:
     global _CONFIG, _GEMINI_API_KEY
 
@@ -1700,9 +1776,9 @@ def main() -> None:
     _CONFIG = load_config()
     _GEMINI_API_KEY = _CONFIG.get("GEMINI_API_KEY")
 
-    # Primeira execução — abre wizard de setup se não tem Gemini key configurada
-    # Licença é opcional (free tier disponível)
-    if not _CONFIG.get("GEMINI_API_KEY"):
+    # Primeira execução — abre wizard de setup se necessário.
+    # Licença é opcional (free tier disponível).
+    if _needs_onboarding():
         _run_onboarding()
         # Recarregar config após wizard completar
         _CONFIG = load_config()
