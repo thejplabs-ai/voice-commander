@@ -609,19 +609,19 @@ class OnboardingWindow:
         lic_row = ctk.CTkFrame(f1, fg_color="transparent")
         lic_row.pack(fill="x", padx=20, pady=(0, 4))
         self._license_entry = ctk.CTkEntry(
-            lic_row, width=196, height=36,
+            lic_row, width=180, height=36,
             font=("Consolas", 11), fg_color="#0D0C25",
             border_color="#1F1F1F", border_width=1, text_color="#FFFFFF",
             placeholder_text="vc-xxxxxxxxxxxx-xxxxxxxxxxxx")
         self._license_entry.pack(side="left")
-        ctk.CTkButton(lic_row, text="Validar", width=72, height=36,
+        ctk.CTkButton(lic_row, text="Validar", width=76, height=36,
                       corner_radius=6, fg_color="#6B2FF8", hover_color="#5A28D6",
                       font=("Segoe UI", 11, "bold"),
                       command=self._validate_license).pack(side="left", padx=(6, 0))
-        ctk.CTkButton(lic_row, text="Pular", width=60, height=36,
+        ctk.CTkButton(lic_row, text="Pular", width=76, height=36,
                       corner_radius=6, fg_color="transparent", hover_color="#1A1A2A",
                       border_color="#2A2A3A", border_width=1,
-                      font=("Segoe UI", 11), text_color="#4A4A6A",
+                      font=("Segoe UI", 11), text_color="#808080",
                       command=self._skip_license).pack(side="left", padx=(6, 0))
         self._license_status = ctk.CTkLabel(f1, text="Grátis — sem chave",
                                             font=("Segoe UI", 11), text_color="#4A4A6A")
@@ -630,7 +630,7 @@ class OnboardingWindow:
                      font=("Segoe UI", 10), text_color="#2A2A4A").pack(
             anchor="w", padx=20, pady=(2, 12))
 
-        # Gemini API (obrigatória)
+        # Gemini API
         f2 = ctk.CTkFrame(self._root, fg_color="#0D0C25", corner_radius=12)
         f2.pack(fill="x", padx=16, pady=(0, 8))
         ctk.CTkLabel(f2, text="GEMINI API KEY",
@@ -651,9 +651,12 @@ class OnboardingWindow:
                       corner_radius=6, fg_color="#6B2FF8", hover_color="#5A28D6",
                       font=("Segoe UI", 12, "bold"),
                       command=self._test_gemini).pack(side="left", padx=(8, 0))
-        self._gemini_status = ctk.CTkLabel(f2, text="",
-                                           font=("Segoe UI", 11), text_color="#808080")
-        self._gemini_status.pack(anchor="w", padx=20, pady=(0, 12))
+        self._gemini_status = ctk.CTkLabel(f2, text="Cole sua chave e clique Testar",
+                                           font=("Segoe UI", 11), text_color="#4A4A6A")
+        self._gemini_status.pack(anchor="w", padx=20)
+        # Bind: habilita botão ao digitar a key (sem precisar testar)
+        self._gemini_entry.bind("<KeyRelease>", lambda e: self._on_gemini_type())
+        ctk.CTkFrame(f2, height=12, fg_color="transparent").pack()
 
         # Footer
         ffoot = ctk.CTkFrame(self._root, fg_color="transparent")
@@ -677,6 +680,9 @@ class OnboardingWindow:
 
     def _validate_license(self):
         key = self._license_entry.get().strip()
+        if not key:
+            self._skip_license()
+            return
         valid, msg = validate_license_key(key)
         if valid:
             self._license_status.configure(text=f"✓ {msg}", text_color="#22C55E")
@@ -689,14 +695,23 @@ class OnboardingWindow:
     def _skip_license(self):
         """Pular licença — usar gratuitamente."""
         self._license_entry.delete(0, "end")
-        self._license_ok = True  # opcional, não bloqueia
+        self._license_ok = True
         self._license_status.configure(text="Grátis — sem chave", text_color="#4A4A6A")
         self._update_start_btn()
+
+    def _on_gemini_type(self):
+        """Habilita 'Começar a usar' assim que há texto na key — sem depender do teste."""
+        has_text = bool(self._gemini_entry.get().strip())
+        if has_text and not self._gemini_ok:
+            self._gemini_status.configure(
+                text="Clique Testar para verificar (opcional)", text_color="#4A4A6A")
+            self._gemini_ok = True  # aceitar sem teste obrigatório
+            self._update_start_btn()
 
     def _test_gemini(self):
         api_key = self._gemini_entry.get().strip()
         if not api_key:
-            self._gemini_status.configure(text="✗ Insira a chave primeiro", text_color="#FF3366")
+            self._gemini_status.configure(text="Insira a chave primeiro", text_color="#FF3366")
             return
         self._gemini_status.configure(text="Testando...", text_color="#FFAA00")
 
@@ -706,10 +721,11 @@ class OnboardingWindow:
             def _update():
                 if ok:
                     self._gemini_status.configure(text=f"✓ {msg}", text_color="#22C55E")
-                    self._gemini_ok = True
                 else:
-                    self._gemini_status.configure(text=f"✗ {msg}", text_color="#FF3366")
-                    self._gemini_ok = False
+                    # Teste falhou, mas não bloqueia — key pode ainda funcionar
+                    self._gemini_status.configure(
+                        text=f"Aviso: {msg[:60]}", text_color="#FF6B35")
+                self._gemini_ok = True  # key digitada = aceita em qualquer caso
                 self._update_start_btn()
 
             try:
