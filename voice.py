@@ -1659,11 +1659,17 @@ def validate_microphone() -> None:
 # Main
 # ---------------------------------------------------------------------------
 def _license_check_loop() -> None:
-    """Background thread — verifica expiração da licença a cada 60s."""
+    """Background thread — verifica expiração da licença a cada 60s.
+    Só notifica se o usuário TEM uma licença e ela expirou.
+    Free mode (sem chave) nunca dispara notificação.
+    """
     global _LICENSE_EXPIRED_NOTIFIED
     while True:
         time.sleep(60)
-        valid, _ = validate_license_key(_CONFIG.get("LICENSE_KEY", "") or "")
+        key = _CONFIG.get("LICENSE_KEY", "") or ""
+        if not key:
+            continue  # free mode — sem chave, sem notificação
+        valid, _ = validate_license_key(key)
         if not valid and not _LICENSE_EXPIRED_NOTIFIED:
             _show_license_expired_notification()
             _LICENSE_EXPIRED_NOTIFIED = True
