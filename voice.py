@@ -203,18 +203,21 @@ def validate_license_key(key: str) -> tuple[bool, str]:
 
 
 def _test_gemini_key(api_key: str) -> tuple[bool, str]:
-    """Testa uma chave Gemini com chamada mínima à API."""
-    try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents="hi",
-            config=genai.types.GenerateContentConfig(max_output_tokens=1),
-        )
-        return True, "Conexão OK"
-    except Exception as e:
-        return False, str(e)[:80]
+    """Valida formato da chave Gemini sem fazer chamada à API.
+
+    Não consumimos quota no setup — a chave é validada de verdade
+    na primeira transcrição real. Formato AI Studio: AIza + ~35 chars.
+    """
+    key = api_key.strip()
+    if not key:
+        return False, "Chave vazia"
+    if not key.startswith("AIza"):
+        return False, "Formato inválido — chave deve começar com 'AIza'"
+    if len(key) < 30:
+        return False, "Chave muito curta — verifique se copiou completo"
+    if len(key) > 60:
+        return False, "Chave muito longa — verifique se há espaços extras"
+    return True, "Formato OK"
 
 
 def _show_license_expired_notification() -> None:
@@ -651,8 +654,8 @@ class OnboardingWindow:
                       corner_radius=6, fg_color="#6B2FF8", hover_color="#5A28D6",
                       font=("Segoe UI", 12, "bold"),
                       command=self._test_gemini).pack(side="left", padx=(8, 0))
-        self._gemini_status = ctk.CTkLabel(f2, text="Cole sua chave e clique Testar",
-                                           font=("Segoe UI", 11), text_color="#4A4A6A")
+        self._gemini_status = ctk.CTkLabel(f2, text="Cole sua chave — só valida o formato, sem chamar a API",
+                                           font=("Segoe UI", 10), text_color="#4A4A6A")
         self._gemini_status.pack(anchor="w", padx=20)
         # Bind: habilita botão ao digitar a key (sem precisar testar)
         self._gemini_entry.bind("<KeyRelease>", lambda e: self._on_gemini_type())
