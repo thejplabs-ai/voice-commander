@@ -25,7 +25,6 @@ python -m pyinstaller voice.py ^
     --name VoiceCommander ^
     --windowed ^
     --onedir ^
-    --key="vc2026jplabs" ^
     --hidden-import sounddevice ^
     --hidden-import faster_whisper ^
     --hidden-import keyboard ^

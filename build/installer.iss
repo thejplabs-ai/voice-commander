@@ -4,6 +4,7 @@
 [Setup]
 AppName=Voice Commander
 AppVersion=1.0.0
+AppCopyright=Copyright (C) 2026 JP Labs
 AppPublisher=JP Labs
 AppPublisherURL=https://voice.jplabs.ai
 AppSupportURL=https://voice.jplabs.ai
