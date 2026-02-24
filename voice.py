@@ -675,15 +675,19 @@ class OnboardingWindow:
             state="disabled", command=self._finish)
         self._start_btn.pack(pady=12)
 
-        # Auto-size
+        # Auto-size — janela responsiva, usuário pode redimensionar
         self._root.update_idletasks()
         req_h = self._root.winfo_reqheight() + 16
         sw = self._root.winfo_screenwidth()
         sh = self._root.winfo_screenheight()
+        # Limita a altura inicial à tela disponível (para monitores pequenos)
+        init_h = min(req_h, sh - 80)
         x = (sw - 384) // 2
-        y = max((sh - req_h) // 2, 0)
-        self._root.geometry(f"384x{req_h}+{x}+{y}")
-        self._root.resizable(False, False)
+        y = max((sh - init_h) // 2, 0)
+        self._root.geometry(f"384x{init_h}+{x}+{y}")
+        # Tamanho mínimo: largura 320px (conteúdo não quebra), altura dinâmica
+        self._root.minsize(320, min(req_h, 400))
+        self._root.resizable(True, True)
 
     def _validate_license(self):
         key = self._license_entry.get().strip()
@@ -889,15 +893,19 @@ class SettingsWindow:
         self._build_footer()
         self._refresh_status()
 
-        # Auto-size: janela ajusta à altura real do conteúdo
+        # Auto-size: janela ajusta à altura real do conteúdo — responsiva
         self._root.update_idletasks()
         req_h = self._root.winfo_reqheight() + 16
         sw = self._root.winfo_screenwidth()
         sh = self._root.winfo_screenheight()
+        # Limita a altura inicial à tela disponível (para monitores pequenos)
+        init_h = min(req_h, sh - 80)
         x = (sw - 384) // 2
-        y = max((sh - req_h) // 2, 0)
-        self._root.geometry(f"384x{req_h}+{x}+{y}")
-        self._root.resizable(False, False)
+        y = max((sh - init_h) // 2, 0)
+        self._root.geometry(f"384x{init_h}+{x}+{y}")
+        # Tamanho mínimo: largura 320px (conteúdo não quebra), altura dinâmica
+        self._root.minsize(320, min(req_h, 400))
+        self._root.resizable(True, True)
 
     def _card(self) -> "ctk.CTkFrame":
         f = ctk.CTkFrame(self._root, fg_color="#0D0C25", corner_radius=12)
