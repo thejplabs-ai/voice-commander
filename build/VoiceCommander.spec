@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = []
+datas = [('icon.ico', '.')]
 binaries = []
 hiddenimports = ['sounddevice', 'faster_whisper', 'keyboard', 'customtkinter', 'pystray', 'PIL', 'PIL.Image', 'PIL.ImageDraw']
 tmp_ret = collect_all('customtkinter')

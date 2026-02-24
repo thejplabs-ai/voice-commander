@@ -40,6 +40,14 @@ if getattr(sys, 'frozen', False):
     os.makedirs(_BASE_DIR, exist_ok=True)
 else:
     _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _resource_path(relative: str) -> pathlib.Path:
+    """Resolve caminho de recurso para dev e para PyInstaller (.exe)."""
+    if getattr(sys, 'frozen', False):
+        # sys._MEIPASS = pasta temporária onde o PyInstaller extrai os arquivos
+        return pathlib.Path(sys._MEIPASS) / relative  # type: ignore[attr-defined]
+    return pathlib.Path(__file__).parent / relative
 _log_path = os.path.join(_BASE_DIR, "voice.log")
 _history_path = os.path.join(_BASE_DIR, "history.jsonl")
 
@@ -524,7 +532,7 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
                 win.attributes("-topmost", True)
                 win.configure(fg_color="#01010D")
                 win.resizable(False, False)
-                _icon = pathlib.Path(__file__).parent / "build" / "icon.ico"
+                _icon = _resource_path("icon.ico")
                 if _icon.exists():
                     win.iconbitmap(str(_icon))
                     _apply_taskbar_icon(win, _icon)
@@ -688,7 +696,7 @@ class OnboardingWindow:
         self._root.title("Voice Commander — Configuração Inicial")
         self._root.attributes("-topmost", True)
         self._root.configure(fg_color="#01010D")
-        _icon = pathlib.Path(__file__).parent / "build" / "icon.ico"
+        _icon = _resource_path("icon.ico")
         if _icon.exists():
             self._root.iconbitmap(str(_icon))
             _apply_taskbar_icon(self._root, _icon)
@@ -1023,7 +1031,7 @@ class SettingsWindow:
         self._root.title("Voice Commander — Configurações")
         self._root.attributes("-topmost", True)
         self._root.configure(fg_color="#01010D")
-        _icon = pathlib.Path(__file__).parent / "build" / "icon.ico"
+        _icon = _resource_path("icon.ico")
         if _icon.exists():
             self._root.iconbitmap(str(_icon))
             _apply_taskbar_icon(self._root, _icon)
