@@ -1,21 +1,22 @@
 # Voice Commander — Roadmap de Melhorias
 
-**Versão:** 1.0
+**Versão:** 1.0.11
 **Data:** 2026-02-24
-**Status:** Sprint 1 planejada
+**Status:** Sprints 1-3 entregues | Sprint 4 planejada
 
 ---
 
 ## Contexto
 
-Ferramenta voice-to-text pessoal do JP. 3 modos via hotkey global:
+Ferramenta voice-to-text pessoal do JP. 4 modos via hotkey global:
 - `Ctrl+Shift+Space` — transcrição pura (Whisper + correção Gemini)
 - `Ctrl+Alt+Space` — prompt simples (bullet points Gemini)
 - `Ctrl+CapsLock+Space` — prompt estruturado COSTAR (XML tags Gemini)
+- `Ctrl+Shift+Alt+Space` — query direta Gemini (responde à pergunta via voz, cola resposta)
 
-Stack: Python 3.13, faster-whisper (small/CPU/int8), google-genai (Gemini 2.0 Flash), keyboard, sounddevice, ctypes, winsound.
+Stack: Python 3.13, faster-whisper (small/CPU/int8), google-genai (Gemini 2.0 Flash), keyboard, sounddevice, ctypes, winsound, pystray, Pillow, customtkinter.
 
-Código está sólido. Todas as melhorias são **aditivas** — sem refactoring estrutural.
+**Nota de nomenclatura:** Sprints 1-3 são retroativamente mapeados como Epics 1-3 no PRD formal (`docs/PRD.md`). A nomenclatura "Epic" substitui "Sprint" a partir do Epic 4.
 
 ---
 
@@ -133,6 +134,19 @@ Código está sólido. Todas as melhorias são **aditivas** — sem refactoring 
 - Se transcrição > 10s: abortar com `[WARN] Shutdown forçado — transcrição abortada`
 - Mutex liberado em qualquer cenário (try/finally)
 - Log: `[OK] Shutdown gracioso concluído`
+
+---
+
+## Quick Wins — 2026-02-24
+
+Melhorias pontuais executadas fora de sprint, antes do Epic 4:
+
+| Item | Descrição |
+|------|-----------|
+| `.gitignore` | `history.jsonl` e `voice.*.log` adicionados (dados pessoais fora do VCS) |
+| Singleton Gemini | `_get_gemini_client()` — lazy init, reutiliza conexão entre chamadas |
+| `__version__` | Versão canônica em `voice.py` (`__version__ = "1.0.11"`) — source única |
+| Clipboard ctypes | `_paste_via_sendinput()` via ctypes puro — remove dependência de `keyboard` no paste |
 
 ---
 
