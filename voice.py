@@ -1148,6 +1148,19 @@ def load_gemini_key() -> str | None:
     return _CONFIG.get("GEMINI_API_KEY")
 
 
+def _is_rate_limit(e: Exception) -> bool:
+    """Detecta erro 429 / RESOURCE_EXHAUSTED do Gemini."""
+    msg = str(e).lower()
+    return "429" in msg or "resource_exhausted" in msg or "exhausted" in msg or "quota" in msg
+
+
+def _rate_limit_msg() -> str:
+    return (
+        "[LIMITE ATINGIDO] Gemini free tier: máx 15 req/min.\n"
+        "Aguarde 1 minuto e use o atalho novamente."
+    )
+
+
 def correct_with_gemini(text: str) -> str:
     if not _GEMINI_API_KEY:
         return text
@@ -1172,6 +1185,9 @@ def correct_with_gemini(text: str) -> str:
             print(f"[OK]   Corrigido: {corrected}")
             return corrected
     except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
         print(f"[WARN] Gemini indisponível ({e}), usando texto original")
     return text
 
@@ -1221,6 +1237,9 @@ Transcrição: {text}"""
             print(f"[OK]   Prompt simplificado ({len(simplified)} chars)")
             return simplified
     except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
         print(f"[WARN] Gemini indisponível ({e}), retornando texto original")
     return text
 
@@ -1287,6 +1306,9 @@ Transcrição: {text}"""
             print(f"[OK]   Prompt estruturado ({len(structured)} chars)")
             return structured
     except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
         print(f"[WARN] Gemini indisponível ({e}), retornando texto original")
     return text
 
@@ -1326,6 +1348,9 @@ def query_with_gemini(text: str) -> str:
             print(f"[OK]   Resposta Gemini ({len(answer)} chars)")
             return answer
     except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
         print(f"[WARN] Gemini indisponível ({e}), retornando transcrição com prefixo")
 
     return f"[SEM RESPOSTA GEMINI] {text}"
