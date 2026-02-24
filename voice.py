@@ -27,13 +27,31 @@ import tempfile
 import wave
 import ctypes
 import ctypes.wintypes
+import hmac
+import hashlib
+import base64
 
 # ---------------------------------------------------------------------------
 # Caminhos base
 # ---------------------------------------------------------------------------
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    _BASE_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "VoiceCommander")
+    os.makedirs(_BASE_DIR, exist_ok=True)
+else:
+    _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 _log_path = os.path.join(_BASE_DIR, "voice.log")
 _history_path = os.path.join(_BASE_DIR, "history.jsonl")
+
+# ---------------------------------------------------------------------------
+# License — validação HMAC local (sem servidor)
+# ---------------------------------------------------------------------------
+_LICENSE_EXPIRED_NOTIFIED: bool = False
+# Obfuscated secret (evita extração por grep no .exe)
+_K = [ord(c) ^ 0x42 for c in "jp-labs-vc-secret-2026"]
+
+
+def _get_secret() -> str:
+    return "".join(chr(c ^ 0x42) for c in _K)
 
 # Reconfigurar stdout/stderr para UTF-8 (evita UnicodeEncodeError com ═, etc.)
 # Quando rodando via pythonw.exe, stdout/stderr são None — tratar gracefully
@@ -123,7 +141,9 @@ def load_config() -> dict:
     env_path = os.path.join(_BASE_DIR, ".env")
     config: dict = {
         "GEMINI_API_KEY": None,
+        "LICENSE_KEY": None,
         "WHISPER_MODEL": "small",
+        "WHISPER_LANGUAGE": "",
         "MAX_RECORD_SECONDS": 120,
         "AUDIO_DEVICE_INDEX": None,
         "QUERY_HOTKEY": "ctrl+shift+alt+space",
@@ -158,6 +178,55 @@ def load_config() -> dict:
     if config["GEMINI_API_KEY"] == "your_gemini_api_key_here":
         config["GEMINI_API_KEY"] = None
     return config
+
+
+# ---------------------------------------------------------------------------
+# License — validate_license_key, _test_gemini_key, notificação
+# ---------------------------------------------------------------------------
+def validate_license_key(key: str) -> tuple[bool, str]:
+    """Valida chave de licença via HMAC local (sem servidor necessário)."""
+    try:
+        parts = key.strip().split("-", 2)  # ["vc", expiry_b64, sig]
+        if len(parts) != 3 or parts[0] != "vc":
+            return False, "Formato inválido"
+        expiry_b64, sig = parts[1], parts[2]
+        expiry = base64.urlsafe_b64decode(expiry_b64 + "==").decode()
+        expected_sig = hmac.new(_get_secret().encode(), expiry.encode(), hashlib.sha256).hexdigest()[:12]
+        if not hmac.compare_digest(sig, expected_sig):
+            return False, "Chave inválida"
+        expiry_date = datetime.date.fromisoformat(expiry)
+        if datetime.date.today() > expiry_date:
+            return False, f"Expirada em {expiry}"
+        return True, f"Válida até {expiry}"
+    except Exception:
+        return False, "Chave inválida"
+
+
+def _test_gemini_key(api_key: str) -> tuple[bool, str]:
+    """Testa uma chave Gemini com chamada mínima à API."""
+    try:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents="hi",
+            config=genai.types.GenerateContentConfig(max_output_tokens=1),
+        )
+        return True, "Conexão OK"
+    except Exception as e:
+        return False, str(e)[:80]
+
+
+def _show_license_expired_notification() -> None:
+    """Mostra dialog de licença expirada em thread daemon (não bloqueia)."""
+    def _notify():
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "Sua licença Voice Commander expirou.\n\nRenove em: voice.jplabs.ai",
+            "Voice Commander — Licença Expirada",
+            0x30,  # MB_ICONWARNING
+        )
+    threading.Thread(target=_notify, daemon=True).start()
 
 
 # ---------------------------------------------------------------------------
@@ -436,6 +505,8 @@ def _start_tray() -> None:
 
     try:
         menu = pystray.Menu(
+            pystray.MenuItem("⚙ Configurações", lambda icon, item: _open_settings()),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Status", _tray_show_status),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Encerrar", _tray_on_quit),
@@ -472,6 +543,555 @@ def _stop_tray() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Onboarding Window — wizard 2 passos (bloqueante, modal)
+# ---------------------------------------------------------------------------
+# _ctk_available e ctk definidos logo abaixo — OnboardingWindow só é
+# instanciada após aquele bloco executar, então a referência é segura.
+
+
+class OnboardingWindow:
+    """Wizard de configuração inicial — 2 passos obrigatórios."""
+
+    def __init__(self):
+        self._root = None
+        self._license_entry = None
+        self._license_status = None
+        self._gemini_entry = None
+        self._gemini_status = None
+        self._start_btn = None
+        self._license_ok = False
+        self._gemini_ok = False
+
+    def run(self) -> None:
+        """Abre wizard bloqueante. Retorna quando usuário completa os 2 passos."""
+        if not _ctk_available:
+            ctypes.windll.user32.MessageBoxW(
+                0,
+                "Licença inválida ou não configurada.\n"
+                "Configure LICENSE_KEY no arquivo .env\n"
+                "ou acesse voice.jplabs.ai para obter uma licença.",
+                "Voice Commander — Licença",
+                0x30,
+            )
+            return
+        self._build()
+        self._root.mainloop()
+
+    def _build(self):
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("dark-blue")
+
+        self._root = ctk.CTk()
+        self._root.title("Voice Commander — Configuração Inicial")
+        self._root.attributes("-topmost", True)
+        self._root.configure(fg_color="#01010D")
+        self._root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Header
+        h = ctk.CTkFrame(self._root, fg_color="transparent")
+        h.pack(fill="x", padx=16, pady=(20, 8))
+        ctk.CTkLabel(h, text="🎙 Voice Commander",
+                     font=("Segoe UI", 20, "bold"), text_color="#FFFFFF").pack(anchor="w")
+        ctk.CTkLabel(h, text="Configuração inicial",
+                     font=("Segoe UI", 12), text_color="#808080").pack(anchor="w")
+        ctk.CTkFrame(self._root, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
+            fill="x", padx=16, pady=(0, 8))
+
+        # Passo 1 — Licença
+        f1 = ctk.CTkFrame(self._root, fg_color="#0D0C25", corner_radius=12)
+        f1.pack(fill="x", padx=16, pady=(0, 8))
+        ctk.CTkLabel(f1, text="PASSO 1 DE 2 — LICENÇA",
+                     font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
+            anchor="w", padx=20, pady=(12, 4))
+        lic_row = ctk.CTkFrame(f1, fg_color="transparent")
+        lic_row.pack(fill="x", padx=20, pady=(0, 4))
+        self._license_entry = ctk.CTkEntry(
+            lic_row, width=240, height=36,
+            font=("Consolas", 11), fg_color="#0D0C25",
+            border_color="#1F1F1F", border_width=1, text_color="#FFFFFF",
+            placeholder_text="vc-xxxxxxxxxxxx-xxxxxxxxxxxx")
+        self._license_entry.pack(side="left")
+        ctk.CTkButton(lic_row, text="Validar", width=80, height=36,
+                      corner_radius=6, fg_color="#6B2FF8", hover_color="#5A28D6",
+                      font=("Segoe UI", 12, "bold"),
+                      command=self._validate_license).pack(side="left", padx=(8, 0))
+        self._license_status = ctk.CTkLabel(f1, text="",
+                                            font=("Segoe UI", 11), text_color="#808080")
+        self._license_status.pack(anchor="w", padx=20)
+        ctk.CTkLabel(f1, text="Comprar em: voice.jplabs.ai",
+                     font=("Segoe UI", 10), text_color="#4A4A6A").pack(
+            anchor="w", padx=20, pady=(2, 12))
+
+        # Passo 2 — Gemini API
+        f2 = ctk.CTkFrame(self._root, fg_color="#0D0C25", corner_radius=12)
+        f2.pack(fill="x", padx=16, pady=(0, 8))
+        ctk.CTkLabel(f2, text="PASSO 2 DE 2 — GEMINI API KEY",
+                     font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
+            anchor="w", padx=20, pady=(12, 4))
+        ctk.CTkLabel(f2, text="Obter grátis em: aistudio.google.com/apikey",
+                     font=("Segoe UI", 10), text_color="#4A4A6A").pack(
+            anchor="w", padx=20, pady=(0, 4))
+        gem_row = ctk.CTkFrame(f2, fg_color="transparent")
+        gem_row.pack(fill="x", padx=20, pady=(0, 4))
+        self._gemini_entry = ctk.CTkEntry(
+            gem_row, width=240, height=36, show="*",
+            font=("Consolas", 11), fg_color="#0D0C25",
+            border_color="#1F1F1F", border_width=1, text_color="#FFFFFF",
+            placeholder_text="AIza...")
+        self._gemini_entry.pack(side="left")
+        ctk.CTkButton(gem_row, text="Testar", width=80, height=36,
+                      corner_radius=6, fg_color="#6B2FF8", hover_color="#5A28D6",
+                      font=("Segoe UI", 12, "bold"),
+                      command=self._test_gemini).pack(side="left", padx=(8, 0))
+        self._gemini_status = ctk.CTkLabel(f2, text="",
+                                           font=("Segoe UI", 11), text_color="#808080")
+        self._gemini_status.pack(anchor="w", padx=20, pady=(0, 12))
+
+        # Footer
+        ffoot = ctk.CTkFrame(self._root, fg_color="transparent")
+        ffoot.pack(fill="x", padx=16, pady=(0, 16))
+        self._start_btn = ctk.CTkButton(
+            ffoot, text="Começar a usar", width=352, height=42,
+            corner_radius=8, fg_color="#1A1A2A", hover_color="#1A1A2A",
+            font=("Segoe UI", 13, "bold"), text_color="#4A4A6A",
+            state="disabled", command=self._finish)
+        self._start_btn.pack(pady=12)
+
+        # Auto-size
+        self._root.update_idletasks()
+        req_h = self._root.winfo_reqheight() + 16
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        x = (sw - 384) // 2
+        y = max((sh - req_h) // 2, 0)
+        self._root.geometry(f"384x{req_h}+{x}+{y}")
+        self._root.resizable(False, False)
+
+    def _validate_license(self):
+        key = self._license_entry.get().strip()
+        valid, msg = validate_license_key(key)
+        if valid:
+            self._license_status.configure(text=f"✓ {msg}", text_color="#22C55E")
+            self._license_ok = True
+        else:
+            self._license_status.configure(text=f"✗ {msg}", text_color="#FF3366")
+            self._license_ok = False
+        self._update_start_btn()
+
+    def _test_gemini(self):
+        api_key = self._gemini_entry.get().strip()
+        if not api_key:
+            self._gemini_status.configure(text="✗ Insira a chave primeiro", text_color="#FF3366")
+            return
+        self._gemini_status.configure(text="Testando...", text_color="#FFAA00")
+
+        def _do_test():
+            ok, msg = _test_gemini_key(api_key)
+
+            def _update():
+                if ok:
+                    self._gemini_status.configure(text=f"✓ {msg}", text_color="#22C55E")
+                    self._gemini_ok = True
+                else:
+                    self._gemini_status.configure(text=f"✗ {msg}", text_color="#FF3366")
+                    self._gemini_ok = False
+                self._update_start_btn()
+
+            try:
+                self._root.after(0, _update)
+            except Exception:
+                pass
+
+        threading.Thread(target=_do_test, daemon=True).start()
+
+    def _update_start_btn(self):
+        if self._license_ok and self._gemini_ok:
+            self._start_btn.configure(
+                state="normal", fg_color="#6B2FF8", hover_color="#5A28D6",
+                text_color="#FFFFFF")
+        else:
+            self._start_btn.configure(
+                state="disabled", fg_color="#1A1A2A", hover_color="#1A1A2A",
+                text_color="#4A4A6A")
+
+    def _finish(self):
+        """Salva as chaves e fecha o wizard."""
+        license_key = self._license_entry.get().strip()
+        gemini_key = self._gemini_entry.get().strip()
+        _save_env({"LICENSE_KEY": license_key, "GEMINI_API_KEY": gemini_key})
+        self._root.destroy()
+        self._root = None
+
+    def _on_close(self):
+        """Fechar sem completar encerra o app."""
+        os._exit(0)
+
+
+def _run_onboarding() -> None:
+    """Abre wizard de configuração inicial (bloqueante)."""
+    OnboardingWindow().run()
+
+
+# ---------------------------------------------------------------------------
+# Settings Window (CustomTkinter — Deep Glass design)
+# ---------------------------------------------------------------------------
+_ctk_available = False
+_settings_window_ref = None
+_settings_window_lock = threading.Lock()
+
+try:
+    import customtkinter as ctk
+    _ctk_available = True
+except ImportError:
+    print("[WARN] customtkinter não instalado — janela de configurações desativada. "
+          "Instale com: pip install customtkinter==5.2.2")
+
+
+def _reload_config() -> None:
+    """Recarrega _CONFIG e _GEMINI_API_KEY do .env sem restart."""
+    global _CONFIG, _GEMINI_API_KEY, _whisper_model
+    old_model = _CONFIG.get("WHISPER_MODEL", "small")
+    _CONFIG = load_config()
+    _GEMINI_API_KEY = _CONFIG.get("GEMINI_API_KEY")
+    new_model = _CONFIG.get("WHISPER_MODEL", "small")
+    if new_model != old_model:
+        _whisper_model = None  # forçar reload no próximo uso
+        print(f"[INFO] Modelo Whisper mudou: {old_model} → {new_model} (reload no próximo uso)")
+    print("[OK]   Config recarregada do .env")
+
+
+def _save_env(new_values: dict) -> None:
+    """Reescreve o .env preservando comentários, apenas atualizando os keys fornecidos."""
+    env_path = os.path.join(_BASE_DIR, ".env")
+    example_path = os.path.join(_BASE_DIR, ".env.example")
+    source = env_path if os.path.exists(env_path) else example_path
+    lines = []
+    if os.path.exists(source):
+        with open(source, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    updated: set = set()
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if "=" in stripped and not stripped.startswith("#"):
+            key = stripped.split("=", 1)[0].strip()
+            if key in new_values:
+                new_lines.append(f"{key}={new_values[key]}\n")
+                updated.add(key)
+                continue
+        new_lines.append(line)
+    for key, val in new_values.items():
+        if key not in updated:
+            new_lines.append(f"{key}={val}\n")
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+
+class SettingsWindow:
+    """Mini janela de configurações — Flat Dark Premium design (JP Labs DNA)."""
+
+    MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
+    LANGUAGES = ["auto-detect", "pt", "en"]
+
+    def __init__(self):
+        self._root = None
+        self._api_entry = None
+        self._license_entry = None
+        self._license_status_label = None
+        self._model_var = None
+        self._lang_var = None
+        self._dot = None
+        self._state_label = None
+        self._save_btn = None
+        self._eye_btn = None
+        self._show_key = False
+
+    def open(self):
+        """Abre a janela em thread daemon. Singleton — foca se já aberta."""
+        global _settings_window_ref
+        with _settings_window_lock:
+            existing = _settings_window_ref
+            if existing is not None:
+                try:
+                    existing._root.lift()
+                    existing._root.focus_force()
+                    return
+                except Exception:
+                    pass  # janela foi fechada, criar nova
+            _settings_window_ref = self
+        t = threading.Thread(target=self._run, daemon=True)
+        t.start()
+
+    def _run(self):
+        global _settings_window_ref
+        try:
+            self._build()
+            self._root.mainloop()
+        except Exception as e:
+            print(f"[WARN] SettingsWindow encerrada: {e}")
+        finally:
+            with _settings_window_lock:
+                if _settings_window_ref is self:
+                    _settings_window_ref = None
+
+    def _build(self):
+        ctk.set_appearance_mode("dark")
+        ctk.set_default_color_theme("dark-blue")
+
+        self._root = ctk.CTk()
+        self._root.title("Voice Commander — Configurações")
+        self._root.attributes("-topmost", True)
+        self._root.configure(fg_color="#01010D")
+
+        self._build_header()
+        self._build_status()
+        self._build_commands()
+        self._build_settings()
+        self._build_footer()
+        self._refresh_status()
+
+        # Auto-size: janela ajusta à altura real do conteúdo
+        self._root.update_idletasks()
+        req_h = self._root.winfo_reqheight() + 16
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        x = (sw - 384) // 2
+        y = max((sh - req_h) // 2, 0)
+        self._root.geometry(f"384x{req_h}+{x}+{y}")
+        self._root.resizable(False, False)
+
+    def _card(self) -> "ctk.CTkFrame":
+        f = ctk.CTkFrame(self._root, fg_color="#0D0C25", corner_radius=12)
+        f.pack(fill="x", padx=16, pady=(0, 8))
+        return f
+
+    def _section_title(self, parent, text: str) -> None:
+        row = ctk.CTkFrame(parent, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=(12, 8))
+        ctk.CTkFrame(row, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
+            side="left", fill="x", expand=True, pady=9)
+        ctk.CTkLabel(row, text=f"  {text}  ",
+                     font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(side="left")
+        ctk.CTkFrame(row, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
+            side="left", fill="x", expand=True, pady=9)
+
+    def _build_header(self):
+        h = ctk.CTkFrame(self._root, fg_color="transparent")
+        h.pack(fill="x", padx=16, pady=(20, 8))
+        ctk.CTkLabel(h, text="🎙 Voice Commander",
+                     font=("Segoe UI", 20, "bold"), text_color="#FFFFFF").pack(anchor="w")
+        ctk.CTkLabel(h, text="v1.3",
+                     font=("Segoe UI", 12), text_color="#808080").pack(anchor="w")
+        # Separador sutil abaixo do header
+        ctk.CTkFrame(self._root, height=1, fg_color="#2A2A3A", corner_radius=0).pack(
+            fill="x", padx=16, pady=(0, 8))
+
+    def _build_status(self):
+        f = self._card()
+        row1 = ctk.CTkFrame(f, fg_color="transparent")
+        row1.pack(fill="x", padx=20, pady=(16, 2))
+        self._dot = ctk.CTkLabel(row1, text="●", font=("Segoe UI", 14), text_color="#808080")
+        self._dot.pack(side="left")
+        self._state_label = ctk.CTkLabel(row1, text="Idle",
+                                         font=("Segoe UI", 13, "bold"), text_color="#FFFFFF")
+        self._state_label.pack(side="left", padx=(8, 0))
+        row2 = ctk.CTkFrame(f, fg_color="transparent")
+        row2.pack(fill="x", padx=20, pady=(0, 16))
+        model_name = _CONFIG.get("WHISPER_MODEL", "small")
+        gemini_ok = bool(_GEMINI_API_KEY)
+        ctk.CTkLabel(row2, text=f"Whisper: {model_name}",
+                     font=("Segoe UI", 11), text_color="#808080").pack(side="left")
+        ctk.CTkLabel(row2, text="  |  ",
+                     font=("Segoe UI", 11), text_color="#2A2A3A").pack(side="left")
+        ctk.CTkLabel(row2, text=f"Gemini: {'on' if gemini_ok else 'off'}",
+                     font=("Segoe UI", 11),
+                     text_color="#22C55E" if gemini_ok else "#808080").pack(side="left")
+
+    def _build_commands(self):
+        f = self._card()
+        self._section_title(f, "ATALHOS")
+        hotkeys = [
+            ("Ctrl+Shift+Space",    "Transcrição pura"),
+            ("Ctrl+Alt+Space",      "Prompt simples"),
+            ("Ctrl+CapsLock+Space", "Prompt COSTAR"),
+            (_CONFIG.get("QUERY_HOTKEY", "ctrl+shift+alt+space").title(), "Query Gemini"),
+        ]
+        for i, (key, desc) in enumerate(hotkeys):
+            ctk.CTkLabel(f, text=key,
+                         font=("Consolas", 12, "bold"), text_color="#FFFFFF", anchor="w").pack(
+                fill="x", padx=20, pady=(8, 0))
+            ctk.CTkLabel(f, text=desc,
+                         font=("Segoe UI", 11), text_color="#808080", anchor="w").pack(
+                fill="x", padx=20, pady=(2, 0))
+            # Separador fino entre hotkeys (não após o último)
+            if i < len(hotkeys) - 1:
+                ctk.CTkFrame(f, height=1, fg_color="#1A1A2A", corner_radius=0).pack(
+                    fill="x", padx=20, pady=(8, 0))
+        # Padding bottom
+        ctk.CTkFrame(f, height=12, fg_color="transparent").pack()
+
+    def _build_settings(self):
+        f = self._card()
+        self._section_title(f, "CONFIGURAÇÕES")
+
+        # Modelo Whisper
+        ctk.CTkLabel(f, text="Modelo Whisper",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(anchor="w", padx=20, pady=(8, 2))
+        cur_model = _CONFIG.get("WHISPER_MODEL", "small")
+        self._model_var = ctk.StringVar(value=cur_model if cur_model in self.MODELS else "small")
+        ctk.CTkOptionMenu(f, variable=self._model_var, values=self.MODELS,
+                          width=312, height=36, corner_radius=6,
+                          fg_color="#0D0C25", button_color="#6B2FF8",
+                          button_hover_color="#5A28D6", text_color="#FFFFFF").pack(padx=20)
+
+        # Idioma Whisper
+        ctk.CTkLabel(f, text="Idioma de transcrição",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(anchor="w", padx=20, pady=(8, 2))
+        raw_lang = _CONFIG.get("WHISPER_LANGUAGE", "") or "auto-detect"
+        lang_val = raw_lang if raw_lang in self.LANGUAGES else "auto-detect"
+        self._lang_var = ctk.StringVar(value=lang_val)
+        ctk.CTkOptionMenu(f, variable=self._lang_var, values=self.LANGUAGES,
+                          width=312, height=36, corner_radius=6,
+                          fg_color="#0D0C25", button_color="#6B2FF8",
+                          button_hover_color="#5A28D6", text_color="#FFFFFF").pack(padx=20)
+
+        # Chave de Licença
+        ctk.CTkLabel(f, text="Chave de Licença",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(anchor="w", padx=20, pady=(8, 2))
+        lic_row = ctk.CTkFrame(f, fg_color="transparent")
+        lic_row.pack(fill="x", padx=20, pady=(0, 4))
+        self._license_entry = ctk.CTkEntry(lic_row, width=268, height=36,
+                                           font=("Consolas", 11), fg_color="#0D0C25",
+                                           border_color="#1F1F1F", border_width=1,
+                                           text_color="#FFFFFF",
+                                           placeholder_text="vc-xxxxxxxxxxxx-xxxxxxxxxxxx")
+        self._license_entry.pack(side="left")
+        ctk.CTkButton(lic_row, text="✓", width=36, height=36,
+                      fg_color="#0D0C25", hover_color="#170433",
+                      border_color="#1F1F1F", border_width=1, corner_radius=6,
+                      command=self._check_license).pack(side="left", padx=(8, 0))
+        cur_lic = _CONFIG.get("LICENSE_KEY") or ""
+        if cur_lic:
+            self._license_entry.insert(0, cur_lic)
+        self._license_status_label = ctk.CTkLabel(f, text="",
+                                                  font=("Segoe UI", 11), text_color="#808080")
+        self._license_status_label.pack(anchor="w", padx=20, pady=(0, 4))
+        self._refresh_license_status()
+
+        # Gemini API Key
+        ctk.CTkLabel(f, text="Gemini API Key",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(anchor="w", padx=20, pady=(8, 2))
+        key_row = ctk.CTkFrame(f, fg_color="transparent")
+        key_row.pack(fill="x", padx=20, pady=(0, 16))
+        self._api_entry = ctk.CTkEntry(key_row, width=268, height=36, show="*",
+                                       font=("Consolas", 12), fg_color="#0D0C25",
+                                       border_color="#1F1F1F", border_width=1,
+                                       text_color="#FFFFFF",
+                                       placeholder_text="sua chave Gemini...")
+        self._api_entry.pack(side="left")
+        if _GEMINI_API_KEY:
+            self._api_entry.insert(0, _GEMINI_API_KEY)
+        self._eye_btn = ctk.CTkButton(key_row, text="👁", width=36, height=36,
+                                      fg_color="#0D0C25", hover_color="#170433",
+                                      border_color="#1F1F1F", border_width=1, corner_radius=6,
+                                      command=self._toggle_key_visibility)
+        self._eye_btn.pack(side="left", padx=(8, 0))
+
+    def _build_footer(self):
+        f = ctk.CTkFrame(self._root, fg_color="transparent")
+        f.pack(fill="x", padx=16, pady=(0, 16))
+        self._save_btn = ctk.CTkButton(f, text="Salvar", width=172, height=42,
+                                       corner_radius=8, fg_color="#6B2FF8",
+                                       hover_color="#5A28D6",
+                                       font=("Segoe UI", 13, "bold"),
+                                       command=self._save)
+        self._save_btn.pack(side="left", pady=12)
+        ctk.CTkButton(f, text="Fechar", width=172, height=42, corner_radius=8,
+                      fg_color="transparent", border_color="#1F1F1F", border_width=1,
+                      hover_color="#170433", font=("Segoe UI", 13), text_color="#B3B3B3",
+                      command=self._root.destroy).pack(side="left", padx=(8, 0), pady=12)
+
+    def _toggle_key_visibility(self):
+        self._show_key = not self._show_key
+        self._api_entry.configure(show="" if self._show_key else "*")
+
+    def _check_license(self):
+        """Botão ✓ na linha da licença — valida e mostra status."""
+        key = self._license_entry.get().strip() if self._license_entry else ""
+        self._show_license_result(key)
+
+    def _refresh_license_status(self):
+        """Mostra status atual da licença carregada no .env."""
+        key = _CONFIG.get("LICENSE_KEY") or ""
+        self._show_license_result(key)
+
+    def _show_license_result(self, key: str):
+        if not self._license_status_label:
+            return
+        if not key:
+            self._license_status_label.configure(text="Não configurada", text_color="#808080")
+            return
+        valid, msg = validate_license_key(key)
+        if valid:
+            self._license_status_label.configure(text=f"✓ {msg}", text_color="#22C55E")
+        else:
+            expired = "Expirada" in msg
+            color = "#FF6B35" if expired else "#FF3366"
+            suffix = "  Renovar → voice.jplabs.ai" if expired else ""
+            self._license_status_label.configure(text=f"✗ {msg}{suffix}", text_color=color)
+
+    def _save(self):
+        model_val = self._model_var.get()
+        lang_val = self._lang_var.get()
+        api_key = self._api_entry.get().strip()
+        license_key = self._license_entry.get().strip() if self._license_entry else ""
+        new_values: dict = {
+            "WHISPER_MODEL": model_val,
+            "WHISPER_LANGUAGE": "" if lang_val == "auto-detect" else lang_val,
+        }
+        if api_key:
+            new_values["GEMINI_API_KEY"] = api_key
+        if license_key:
+            new_values["LICENSE_KEY"] = license_key
+        _save_env(new_values)
+        _reload_config()
+        self._refresh_license_status()
+        self._save_btn.configure(text="Salvo!", fg_color="#22C55E", hover_color="#16A34A")
+        self._root.after(1500, lambda: self._save_btn.configure(
+            text="Salvar", fg_color="#6B2FF8", hover_color="#5A28D6"))
+
+    def _refresh_status(self):
+        if self._root is None:
+            return
+        try:
+            state_map = {
+                "idle":       ("●", "#808080", "Idle"),
+                "recording":  ("●", "#FF3366", "Gravando"),
+                "processing": ("●", "#FFAA00", "Processando"),
+            }
+            dot_text, dot_color, state_text = state_map.get(
+                _tray_state, ("●", "#808080", _tray_state))
+            self._dot.configure(text=dot_text, text_color=dot_color)
+            self._state_label.configure(text=state_text)
+            self._root.after(1000, self._refresh_status)
+        except Exception:
+            pass
+
+
+def _open_settings() -> None:
+    """Abre janela de Settings (singleton — foca se já aberta)."""
+    if not _ctk_available:
+        ctypes.windll.user32.MessageBoxW(
+            0,
+            "customtkinter não instalado.\nInstale com: pip install customtkinter==5.2.2",
+            "Voice Commander — Configurações",
+            0x40,
+        )
+        return
+    SettingsWindow().open()
+
+
+# ---------------------------------------------------------------------------
 # Whisper — lazy load
 # ---------------------------------------------------------------------------
 _whisper_model = None
@@ -503,12 +1123,14 @@ def correct_with_gemini(text: str) -> str:
         from google import genai
         client = genai.Client(api_key=_GEMINI_API_KEY)
         prompt = (
-            "Você é um corretor de transcrição de voz para texto em português brasileiro e inglês.\n"
-            "O texto abaixo foi gerado por speech-to-text e pode conter erros de transcrição, "
-            "palavras erradas, falta de pontuação, ou frases cortadas.\n"
-            "O texto pode misturar português e inglês (code-switching) — preserve ambos os idiomas.\n"
-            "Corrija esses erros mantendo o sentido e o estilo original.\n"
-            "Retorne APENAS o texto corrigido, sem explicações, sem aspas, sem prefixos.\n\n"
+            "Você é um corretor MINIMALISTA de transcrição de voz para texto.\n"
+            "REGRAS ABSOLUTAS:\n"
+            "- NÃO traduza nada. Se a palavra está em inglês, deixe em inglês.\n"
+            "- NÃO mude o sentido ou reorganize frases.\n"
+            "- NÃO expanda abreviações ou siglas.\n"
+            "- Preserve code-switching (mistura PT+EN) exatamente como está.\n"
+            "- Em caso de dúvida, preserve o texto original.\n"
+            "- Retorne APENAS o texto corrigido, sem explicações.\n\n"
             f"Texto: {text}"
         )
         response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
@@ -793,7 +1415,15 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             wf.writeframes((audio_data * 32767).astype(np.int16).tobytes())
 
         model = get_whisper_model()
-        segments, _ = model.transcribe(temp_path, language=None)
+        lang_hint = _CONFIG.get("WHISPER_LANGUAGE") or None
+        segments, _ = model.transcribe(
+            temp_path,
+            language=lang_hint,
+            task="transcribe",
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+            initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+        )
         raw_text = " ".join(s.text for s in segments).strip()
 
         if not raw_text:
@@ -968,12 +1598,31 @@ def validate_microphone() -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def _license_check_loop() -> None:
+    """Background thread — verifica expiração da licença a cada 60s."""
+    global _LICENSE_EXPIRED_NOTIFIED
+    while True:
+        time.sleep(60)
+        valid, _ = validate_license_key(_CONFIG.get("LICENSE_KEY", "") or "")
+        if not valid and not _LICENSE_EXPIRED_NOTIFIED:
+            _show_license_expired_notification()
+            _LICENSE_EXPIRED_NOTIFIED = True
+
+
 def main() -> None:
     global _CONFIG, _GEMINI_API_KEY
 
     # Carrega configurações uma vez (antes da rotação para ter LOG_KEEP_SESSIONS)
     _CONFIG = load_config()
     _GEMINI_API_KEY = _CONFIG.get("GEMINI_API_KEY")
+
+    # Verificar licença — abre wizard se inválida/ausente
+    _license_valid, _license_msg = validate_license_key(_CONFIG.get("LICENSE_KEY", "") or "")
+    if not _license_valid:
+        _run_onboarding()
+        # Recarregar config após wizard completar
+        _CONFIG = load_config()
+        _GEMINI_API_KEY = _CONFIG.get("GEMINI_API_KEY")
 
     # Story 3.2 — Rotação de log (antes de abrir novo log)
     _rotate_log()
@@ -990,6 +1639,7 @@ def main() -> None:
     key_display = f"***{_GEMINI_API_KEY[-4:]}" if gemini_ok else "não configurada"
     device_display = str(_CONFIG["AUDIO_DEVICE_INDEX"]) if _CONFIG["AUDIO_DEVICE_INDEX"] is not None else "padrão do sistema"
     query_hotkey = _CONFIG.get("QUERY_HOTKEY", "ctrl+shift+alt+space")
+    _lic_valid, _lic_msg = validate_license_key(_CONFIG.get("LICENSE_KEY", "") or "")
 
     print("═" * 54)
     print("  Voice-to-text v2  |  JP Labs")
@@ -1000,6 +1650,7 @@ def main() -> None:
     print(f"  [{query_hotkey.title()}]  Query direta Gemini")
     print("  Idiomas : PT-BR + EN (automático)")
     print(f"  Gemini  : {'ativo (' + key_display + ')' if gemini_ok else 'desativado (sem .env)'}")
+    print(f"  Licença : {_lic_msg}")
     print(f"  Whisper : {_CONFIG['WHISPER_MODEL']}")
     print(f"  Timeout : {_CONFIG['MAX_RECORD_SECONDS']}s")
     print(f"  Mic     : {device_display}")
@@ -1013,6 +1664,9 @@ def main() -> None:
 
     # Story 2.1 — Iniciar system tray (thread daemon, fallback silencioso)
     _start_tray()
+
+    # Iniciar verificação periódica de expiração de licença (daemon)
+    threading.Thread(target=_license_check_loop, daemon=True).start()
 
     # Loop de resiliência: se keyboard.wait() retornar inesperadamente
     # (exception não capturada, sinal externo, etc.), os hotkeys são
