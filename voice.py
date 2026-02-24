@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Voice-to-text v2  |  JP Labs
-Ctrl+Shift+Space    = gravar / parar  →  transcrição pura (PT+EN bilíngue)
-Ctrl+Alt+Space      = gravar / parar  →  prompt simples (bullet points)
-Ctrl+CapsLock+Space = gravar / parar  →  prompt estruturado COSTAR via Gemini
+Ctrl+Shift+Space        = gravar / parar  →  transcrição pura (PT+EN bilíngue)
+Ctrl+Alt+Space          = gravar / parar  →  prompt simples (bullet points)
+Ctrl+CapsLock+Space     = gravar / parar  →  prompt estruturado COSTAR via Gemini
+Ctrl+Shift+Alt+Space    = gravar / parar  →  query direta Gemini (resposta imediata)
 
 Proteções contra garbling:
 - Named mutex (Windows): mata instância anterior automaticamente
@@ -100,6 +101,60 @@ def _release_named_mutex():
 
 
 # ---------------------------------------------------------------------------
+# Configuração — carregada uma vez no startup
+# ---------------------------------------------------------------------------
+_CONFIG: dict = {}
+_GEMINI_API_KEY: str | None = None
+
+_DEFAULT_QUERY_SYSTEM_PROMPT = (
+    "Você é um assistente direto e preciso. "
+    "Responda à pergunta do usuário de forma clara, concisa e útil. "
+    "Vá direto ao ponto sem rodeios desnecessários. "
+    "O texto pode misturar português e inglês — responda no mesmo idioma da pergunta."
+)
+
+
+def load_config() -> dict:
+    """Carrega todas as configurações do .env uma vez no startup."""
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    config: dict = {
+        "GEMINI_API_KEY": None,
+        "WHISPER_MODEL": "small",
+        "MAX_RECORD_SECONDS": 120,
+        "AUDIO_DEVICE_INDEX": None,
+        "QUERY_HOTKEY": "ctrl+shift+alt+space",
+        "QUERY_SYSTEM_PROMPT": "",
+    }
+    if not os.path.exists(env_path):
+        return config
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if "=" not in line or line.startswith("#"):
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key in config and val:
+                if key == "MAX_RECORD_SECONDS":
+                    try:
+                        config[key] = int(val)
+                    except ValueError:
+                        pass
+                elif key == "AUDIO_DEVICE_INDEX":
+                    try:
+                        config[key] = int(val)
+                    except ValueError:
+                        pass
+                else:
+                    config[key] = val
+    # Filtrar placeholder
+    if config["GEMINI_API_KEY"] == "your_gemini_api_key_here":
+        config["GEMINI_API_KEY"] = None
+    return config
+
+
+# ---------------------------------------------------------------------------
 # Configuração de áudio
 # ---------------------------------------------------------------------------
 SAMPLE_RATE     = 16000
@@ -110,7 +165,153 @@ is_transcribing = False
 frames_buf      = []
 record_thread   = None
 _toggle_lock    = threading.Lock()
-current_mode    = "transcribe"  # "transcribe" ou "prompt"
+current_mode    = "transcribe"  # "transcribe" | "simple" | "prompt" | "query"
+
+# ---------------------------------------------------------------------------
+# Story 2.1 — System Tray (pystray + Pillow)
+# ---------------------------------------------------------------------------
+_tray_icon = None
+_tray_available = False
+_tray_state = "idle"        # "idle" | "recording" | "processing"
+_tray_last_mode = "—"
+
+# Tentar importar pystray e Pillow — fallback silencioso se não disponíveis
+try:
+    import pystray
+    from PIL import Image, ImageDraw
+    _tray_available = True
+except ImportError:
+    print("[WARN] pystray/Pillow não instalados — system tray desativado. "
+          "Instale com: pip install pystray Pillow")
+
+
+def _make_tray_icon(state: str = "idle") -> "Image.Image":
+    """
+    Gera ícone 64x64 RGBA com círculo colorido indicando o estado:
+    - idle:       cinza  (#808080)
+    - recording:  vermelho (#FF3333)
+    - processing: amarelo  (#FFD700)
+    """
+    color_map = {
+        "idle":       "#808080",
+        "recording":  "#FF3333",
+        "processing": "#FFD700",
+    }
+    color = color_map.get(state, "#808080")
+    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    # Círculo preenchido com margem de 4px
+    draw.ellipse([4, 4, 60, 60], fill=color)
+    return img
+
+
+def _tray_tooltip() -> str:
+    state_labels = {
+        "idle":       "Idle",
+        "recording":  "Gravando",
+        "processing": "Processando",
+    }
+    label = state_labels.get(_tray_state, _tray_state)
+    return f"Voice Commander | {label} | Último: {_tray_last_mode}"
+
+
+def _update_tray_state(state: str, mode: str | None = None) -> None:
+    """Atualiza ícone e tooltip da system tray."""
+    global _tray_state, _tray_last_mode
+    _tray_state = state
+    if mode is not None:
+        _tray_last_mode = mode
+    if _tray_icon is not None and _tray_available:
+        try:
+            _tray_icon.icon = _make_tray_icon(state)
+            _tray_icon.title = _tray_tooltip()
+        except Exception as e:
+            print(f"[WARN] Falha ao atualizar ícone da tray: {e}")
+
+
+def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
+    """Menu item 'Status' — exibe MessageBox com info atual."""
+    state_labels = {
+        "idle":       "Idle (aguardando hotkey)",
+        "recording":  "Gravando...",
+        "processing": "Processando transcrição...",
+    }
+    mode_labels = {
+        "transcribe": "Transcrição pura",
+        "simple":     "Prompt simples",
+        "prompt":     "Prompt COSTAR",
+        "query":      "Query Gemini",
+        "—":          "—",
+    }
+    gemini_status = "Ativo" if _GEMINI_API_KEY else "Desativado"
+    state_label = state_labels.get(_tray_state, _tray_state)
+    mode_label  = mode_labels.get(_tray_last_mode, _tray_last_mode)
+    msg = (
+        f"Voice Commander — JP Labs\n\n"
+        f"Estado:      {state_label}\n"
+        f"Último modo: {mode_label}\n"
+        f"Gemini:      {gemini_status}\n"
+        f"Whisper:     {_CONFIG.get('WHISPER_MODEL', 'small')}\n"
+        f"Log:         {_log_path}"
+    )
+    ctypes.windll.user32.MessageBoxW(0, msg, "Voice Commander — Status", 0x40)
+
+
+def _tray_on_quit(icon, item) -> None:  # type: ignore[type-arg]
+    """Menu item 'Encerrar' — shutdown gracioso."""
+    print("[INFO] Encerramento solicitado via system tray.")
+    stop_event.set()
+    try:
+        icon.stop()
+    except Exception:
+        pass
+    _release_named_mutex()
+    os._exit(0)
+
+
+def _start_tray() -> None:
+    """Inicia system tray em thread daemon. Fallback silencioso se pystray indisponível."""
+    global _tray_icon
+
+    if not _tray_available:
+        return
+
+    try:
+        menu = pystray.Menu(
+            pystray.MenuItem("Status", _tray_show_status),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Encerrar", _tray_on_quit),
+        )
+        _tray_icon = pystray.Icon(
+            name="VoiceCommander",
+            icon=_make_tray_icon("idle"),
+            title=_tray_tooltip(),
+            menu=menu,
+        )
+
+        def _run_tray():
+            try:
+                _tray_icon.run()
+            except Exception as e:
+                print(f"[WARN] System tray encerrada inesperadamente: {e}")
+
+        t = threading.Thread(target=_run_tray, daemon=True)
+        t.start()
+        print("[OK]   System tray iniciada")
+    except Exception as e:
+        print(f"[WARN] Falha ao iniciar system tray: {e}")
+
+
+def _stop_tray() -> None:
+    """Remove ícone da tray corretamente (sem fantasma)."""
+    global _tray_icon
+    if _tray_icon is not None and _tray_available:
+        try:
+            _tray_icon.stop()
+        except Exception:
+            pass
+        _tray_icon = None
+
 
 # ---------------------------------------------------------------------------
 # Whisper — lazy load
@@ -121,9 +322,10 @@ _whisper_model = None
 def get_whisper_model():
     global _whisper_model
     if _whisper_model is None:
-        print("[...] Carregando Whisper base (primeira vez — pode demorar ~30s)...")
+        model_name = _CONFIG.get("WHISPER_MODEL", "small")
+        print(f"[...] Carregando Whisper {model_name} (primeira vez — pode demorar ~30s)...")
         from faster_whisper import WhisperModel
-        _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+        _whisper_model = WhisperModel(model_name, device="cpu", compute_type="int8")
         print("[OK]  Whisper pronto (PT+EN bilíngue)")
     return _whisper_model
 
@@ -131,28 +333,17 @@ def get_whisper_model():
 # ---------------------------------------------------------------------------
 # Gemini helpers
 # ---------------------------------------------------------------------------
-def load_gemini_key():
-    # .env na raiz do próprio repositório (mesma pasta que voice.py)
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.exists(env_path):
-        return None
-    with open(env_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith("GEMINI_API_KEY="):
-                key = line.split("=", 1)[1].strip().strip('"').strip("'")
-                if key and key != "your_api_key_here":
-                    return key
-    return None
+def load_gemini_key() -> str | None:
+    """Mantido para compatibilidade. No startup, use _GEMINI_API_KEY global."""
+    return _CONFIG.get("GEMINI_API_KEY")
 
 
-def correct_with_gemini(text):
-    api_key = load_gemini_key()
-    if not api_key:
+def correct_with_gemini(text: str) -> str:
+    if not _GEMINI_API_KEY:
         return text
     try:
         from google import genai
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=_GEMINI_API_KEY)
         prompt = (
             "Você é um corretor de transcrição de voz para texto em português brasileiro e inglês.\n"
             "O texto abaixo foi gerado por speech-to-text e pode conter erros de transcrição, "
@@ -173,13 +364,12 @@ def correct_with_gemini(text):
     return text
 
 
-def simplify_as_prompt(text):
+def simplify_as_prompt(text: str) -> str:
     """
     Organiza a transcrição em prompt limpo com bullet points — sem XML, sem COSTAR.
     Fidelidade total ao input: nenhum detalhe omitido, output proporcional à riqueza do input.
     """
-    api_key = load_gemini_key()
-    if not api_key:
+    if not _GEMINI_API_KEY:
         return text
 
     word_count = len(text.split())
@@ -208,7 +398,7 @@ Transcrição: {text}"""
 
     try:
         from google import genai
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=_GEMINI_API_KEY)
         response = client.models.generate_content(
             model="gemini-2.0-flash",
             contents=meta_prompt,
@@ -223,9 +413,8 @@ Transcrição: {text}"""
     return text
 
 
-def structure_as_prompt(text):
-    api_key = load_gemini_key()
-    if not api_key:
+def structure_as_prompt(text: str) -> str:
+    if not _GEMINI_API_KEY:
         print("[WARN] Gemini sem chave — retornando texto original")
         return text
 
@@ -279,7 +468,7 @@ Transcrição: {text}"""
 
     try:
         from google import genai
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=_GEMINI_API_KEY)
         response = client.models.generate_content(model="gemini-2.0-flash", contents=meta_prompt)
         structured = response.text.strip()
         if structured:
@@ -291,16 +480,56 @@ Transcrição: {text}"""
 
 
 # ---------------------------------------------------------------------------
+# Story 2.2 — Modo 4: Query Direta Gemini
+# ---------------------------------------------------------------------------
+def query_with_gemini(text: str) -> str:
+    """
+    Envia a transcrição diretamente ao Gemini como pergunta/query e retorna a resposta.
+    Fallback sem Gemini: retorna texto original com prefixo informativo.
+    """
+    if not _GEMINI_API_KEY:
+        print("[WARN] Gemini sem chave — retornando transcrição com prefixo")
+        return f"[SEM RESPOSTA GEMINI] {text}"
+
+    system_prompt = _CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
+    if not system_prompt:
+        system_prompt = _DEFAULT_QUERY_SYSTEM_PROMPT
+
+    print(f"[...]  Query Gemini ({len(text)} chars)...")
+
+    try:
+        from google import genai
+        client = genai.Client(api_key=_GEMINI_API_KEY)
+
+        # Combina system prompt + query do usuário em um único contents
+        full_prompt = f"{system_prompt}\n\n{text}"
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=full_prompt,
+            config=genai.types.GenerateContentConfig(temperature=0.3),
+        )
+        answer = response.text.strip()
+        if answer:
+            print(f"[OK]   Resposta Gemini ({len(answer)} chars)")
+            return answer
+    except Exception as e:
+        print(f"[WARN] Gemini indisponível ({e}), retornando transcrição com prefixo")
+
+    return f"[SEM RESPOSTA GEMINI] {text}"
+
+
+# ---------------------------------------------------------------------------
 # Clipboard + Paste
 # ---------------------------------------------------------------------------
-def copy_to_clipboard(text):
+def copy_to_clipboard(text: str) -> None:
     import subprocess
     proc = subprocess.Popen('clip', stdin=subprocess.PIPE, shell=True)
     proc.communicate(input=text.encode('utf-16le'))
     proc.wait()
 
 
-def paste_via_sendinput():
+def paste_via_sendinput() -> None:
     INPUT_KEYBOARD  = 1
     KEYEVENTF_KEYUP = 0x0002
 
@@ -334,14 +563,40 @@ def paste_via_sendinput():
 # ---------------------------------------------------------------------------
 # Gravação
 # ---------------------------------------------------------------------------
-def record():
+def record() -> list:
     frames = []
     stop_event.clear()
+    max_seconds = _CONFIG.get("MAX_RECORD_SECONDS", 120)
+    max_frames = int(max_seconds * SAMPLE_RATE / 1024)
+    warn_frames = int((max_seconds - 5) * SAMPLE_RATE / 1024)  # aviso 5s antes
+    frame_count = 0
+
+    device_index = _CONFIG.get("AUDIO_DEVICE_INDEX")
+
     try:
-        with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32") as stream:
+        stream_kwargs: dict = {
+            "samplerate": SAMPLE_RATE,
+            "channels": CHANNELS,
+            "dtype": "float32",
+        }
+        if device_index is not None:
+            stream_kwargs["device"] = device_index
+
+        with sd.InputStream(**stream_kwargs) as stream:
             while not stop_event.is_set():
                 data, _ = stream.read(1024)
                 frames.append(data.copy())
+                frame_count += 1
+
+                if frame_count == warn_frames:
+                    winsound.Beep(600, 200)  # bip de aviso 5s antes (frequência distinta)
+                    print(f"[WARN] Gravação encerra em 5s (limite: {max_seconds}s)")
+
+                if frame_count >= max_frames:
+                    print(f"[WARN] Timeout de gravação atingido ({max_seconds}s)")
+                    stop_event.set()
+                    break
+
     except Exception as e:
         print(f"[ERRO gravação] {e}")
     return frames
@@ -350,13 +605,17 @@ def record():
 # ---------------------------------------------------------------------------
 # Transcrição + pós-processamento
 # ---------------------------------------------------------------------------
-def transcribe(frames, mode="transcribe"):
+def transcribe(frames: list, mode: str = "transcribe") -> None:
     global is_transcribing
     if not frames:
         print("[ERRO]  Sem áudio\n")
         winsound.Beep(200, 300)
         is_transcribing = False
+        _update_tray_state("idle")
         return
+
+    # Atualizar tray para "processando"
+    _update_tray_state("processing", mode)
 
     print("[...]  Transcrevendo (Whisper)...")
     audio_data = np.concatenate(frames, axis=0)
@@ -389,6 +648,9 @@ def transcribe(frames, mode="transcribe"):
         elif mode == "simple":
             print("[...]  Simplificando prompt...")
             text = simplify_as_prompt(raw_text)
+        elif mode == "query":
+            print("[...]  Consultando Gemini (query direta)...")
+            text = query_with_gemini(raw_text)
         else:
             print("[...]  Corrigindo...")
             text = correct_with_gemini(raw_text)
@@ -414,12 +676,14 @@ def transcribe(frames, mode="transcribe"):
                 os.unlink(temp_path)
             except Exception:
                 pass
+        # Voltar tray para idle após finalizar
+        _update_tray_state("idle")
 
 
 # ---------------------------------------------------------------------------
 # Toggle recording
 # ---------------------------------------------------------------------------
-def toggle_recording(mode="transcribe"):
+def toggle_recording(mode: str = "transcribe") -> None:
     global is_recording, is_transcribing, frames_buf, record_thread, current_mode
 
     with _toggle_lock:
@@ -434,6 +698,9 @@ def toggle_recording(mode="transcribe"):
             frames_buf = []
             stop_event.clear()
 
+            # Atualizar tray para "gravando"
+            _update_tray_state("recording", mode)
+
             if mode == "transcribe":
                 winsound.Beep(880, 200)
                 print("[REC]  Gravando... (Ctrl+Shift+Space para parar)\n")
@@ -444,6 +711,12 @@ def toggle_recording(mode="transcribe"):
                 time.sleep(0.05)
                 winsound.Beep(880, 150)
                 print("[REC]  Gravando para PROMPT SIMPLES... (Ctrl+Alt+Space para parar)\n")
+            elif mode == "query":
+                # Bip distinto: 1 longo (880Hz 400ms) + 1 curto (1100Hz 150ms)
+                winsound.Beep(880, 400)
+                time.sleep(0.05)
+                winsound.Beep(1100, 150)
+                print("[REC]  Gravando para QUERY GEMINI... (mesmo hotkey para parar)\n")
             else:
                 winsound.Beep(880, 150)
                 time.sleep(0.05)
@@ -473,14 +746,61 @@ def toggle_recording(mode="transcribe"):
 # ---------------------------------------------------------------------------
 # Hotkeys
 # ---------------------------------------------------------------------------
-def on_hotkey(mode="transcribe"):
+def on_hotkey(mode: str = "transcribe") -> None:
     threading.Thread(target=toggle_recording, args=(mode,), daemon=True).start()
+
+
+# ---------------------------------------------------------------------------
+# Story 2.3 — Validação de microfone no startup
+# ---------------------------------------------------------------------------
+def validate_microphone() -> None:
+    """
+    Testa o sd.InputStream com o dispositivo configurado.
+    Timeout: 3 segundos via thread com join(timeout=3).
+    App continua mesmo se a validação falhar.
+    """
+    device_index = _CONFIG.get("AUDIO_DEVICE_INDEX")
+    device_display = str(device_index) if device_index is not None else "padrão"
+
+    mic_ok_flag = [False]
+    mic_error: list = []
+
+    def _test_mic():
+        try:
+            stream_kwargs: dict = {
+                "samplerate": SAMPLE_RATE,
+                "channels": CHANNELS,
+                "dtype": "float32",
+            }
+            if device_index is not None:
+                stream_kwargs["device"] = device_index
+
+            with sd.InputStream(**stream_kwargs) as stream:
+                stream.read(64)  # Leitura mínima para confirmar abertura
+            mic_ok_flag[0] = True
+        except Exception as e:
+            mic_error.append(str(e))
+
+    t = threading.Thread(target=_test_mic, daemon=True)
+    t.start()
+    t.join(timeout=3)
+
+    if mic_ok_flag[0]:
+        print(f"[OK]   Microfone validado (dispositivo: {device_display})")
+    else:
+        error_detail = mic_error[0] if mic_error else "timeout"
+        print(
+            f"[WARN] Microfone não acessível (dispositivo: {device_display}) "
+            f"— verifique permissões de áudio ({error_detail})"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def main():
+def main() -> None:
+    global _CONFIG, _GEMINI_API_KEY
+
     # Limpa log anterior
     try:
         with open(_log_path, "w", encoding="utf-8") as f:
@@ -488,20 +808,38 @@ def main():
     except Exception:
         pass
 
-    gemini_ok = load_gemini_key() is not None
+    # Carrega configurações uma vez
+    _CONFIG = load_config()
+    _GEMINI_API_KEY = _CONFIG.get("GEMINI_API_KEY")
 
-    print("═" * 48)
+    # Log de startup
+    gemini_ok = _GEMINI_API_KEY is not None
+    key_display = f"***{_GEMINI_API_KEY[-4:]}" if gemini_ok else "não configurada"
+    device_display = str(_CONFIG["AUDIO_DEVICE_INDEX"]) if _CONFIG["AUDIO_DEVICE_INDEX"] is not None else "padrão do sistema"
+    query_hotkey = _CONFIG.get("QUERY_HOTKEY", "ctrl+shift+alt+space")
+
+    print("═" * 54)
     print("  Voice-to-text v2  |  JP Labs")
-    print("═" * 48)
-    print("  [Ctrl+Shift+Space]     Transcrição pura")
-    print("  [Ctrl+Alt+Space]       Prompt simples (bullet points)")
-    print("  [Ctrl+CapsLock+Space]  Prompt estruturado (COSTAR)")
+    print("═" * 54)
+    print("  [Ctrl+Shift+Space]          Transcrição pura")
+    print("  [Ctrl+Alt+Space]            Prompt simples (bullet points)")
+    print("  [Ctrl+CapsLock+Space]       Prompt estruturado (COSTAR)")
+    print(f"  [{query_hotkey.title()}]  Query direta Gemini")
     print("  Idiomas : PT-BR + EN (automático)")
-    print(f"  Gemini  : {'ativo' if gemini_ok else 'desativado (sem .env)'}")
-    print("  Sair    : Ctrl+C")
-    print("═" * 48 + "\n")
+    print(f"  Gemini  : {'ativo (' + key_display + ')' if gemini_ok else 'desativado (sem .env)'}")
+    print(f"  Whisper : {_CONFIG['WHISPER_MODEL']}")
+    print(f"  Timeout : {_CONFIG['MAX_RECORD_SECONDS']}s")
+    print(f"  Mic     : {device_display}")
+    print("  Sair    : Ctrl+C (ou menu System Tray > Encerrar)")
+    print("═" * 54 + "\n")
 
     _acquire_named_mutex()
+
+    # Story 2.3 — Validar microfone após adquirir mutex
+    validate_microphone()
+
+    # Story 2.1 — Iniciar system tray (thread daemon, fallback silencioso)
+    _start_tray()
 
     # Loop de resiliência: se keyboard.wait() retornar inesperadamente
     # (exception não capturada, sinal externo, etc.), os hotkeys são
@@ -520,6 +858,11 @@ def main():
             keyboard.add_hotkey("ctrl+shift+space",     lambda: on_hotkey("transcribe"), suppress=False)
             keyboard.add_hotkey("ctrl+alt+space",       lambda: on_hotkey("simple"),     suppress=False)
             keyboard.add_hotkey("ctrl+caps lock+space", lambda: on_hotkey("prompt"),     suppress=False)
+            keyboard.add_hotkey(
+                _CONFIG.get("QUERY_HOTKEY", "ctrl+shift+alt+space"),
+                lambda: on_hotkey("query"),
+                suppress=False,
+            )
 
             if _restart_count == 0:
                 print("[OK]   Hotkeys registrados. Aguardando...\n")
@@ -544,6 +887,7 @@ def main():
             continue  # Reinicia o while
 
     stop_event.set()
+    _stop_tray()
     _release_named_mutex()
     print("\nSaindo...")
 

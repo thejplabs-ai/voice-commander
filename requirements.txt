@@ -1,5 +1,15 @@
-sounddevice
-numpy
-faster-whisper
-keyboard
-google-genai
+# Dependências do Voice Commander — JP Labs
+# Testado em: Python 3.13.12 | Atualizado em: 2026-02-24
+# Para atualizar versões intencionalmente:
+#   1. pip install --upgrade sounddevice numpy faster-whisper keyboard google-genai
+#   2. pip show sounddevice numpy faster-whisper keyboard google-genai | grep -E "^(Name|Version):"
+#   3. Atualizar os pins abaixo com as novas versões
+#   4. Testar antes de commitar (python -m py_compile voice.py && python voice.py)
+
+sounddevice==0.5.5
+numpy==2.4.2
+faster-whisper==1.2.1
+keyboard==0.13.5
+google-genai==1.63.0
+pystray==0.19.5
+Pillow==11.1.0

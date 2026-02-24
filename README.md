@@ -13,8 +13,11 @@ Optionalmente usa Gemini para corrigir transcrição e estruturar prompts.
 | `Ctrl+Shift+Space` | Transcrição pura | Transcreve e corrige erros de pronúncia via Gemini |
 | `Ctrl+Alt+Space` | Prompt simples | Transcreve e organiza em bullet points (para usar em qualquer LLM) |
 | `Ctrl+CapsLock+Space` | Prompt estruturado | Transcreve e formata em SYSTEM + USER prompt com XML tags (framework COSTAR) |
+| `Ctrl+Shift+Alt+Space` | Query direta Gemini | Transcreve e envia como pergunta ao Gemini — cola a resposta diretamente |
 
 Todos os modos: pressione o hotkey para iniciar a gravação, pressione novamente para parar. O texto é colado automaticamente onde o cursor estiver.
+
+O hotkey do modo 4 é configurável via `.env` (`QUERY_HOTKEY`). O default `ctrl+shift+alt+space` é seguro no Windows 11 — evita conflito com `ctrl+win+space` (Input Method do sistema).
 
 Idiomas suportados: PT-BR e EN (detecção automática, pode misturar os dois).
 
@@ -46,17 +49,28 @@ pip install -r requirements.txt
 
 Na primeira execução o Whisper vai baixar o modelo `small` (~244 MB). Isso acontece uma vez só.
 
-### 3. Configurar a chave Gemini
+Dependências incluídas: `sounddevice`, `numpy`, `faster-whisper`, `keyboard`, `google-genai`, `pystray`, `Pillow`.
 
-Copie o arquivo de exemplo e adicione sua chave:
+> As versões das dependências estão fixadas no `requirements.txt`. Para atualizar intencionalmente, veja as instruções no topo do arquivo.
+
+### 3. Configurar o .env
+
+Copie o arquivo de exemplo e configure:
 
 ```
 copy .env.example .env
 ```
 
-Edite `.env` e substitua `your_gemini_api_key_here` pela sua chave obtida em https://aistudio.google.com/apikey.
+Edite `.env` e preencha os valores desejados:
 
-Sem a chave, `Ctrl+Shift+Space` ainda funciona (transcrição sem correção). Os outros dois modos precisam da chave para funcionar.
+- `GEMINI_API_KEY` — chave obtida em https://aistudio.google.com/apikey (obrigatória para os modos de prompt)
+- `WHISPER_MODEL` — modelo a usar: `tiny`, `base`, `small` (default), `medium`, `large-v2`, `large-v3`
+- `MAX_RECORD_SECONDS` — limite de gravação em segundos (default: 120). Um bip de aviso soa 5s antes do timeout.
+- `AUDIO_DEVICE_INDEX` — índice do microfone (deixe em branco para usar o padrão do sistema)
+- `QUERY_HOTKEY` — hotkey para o modo Query Direta Gemini (default: `ctrl+shift+alt+space`)
+- `QUERY_SYSTEM_PROMPT` — prompt de sistema customizado para o modo query (deixe em branco para usar o padrão)
+
+Sem a chave Gemini, `Ctrl+Shift+Space` ainda funciona (transcrição sem correção). Os outros modos precisam da chave; o modo Query Direta retorna `[SEM RESPOSTA GEMINI] <transcrição>` como fallback.
 
 ### 4. Testar manualmente
 
@@ -87,12 +101,15 @@ Start-ScheduledTask -TaskName "VoiceTranscription"
 ## Como usar
 
 1. Inicie o `voice.py` (manualmente ou via Task Scheduler)
-2. Clique onde quer que o texto apareça (campo de texto, editor, terminal, etc.)
-3. Pressione o hotkey desejado para iniciar a gravação — você vai ouvir um bip
-4. Fale
-5. Pressione o mesmo hotkey novamente para parar — você vai ouvir dois bips quando o texto for colado
+2. Um ícone cinza aparece na system tray (área de notificação do Windows) — indica que está ativo e aguardando
+3. Clique onde quer que o texto apareça (campo de texto, editor, terminal, etc.)
+4. Pressione o hotkey desejado para iniciar a gravação — você vai ouvir um bip e o ícone fica vermelho
+5. Fale
+6. Pressione o mesmo hotkey novamente para parar — o ícone fica amarelo durante o processamento, depois volta a cinza, e você vai ouvir dois bips quando o texto for colado
 
-O log fica em `voice.log` na pasta do projeto.
+Para encerrar: clique com o botão direito no ícone da tray e selecione **Encerrar**, ou use `Ctrl+C` no terminal.
+
+O log fica em `voice.log` na pasta do projeto. O menu "Status" na tray exibe o estado atual, último modo usado e configurações ativas.
 
 ---
 
@@ -113,7 +130,7 @@ powershell -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLi
 ### Remover dependências (opcional)
 
 ```
-pip uninstall sounddevice numpy faster-whisper keyboard google-genai
+pip uninstall sounddevice numpy faster-whisper keyboard google-genai pystray Pillow
 ```
 
 ---
@@ -133,7 +150,10 @@ Verifique o `voice.log` para erros de import. Provavelmente alguma dependência 
 Crie o arquivo `.env` com `GEMINI_API_KEY=sua_chave`. Sem ele, `Ctrl+Alt+Space` e `Ctrl+CapsLock+Space` retornam o texto bruto sem estruturação.
 
 **Erro de áudio / microfone não encontrado**
-Verifique se o microfone padrão do Windows está configurado corretamente em Configurações > Sistema > Som > Entrada.
+Verifique se o microfone padrão do Windows está configurado corretamente em Configurações > Sistema > Som > Entrada. Para usar um microfone específico, liste os dispositivos disponíveis e configure `AUDIO_DEVICE_INDEX` no `.env`:
+```
+python -c "import sounddevice; print(sounddevice.query_devices())"
+```
 
 ---
 
@@ -146,11 +166,9 @@ voice-commander/
 ├── setup_voice_task.ps1    # Registra watchdog no Task Scheduler (rodar 1x como admin)
 ├── voice-run.bat           # Atalho para rodar voice.py com janela (debug)
 ├── voice-setup.bat         # Instala dependências via pip
-├── voice-silent.vbs        # Inicia voice.py via python.exe sem janela
-├── voice-startup.vbs       # Inicia voice.py via pythonw.exe sem janela
 ├── launch_voice.vbs        # Inicia voice.py via pythonw.exe (path absoluto com fallback)
-├── requirements.txt        # Dependências Python
-├── .env.example            # Template da chave Gemini
+├── requirements.txt        # Dependências Python com versões fixadas
+├── .env.example            # Template de configuração (.env com GEMINI_API_KEY, WHISPER_MODEL, etc.)
 └── .gitignore
 ```
 
