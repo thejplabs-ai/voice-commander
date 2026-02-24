@@ -221,15 +221,19 @@ def _test_gemini_key(api_key: str) -> tuple[bool, str]:
 
 
 def _show_license_expired_notification() -> None:
-    """Mostra dialog de licença expirada em thread daemon (não bloqueia)."""
-    def _notify():
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            "Sua licença Voice Commander expirou.\n\nRenove em: voice.jplabs.ai",
-            "Voice Commander — Licença Expirada",
-            0x30,  # MB_ICONWARNING
-        )
-    threading.Thread(target=_notify, daemon=True).start()
+    """Notifica licença expirada via tray balloon — não bloqueia o teclado."""
+    # Tray balloon: aparece e some, sem modal, sem travar Ctrl+V
+    if _tray_icon is not None and _tray_available:
+        try:
+            _tray_icon.notify(
+                "Licença expirada — renove em voice.jplabs.ai",
+                "Voice Commander",
+            )
+            return
+        except Exception:
+            pass
+    # Fallback: só loga, não abre dialog bloqueante
+    print("[WARN] Licença expirada — renove em voice.jplabs.ai")
 
 
 # ---------------------------------------------------------------------------
