@@ -17,6 +17,8 @@ Proteções contra garbling:
 
 import os
 import sys
+import glob
+import json
 import builtins
 import datetime
 import threading
@@ -27,9 +29,11 @@ import ctypes
 import ctypes.wintypes
 
 # ---------------------------------------------------------------------------
-# Log em arquivo — essencial quando rodando via pythonw (sem console)
+# Caminhos base
 # ---------------------------------------------------------------------------
-_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "voice.log")
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_log_path = os.path.join(_BASE_DIR, "voice.log")
+_history_path = os.path.join(_BASE_DIR, "history.jsonl")
 
 # Reconfigurar stdout/stderr para UTF-8 (evita UnicodeEncodeError com ═, etc.)
 # Quando rodando via pythonw.exe, stdout/stderr são None — tratar gracefully
@@ -116,7 +120,7 @@ _DEFAULT_QUERY_SYSTEM_PROMPT = (
 
 def load_config() -> dict:
     """Carrega todas as configurações do .env uma vez no startup."""
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    env_path = os.path.join(_BASE_DIR, ".env")
     config: dict = {
         "GEMINI_API_KEY": None,
         "WHISPER_MODEL": "small",
@@ -124,6 +128,8 @@ def load_config() -> dict:
         "AUDIO_DEVICE_INDEX": None,
         "QUERY_HOTKEY": "ctrl+shift+alt+space",
         "QUERY_SYSTEM_PROMPT": "",
+        "HISTORY_MAX_ENTRIES": 500,
+        "LOG_KEEP_SESSIONS": 5,
     }
     if not os.path.exists(env_path):
         return config
@@ -136,7 +142,7 @@ def load_config() -> dict:
             key = key.strip()
             val = val.strip().strip('"').strip("'")
             if key in config and val:
-                if key == "MAX_RECORD_SECONDS":
+                if key in ("MAX_RECORD_SECONDS", "HISTORY_MAX_ENTRIES", "LOG_KEEP_SESSIONS"):
                     try:
                         config[key] = int(val)
                     except ValueError:
@@ -152,6 +158,159 @@ def load_config() -> dict:
     if config["GEMINI_API_KEY"] == "your_gemini_api_key_here":
         config["GEMINI_API_KEY"] = None
     return config
+
+
+# ---------------------------------------------------------------------------
+# Story 3.2 — Rotação de log por sessão
+# ---------------------------------------------------------------------------
+def _rotate_log() -> None:
+    """
+    Renomeia voice.log atual → voice.YYYY-MM-DD_HH-MM-SS.log (se existir).
+    Mantém apenas LOG_KEEP_SESSIONS arquivos de sessão (os mais recentes por mtime).
+    Silencioso — erros são ignorados; o log será registrado após abertura do novo arquivo.
+    """
+    keep = _CONFIG.get("LOG_KEEP_SESSIONS", 5)
+
+    # Renomear log atual se existir
+    if os.path.exists(_log_path):
+        ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        archived = os.path.join(_BASE_DIR, f"voice.{ts}.log")
+        try:
+            os.rename(_log_path, archived)
+        except Exception:
+            pass
+
+    # Listar e ordenar sessões arquivadas por mtime (mais recente primeiro)
+    pattern = os.path.join(_BASE_DIR, "voice.????-??-??_??-??-??.log")
+    session_logs = glob.glob(pattern)
+    if session_logs:
+        session_logs.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+        # Deletar as sessões além do limite
+        for old_log in session_logs[keep:]:
+            try:
+                os.remove(old_log)
+            except Exception:
+                pass
+
+
+# ---------------------------------------------------------------------------
+# Story 3.1 — Histórico de transcrições (history.jsonl)
+# ---------------------------------------------------------------------------
+def _append_history(
+    mode: str,
+    raw_text: str,
+    processed_text: str | None,
+    duration_seconds: float,
+    error: bool = False,
+) -> None:
+    """
+    Acrescenta uma entrada ao history.jsonl (append-only).
+    Faz trim automático se o número de entradas ultrapassar HISTORY_MAX_ENTRIES.
+    """
+    max_entries = _CONFIG.get("HISTORY_MAX_ENTRIES", 500)
+
+    entry: dict = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "mode": mode,
+        "raw_text": raw_text,
+        "processed_text": processed_text,
+        "duration_seconds": round(duration_seconds, 2),
+        "chars": len(processed_text) if processed_text else 0,
+    }
+    if error:
+        entry["error"] = True
+        entry["processed_text"] = None
+
+    try:
+        # Append da nova entrada
+        with open(_history_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        # Trim: manter apenas as max_entries mais recentes
+        with open(_history_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        if len(lines) > max_entries:
+            lines = lines[-max_entries:]
+            with open(_history_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+
+    except Exception as e:
+        print(f"[WARN] Falha ao salvar histórico: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Story 3.3 — Graceful shutdown
+# ---------------------------------------------------------------------------
+def graceful_shutdown() -> None:
+    """
+    Encerramento seguro quando chamado via Ctrl+C ou menu tray "Encerrar".
+    - Se gravando: sinaliza stop, aguarda thread de gravação (até 5s)
+    - Se frames capturados: tenta transcrever e colar (timeout 10s)
+    - Mutex liberado em qualquer cenário (try/finally)
+    - Thread-safe via _toggle_lock para leitura de is_recording
+    """
+    global is_recording, is_transcribing, frames_buf, record_thread
+
+    try:
+        # Verificar se está gravando (com lock para thread-safety)
+        recording_now = False
+        captured_frames: list = []
+        captured_mode = "transcribe"
+
+        with _toggle_lock:
+            recording_now = is_recording
+            if recording_now:
+                captured_frames = list(frames_buf)
+                captured_mode = current_mode
+                is_recording = False
+
+        if recording_now:
+            print("[INFO] Shutdown com gravação ativa — sinalizando stop...")
+            stop_event.set()
+
+            # Aguardar thread de gravação encerrar (até 5s)
+            if record_thread is not None and record_thread.is_alive():
+                record_thread.join(timeout=5)
+                # Capturar frames acumulados após join
+                with _toggle_lock:
+                    captured_frames = list(frames_buf)
+
+            if captured_frames:
+                print("[INFO] Frames capturados — tentando transcrever antes de encerrar...")
+                done_event = threading.Event()
+                transcribe_error: list = []
+
+                def _shutdown_transcribe():
+                    try:
+                        transcribe(captured_frames, captured_mode)
+                    except Exception as exc:
+                        transcribe_error.append(str(exc))
+                    finally:
+                        done_event.set()
+
+                t = threading.Thread(target=_shutdown_transcribe, daemon=True)
+                t.start()
+                finished = done_event.wait(timeout=10)
+
+                if not finished:
+                    print("[WARN] Shutdown forçado — transcrição abortada")
+                else:
+                    if transcribe_error:
+                        print(f"[WARN] Erro na transcrição de shutdown: {transcribe_error[0]}")
+                    else:
+                        print("[OK]   Transcrição de shutdown concluída")
+            else:
+                print("[INFO] Nenhum frame capturado — shutdown sem transcrição")
+        else:
+            # Não estava gravando, apenas sinalizar stop por segurança
+            stop_event.set()
+
+        print("[OK]   Shutdown gracioso concluído")
+
+    finally:
+        # Garantir liberação do mutex em qualquer cenário
+        _release_named_mutex()
 
 
 # ---------------------------------------------------------------------------
@@ -260,12 +419,11 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
 def _tray_on_quit(icon, item) -> None:  # type: ignore[type-arg]
     """Menu item 'Encerrar' — shutdown gracioso."""
     print("[INFO] Encerramento solicitado via system tray.")
-    stop_event.set()
     try:
         icon.stop()
     except Exception:
         pass
-    _release_named_mutex()
+    graceful_shutdown()
     os._exit(0)
 
 
@@ -607,11 +765,14 @@ def record() -> list:
 # ---------------------------------------------------------------------------
 def transcribe(frames: list, mode: str = "transcribe") -> None:
     global is_transcribing
+    t_start = time.time()
+
     if not frames:
         print("[ERRO]  Sem áudio\n")
         winsound.Beep(200, 300)
         is_transcribing = False
         _update_tray_state("idle")
+        _append_history(mode, "", None, 0.0, error=True)
         return
 
     # Atualizar tray para "processando"
@@ -638,6 +799,8 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
         if not raw_text:
             print("[ERRO]  Não entendi. Tente novamente.\n")
             winsound.Beep(200, 300)
+            duration = time.time() - t_start
+            _append_history(mode, "", None, duration, error=True)
             return
 
         print(f"[OK]   Whisper: {raw_text}")
@@ -666,9 +829,16 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
 
         print("[OK]   Colado!\n")
 
+        # Story 3.1 — Registrar no histórico (sucesso)
+        duration = time.time() - t_start
+        _append_history(mode, raw_text, text, duration)
+
     except Exception as e:
         print(f"[ERRO]  {e}\n")
         winsound.Beep(200, 300)
+        # Story 3.1 — Registrar no histórico (erro)
+        duration = time.time() - t_start
+        _append_history(mode, "", None, duration, error=True)
     finally:
         is_transcribing = False
         if temp_path:
@@ -801,16 +971,19 @@ def validate_microphone() -> None:
 def main() -> None:
     global _CONFIG, _GEMINI_API_KEY
 
-    # Limpa log anterior
+    # Carrega configurações uma vez (antes da rotação para ter LOG_KEEP_SESSIONS)
+    _CONFIG = load_config()
+    _GEMINI_API_KEY = _CONFIG.get("GEMINI_API_KEY")
+
+    # Story 3.2 — Rotação de log (antes de abrir novo log)
+    _rotate_log()
+
+    # Abre novo log da sessão
     try:
         with open(_log_path, "w", encoding="utf-8") as f:
             f.write(f"=== voice.py iniciado {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ===\n")
     except Exception:
         pass
-
-    # Carrega configurações uma vez
-    _CONFIG = load_config()
-    _GEMINI_API_KEY = _CONFIG.get("GEMINI_API_KEY")
 
     # Log de startup
     gemini_ok = _GEMINI_API_KEY is not None
@@ -886,9 +1059,9 @@ def main() -> None:
             time.sleep(3)
             continue  # Reinicia o while
 
-    stop_event.set()
+    # Story 3.3 — Shutdown gracioso (libera mutex internamente)
     _stop_tray()
-    _release_named_mutex()
+    graceful_shutdown()
     print("\nSaindo...")
 
 

@@ -17,6 +17,9 @@ logs/
 # Whisper model cache
 ~/.cache/huggingface/
 
+# Histórico de transcrições (dado pessoal)
+history.jsonl
+
 # Windows
 Thumbs.db
 desktop.ini

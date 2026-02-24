@@ -69,6 +69,8 @@ Edite `.env` e preencha os valores desejados:
 - `AUDIO_DEVICE_INDEX` — índice do microfone (deixe em branco para usar o padrão do sistema)
 - `QUERY_HOTKEY` — hotkey para o modo Query Direta Gemini (default: `ctrl+shift+alt+space`)
 - `QUERY_SYSTEM_PROMPT` — prompt de sistema customizado para o modo query (deixe em branco para usar o padrão)
+- `HISTORY_MAX_ENTRIES` — número máximo de entradas em `history.jsonl` (default: 500). Entradas mais antigas são removidas automaticamente ao ultrapassar o limite.
+- `LOG_KEEP_SESSIONS` — número de arquivos de sessão de log a manter (default: 5). Logs mais antigos são deletados automaticamente no startup.
 
 Sem a chave Gemini, `Ctrl+Shift+Space` ainda funciona (transcrição sem correção). Os outros modos precisam da chave; o modo Query Direta retorna `[SEM RESPOSTA GEMINI] <transcrição>` como fallback.
 
@@ -109,7 +111,7 @@ Start-ScheduledTask -TaskName "VoiceTranscription"
 
 Para encerrar: clique com o botão direito no ícone da tray e selecione **Encerrar**, ou use `Ctrl+C` no terminal.
 
-O log fica em `voice.log` na pasta do projeto. O menu "Status" na tray exibe o estado atual, último modo usado e configurações ativas.
+O log fica em `voice.log` na pasta do projeto. A cada inicialização o log anterior é renomeado para `voice.YYYY-MM-DD_HH-MM-SS.log` (rotação automática). O menu "Status" na tray exibe o estado atual, último modo usado e configurações ativas.
 
 ---
 
@@ -169,8 +171,12 @@ voice-commander/
 ├── launch_voice.vbs        # Inicia voice.py via pythonw.exe (path absoluto com fallback)
 ├── requirements.txt        # Dependências Python com versões fixadas
 ├── .env.example            # Template de configuração (.env com GEMINI_API_KEY, WHISPER_MODEL, etc.)
-└── .gitignore
+├── .gitignore
+├── history.jsonl           # Histórico de transcrições (append-only, ignorado pelo git — dado pessoal)
+└── voice.YYYY-MM-DD_*.log  # Logs de sessões anteriores (rotação automática, N sessões conforme LOG_KEEP_SESSIONS)
 ```
+
+O `history.jsonl` é gerado automaticamente e acumula todas as transcrições com campos `timestamp`, `mode`, `raw_text`, `processed_text`, `duration_seconds` e `chars`. Entradas com erro incluem `"error": true` e `processed_text: null`. O arquivo não é versionado (dado pessoal).
 
 ---
 
