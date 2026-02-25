@@ -2,9 +2,7 @@
 Tests for load_config() — pure .env parsing logic.
 No hardware or network deps touched.
 """
-import os
 
-import pytest
 
 import voice
 

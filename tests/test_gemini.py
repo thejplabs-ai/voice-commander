@@ -2,7 +2,6 @@
 Tests for _get_gemini_client() singleton.
 google.genai is already mocked in sys.modules by conftest.py.
 """
-from unittest.mock import MagicMock, patch
 
 import pytest
 

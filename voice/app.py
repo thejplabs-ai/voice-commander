@@ -15,7 +15,6 @@ from voice.mutex import _acquire_named_mutex
 from voice.tray import _start_tray, _stop_tray
 from voice.audio import on_hotkey, validate_microphone
 from voice.shutdown import graceful_shutdown
-from voice.config import _save_env
 
 try:
     import keyboard
