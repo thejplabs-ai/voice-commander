@@ -11,7 +11,7 @@ from voice.paths import _resource_path
 from voice.license import validate_license_key, _test_gemini_key
 from voice.config import _save_env, _reload_config
 
-__version__ = "1.0.13"
+__version__ = "1.0.14"
 
 # Tentar importar customtkinter — fallback silencioso
 try:
