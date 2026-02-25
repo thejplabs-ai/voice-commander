@@ -35,8 +35,13 @@ def get_whisper_model():
     return state._whisper_model
 
 
-def record() -> list:
-    frames = []
+def record() -> None:
+    """Grava áudio do microfone, appendando frames diretamente em state.frames_buf.
+
+    Escreve em state.frames_buf incrementalmente (não acumula em lista local)
+    para evitar race condition: se join(timeout) expirar antes da thread terminar,
+    os frames gravados até aquele momento já estão disponíveis em state.frames_buf.
+    """
     state.stop_event.clear()
     max_seconds = state._CONFIG.get("MAX_RECORD_SECONDS", 120)
     max_frames = int(max_seconds * SAMPLE_RATE / 1024)
@@ -57,7 +62,7 @@ def record() -> list:
         with sd.InputStream(**stream_kwargs) as stream:
             while not state.stop_event.is_set():
                 data, _ = stream.read(1024)
-                frames.append(data.copy())
+                state.frames_buf.append(data.copy())  # escrita incremental no buffer global
                 frame_count += 1
 
                 if frame_count == warn_frames:
@@ -71,7 +76,6 @@ def record() -> list:
 
     except Exception as e:
         print(f"[ERRO gravação] {e}")
-    return frames
 
 
 def transcribe(frames: list, mode: str = "transcribe") -> None:
@@ -206,10 +210,7 @@ def toggle_recording(mode: str = "transcribe") -> None:
                 winsound.Beep(880, 150)
                 print("[REC]  Gravando para PROMPT COSTAR... (Ctrl+CapsLock+Space para parar)\n")
 
-            def do_record():
-                state.frames_buf = record()
-
-            state.record_thread = threading.Thread(target=do_record, daemon=True)
+            state.record_thread = threading.Thread(target=record, daemon=True)
             state.record_thread.start()
         else:
             state.is_recording = False
@@ -217,7 +218,10 @@ def toggle_recording(mode: str = "transcribe") -> None:
             state.stop_event.set()
             print("[STOP] Parando gravação...\n")
             if state.record_thread:
-                state.record_thread.join(timeout=3)
+                # Aguarda a thread de gravação encerrar (max 5s).
+                # frames_buf já contém todos os dados acumulados incrementalmente,
+                # então mesmo em timeout os frames capturados até agora são válidos.
+                state.record_thread.join(timeout=5)
             threading.Thread(
                 target=transcribe,
                 args=(list(state.frames_buf), state.current_mode),

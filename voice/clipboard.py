@@ -2,6 +2,7 @@
 
 import ctypes
 import ctypes.wintypes
+import time
 
 
 def copy_to_clipboard(text: str) -> None:
@@ -12,11 +13,28 @@ def copy_to_clipboard(text: str) -> None:
     kernel32 = ctypes.windll.kernel32
     user32 = ctypes.windll.user32
 
+    # Declarar restype explicitamente — sem isso ctypes trunca handles 64-bit para 32-bit
+    kernel32.GlobalAlloc.restype = ctypes.c_void_p
+    kernel32.GlobalAlloc.argtypes = [ctypes.wintypes.UINT, ctypes.c_size_t]
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalFree.restype = ctypes.c_void_p
+    kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
+    user32.SetClipboardData.restype = ctypes.c_void_p
+    user32.SetClipboardData.argtypes = [ctypes.wintypes.UINT, ctypes.c_void_p]
+
     encoded = (text + '\0').encode('utf-16-le')
     size = len(encoded)
 
-    if not user32.OpenClipboard(None):
+    # OpenClipboard pode falhar se outra app estiver usando — retry até 10x
+    for _ in range(10):
+        if user32.OpenClipboard(None):
+            break
+        time.sleep(0.05)
+    else:
         raise RuntimeError("Não foi possível abrir o clipboard")
+
     try:
         user32.EmptyClipboard()
         h_mem = kernel32.GlobalAlloc(GMEM_MOVEABLE, size)
