@@ -78,6 +78,7 @@ def mock_config(monkeypatch):
         "QUERY_SYSTEM_PROMPT": "",
         "HISTORY_MAX_ENTRIES": 500,
         "LOG_KEEP_SESSIONS": 5,
+        "VAD_THRESHOLD": 0.3,
     }
     monkeypatch.setattr(voice.state, "_CONFIG", cfg)
     return cfg

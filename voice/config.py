@@ -20,6 +20,7 @@ def load_config() -> dict:
         "QUERY_SYSTEM_PROMPT": "",
         "HISTORY_MAX_ENTRIES": 500,
         "LOG_KEEP_SESSIONS": 5,
+        "VAD_THRESHOLD": 0.3,
     }
     if not os.path.exists(env_path):
         return config
@@ -35,6 +36,11 @@ def load_config() -> dict:
                 if key in ("MAX_RECORD_SECONDS", "HISTORY_MAX_ENTRIES", "LOG_KEEP_SESSIONS"):
                     try:
                         config[key] = int(val)
+                    except ValueError:
+                        pass
+                elif key == "VAD_THRESHOLD":
+                    try:
+                        config[key] = float(val)
                     except ValueError:
                         pass
                 elif key == "AUDIO_DEVICE_INDEX":
