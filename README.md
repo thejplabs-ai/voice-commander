@@ -1,5 +1,7 @@
 # Voice Commander
 
+[![CI](https://github.com/thejplabs-ai/voice-commander/actions/workflows/ci.yml/badge.svg)](https://github.com/thejplabs-ai/voice-commander/actions/workflows/ci.yml)
+
 Voice-to-text com 3 modos de hotkey para Windows. Grava sua voz, transcreve com Whisper local e cola o resultado onde o cursor estiver — sem janela, sem distração.
 
 Optionalmente usa Gemini para corrigir transcrição e estruturar prompts.

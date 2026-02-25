@@ -4,7 +4,6 @@ Uses tmp_base_dir fixture to isolate file I/O in a temp directory.
 """
 import json
 
-import pytest
 
 import voice
 

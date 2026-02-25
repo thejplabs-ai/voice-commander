@@ -6,9 +6,8 @@ import datetime
 import glob
 import os
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 
 import voice
 
@@ -85,8 +84,6 @@ def test_resiliencia_erro_delete(tmp_base_dir, mock_config):
     mock_config["LOG_KEEP_SESSIONS"] = 1
 
     _create_archived_logs(tmp_base_dir, 3)
-
-    original_remove = os.remove
 
     def failing_remove(path):
         raise PermissionError(f"Cannot delete {path}")

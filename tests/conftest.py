@@ -5,10 +5,7 @@ Strategy: mock all heavy/hardware imports in sys.modules BEFORE importing voice,
 so the module-level try/except block never hits the real packages.
 The print patch in voice.py uses builtins.print — we restore it after import.
 """
-import builtins
-import importlib
 import sys
-import types
 from unittest.mock import MagicMock
 
 import pytest
