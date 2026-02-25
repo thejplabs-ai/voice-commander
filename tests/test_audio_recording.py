@@ -14,11 +14,9 @@ Fix: record() now appends directly into state.frames_buf incrementally.
 """
 import threading
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
-import voice
 from voice import state, audio
 
 
@@ -42,8 +40,6 @@ class TestRecordIncremental:
 
     def test_frames_written_to_state_buf_incrementally(self, monkeypatch, mock_config):
         """Each frame read from the stream is immediately in state.frames_buf."""
-        frames_written = []
-
         fake_frame = _make_fake_frame()
 
         # Simulate: first read returns a frame, second read sees stop_event
