@@ -206,15 +206,14 @@ def _start_tray(quit_callback=None) -> None:
         _open_settings()
 
     try:
-        mode_items = [
-            pystray.MenuItem(
-                label,
-                lambda icon, item, m=mode: _set_mode(m),
-                checked=lambda item, m=mode: state.selected_mode == m,
-                radio=True,
-            )
-            for mode, label in _MODES
-        ]
+        def _make_mode_item(mode, label):
+            def _action(icon, item):
+                _set_mode(mode)
+            def _checked(item):
+                return state.selected_mode == mode
+            return pystray.MenuItem(label, _action, checked=_checked, radio=True)
+
+        mode_items = [_make_mode_item(m, l) for m, l in _MODES]
         menu = pystray.Menu(
             pystray.MenuItem("Modo", pystray.Menu(*mode_items)),
             pystray.Menu.SEPARATOR,
