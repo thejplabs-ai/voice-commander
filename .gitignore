@@ -10,6 +10,11 @@ __pycache__/
 venv/
 env/
 
+# Build artifacts — pasta dist (output do PyInstaller) e work temporário
+dist/
+build/pyinstaller-work/
+build/icon_*.png
+
 # Logs
 *.log
 logs/

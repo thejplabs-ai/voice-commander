@@ -159,6 +159,38 @@ python -c "import sounddevice; print(sounddevice.query_devices())"
 
 ---
 
+## Testes
+
+A suite de testes cobre lógica pura (sem hardware nem rede) usando pytest.
+
+### Instalar dependências de teste
+
+```
+pip install pytest==8.3.5
+```
+
+### Rodar os testes
+
+```
+python -m pytest tests/ -v
+```
+
+Resultado esperado: **29 passed** em menos de 1 segundo.
+
+### Cobertura
+
+| Módulo | Testes | O que é verificado |
+|--------|--------|--------------------|
+| `test_config.py` | 6 | `load_config` — defaults, int parsing, placeholder, comentários, aspas, valor vazio |
+| `test_license.py` | 10 | `validate_license_key`, `_test_gemini_key`, `_get_secret` — HMAC, expiração, formato |
+| `test_history.py` | 5 | `_append_history` — criação, campos, erro, UTF-8, trim automático |
+| `test_gemini.py` | 3 | `_get_gemini_client` — singleton, lazy init, reset |
+| `test_log_rotation.py` | 4 | `_rotate_log` — rename, sem arquivo, limpeza, resiliência a erro |
+
+Hardware (sounddevice, keyboard) e rede (Gemini API, Whisper model) são mockados em `tests/conftest.py` — os testes rodam sem microfone nem conexão.
+
+---
+
 ## Arquitetura
 
 ```
