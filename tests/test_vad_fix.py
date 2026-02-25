@@ -10,10 +10,10 @@ vad_duration==0 and audio_duration >= 2s.
 Related history.jsonl entry: {"duration_seconds": 20.82, "raw_text": "", "error": true}
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pytest
 import voice
-from voice import state, audio, clipboard
+from voice import state, audio
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +107,6 @@ def _patch_wav_pipeline(monkeypatch, audio_duration_s: float):
     fake_audio.astype.return_value.tobytes.return_value = b""
 
     import sys
-    real_np = __import__("numpy")
     np_stub = sys.modules.get("numpy", MagicMock())
     np_stub.concatenate = MagicMock(return_value=fake_audio)
 
