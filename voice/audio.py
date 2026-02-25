@@ -79,27 +79,27 @@ def record() -> None:
 
 
 def transcribe(frames: list, mode: str = "transcribe") -> None:
+    import traceback as _tb
     t_start = time.time()
-
-    if not frames:
-        print("[ERRO]  Sem áudio\n")
-        winsound.Beep(200, 300)
-        state.is_transcribing = False
-        _update_tray_state("idle")
-        _append_history(mode, "", None, 0.0, error=True)
-        return
-
-    # Atualizar tray para "processando"
-    _update_tray_state("processing", mode)
-
-    print("[...]  Transcrevendo (Whisper)...")
-    audio_data = np.concatenate(frames, axis=0)
     temp_path = None
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        temp_path = f.name
-
     try:
+        if not frames:
+            print("[ERRO]  Sem áudio\n")
+            winsound.Beep(200, 300)
+            _append_history(mode, "", None, 0.0, error=True)
+            return
+
+        # Atualizar tray para "processando"
+        _update_tray_state("processing", mode)
+
+        print("[...]  Transcrevendo (Whisper)...")
+        audio_data = np.concatenate(frames, axis=0)
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            temp_path = f.name
+
+
         with wave.open(temp_path, "wb") as wf:
             wf.setnchannels(CHANNELS)
             wf.setsampwidth(2)
@@ -199,7 +199,8 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
         _append_history(mode, raw_text, text, duration)
 
     except Exception as e:
-        print(f"[ERRO]  {e}\n")
+        print(f"[ERRO]  {type(e).__name__}: {e}\n")
+        print(f"[DEBUG] {_tb.format_exc()}")
         winsound.Beep(200, 300)
         # Story 3.1 — Registrar no histórico (erro)
         duration = time.time() - t_start

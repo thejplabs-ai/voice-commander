@@ -28,6 +28,9 @@ history.jsonl
 # Estado local do onboarding (por máquina)
 .onboarding_done
 
+# Release zips (artefatos de distribuição — não commitar)
+VoiceCommander-*.zip
+
 # Windows
 Thumbs.db
 desktop.ini
