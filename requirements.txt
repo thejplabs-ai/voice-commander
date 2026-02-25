@@ -17,3 +17,4 @@ customtkinter==5.2.2
 
 # Dev / testing
 pytest==8.3.5
+ruff==0.9.10
