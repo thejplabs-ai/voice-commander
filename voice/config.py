@@ -10,6 +10,7 @@ def load_config() -> dict:
     env_path = os.path.join(state._BASE_DIR, ".env")
     config: dict = {
         "GEMINI_API_KEY": None,
+        "GEMINI_MODEL": "gemini-2.5-flash",
         "LICENSE_KEY": None,
         "WHISPER_MODEL": "small",
         "WHISPER_LANGUAGE": "",

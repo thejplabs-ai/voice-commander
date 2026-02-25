@@ -47,7 +47,7 @@ def correct_with_gemini(text: str) -> str:
             "- Retorne APENAS o texto corrigido, sem explicações.\n\n"
             f"Texto: {text}"
         )
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
+        response = client.models.generate_content(model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"), contents=prompt)
         corrected = response.text.strip()
         if corrected:
             print(f"[OK]   Original : {text}")
@@ -97,7 +97,7 @@ Transcrição: {text}"""
         from google import genai
         client = _get_gemini_client()
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
             contents=meta_prompt,
             config=genai.types.GenerateContentConfig(temperature=0.1),
         )
@@ -168,7 +168,7 @@ Transcrição: {text}"""
 
     try:
         client = _get_gemini_client()
-        response = client.models.generate_content(model="gemini-2.5-flash", contents=meta_prompt)
+        response = client.models.generate_content(model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"), contents=meta_prompt)
         structured = response.text.strip()
         if structured:
             print(f"[OK]   Prompt estruturado ({len(structured)} chars)")
@@ -204,7 +204,7 @@ def query_with_gemini(text: str) -> str:
         full_prompt = f"{system_prompt}\n\n{text}"
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
             contents=full_prompt,
             config=genai.types.GenerateContentConfig(temperature=0.3),
         )
