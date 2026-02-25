@@ -83,6 +83,18 @@ function Start-VoiceScript {
 # Aguarda 10s no boot antes de verificar pela primeira vez
 # (da tempo ao sistema inicializar o audio e o teclado)
 Write-Log "=== Watchdog iniciado === pythonw: $PythonW"
+
+# Fix race condition: elimina qualquer processo VoiceCommander.exe remanescente
+# de sessao anterior (EXE via Startup Folder ja foi removido, mas pode haver
+# processos orphaos prendendo o mutex Global\VoiceJPLabs_SingleInstance).
+$exeProc = Get-Process -Name "VoiceCommander" -ErrorAction SilentlyContinue
+if ($exeProc) {
+    Write-Log "VoiceCommander.exe encontrado (PID $($exeProc.Id)) — encerrando para liberar mutex..."
+    Stop-Process -Id $exeProc.Id -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    Write-Log "VoiceCommander.exe encerrado."
+}
+
 Start-Sleep -Seconds 10
 
 while ($true) {

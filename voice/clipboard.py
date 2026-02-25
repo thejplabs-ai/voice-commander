@@ -61,7 +61,7 @@ def paste_via_sendinput() -> None:
             ("wScan",       ctypes.wintypes.WORD),
             ("dwFlags",     ctypes.wintypes.DWORD),
             ("time",        ctypes.wintypes.DWORD),
-            ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+            ("dwExtraInfo", ctypes.c_ulong),  # ULONG_PTR — escalar, não ponteiro (fix OverflowError no PyInstaller)
         ]
 
     class INPUT_UNION(ctypes.Union):
