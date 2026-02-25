@@ -170,19 +170,33 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
         model = get_whisper_model(mode)
         lang_hint = state._CONFIG.get("WHISPER_LANGUAGE") or None
         vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
-        segments, info = model.transcribe(
-            temp_path,
-            language=lang_hint,
-            task="transcribe",
-            vad_filter=True,
-            vad_parameters=dict(
-                threshold=vad_threshold,
-                min_silence_duration_ms=500,
-                speech_pad_ms=200,
-            ),
-            initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
-        )
-        raw_text = " ".join(s.text for s in segments).strip()
+        try:
+            segments, info = model.transcribe(
+                temp_path,
+                language=lang_hint,
+                task="transcribe",
+                vad_filter=True,
+                vad_parameters=dict(
+                    threshold=vad_threshold,
+                    min_silence_duration_ms=500,
+                    speech_pad_ms=200,
+                ),
+                initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+            )
+            raw_text = " ".join(s.text for s in segments).strip()
+        except Exception as _vad_err:
+            if "silero" in str(_vad_err).lower() or "onnx" in str(_vad_err).lower() or "nosuchfile" in str(_vad_err).lower():
+                print(f"[WARN]  VAD model indisponível ({type(_vad_err).__name__}) — usando transcrição sem VAD")
+                segments_novad, info = model.transcribe(
+                    temp_path,
+                    language=lang_hint,
+                    task="transcribe",
+                    vad_filter=False,
+                    initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+                )
+                raw_text = " ".join(s.text for s in segments_novad).strip()
+            else:
+                raise
 
         if not raw_text:
             audio_duration = len(audio_data) / SAMPLE_RATE

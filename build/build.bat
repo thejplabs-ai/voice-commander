@@ -21,6 +21,12 @@ if exist build\VoiceCommander rmdir /s /q build\VoiceCommander
 
 echo.
 echo [1/3] Compilando com PyInstaller...
+
+REM Descobrir caminho do silero_vad_v6.onnx dinamicamente
+for /f "delims=" %%i in ('python -c "import faster_whisper, os; print(os.path.join(os.path.dirname(faster_whisper.__file__), 'assets', 'silero_vad_v6.onnx'))"') do set SILERO_ONNX=%%i
+
+echo     silero_vad_v6.onnx: %SILERO_ONNX%
+
 python -m pyinstaller voice.py ^
     --name VoiceCommander ^
     --windowed ^
@@ -37,6 +43,7 @@ python -m pyinstaller voice.py ^
     --hidden-import numpy ^
     --collect-all customtkinter ^
     --collect-all faster_whisper ^
+    --add-data "%SILERO_ONNX%;faster_whisper/assets" ^
     --distpath dist ^
     --workpath build\pyinstaller-work ^
     --specpath build

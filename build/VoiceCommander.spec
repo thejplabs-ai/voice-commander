@@ -1,14 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('icon.ico', '.')]
+datas = [('C:\\Users\\joaop\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python313\\site-packages\\faster_whisper\\assets\\silero_vad_v6.onnx', 'faster_whisper/assets')]
 binaries = []
-hiddenimports = ['sounddevice', 'faster_whisper', 'keyboard', 'customtkinter', 'pystray', 'PIL', 'PIL.Image', 'PIL.ImageDraw']
+hiddenimports = ['sounddevice', 'faster_whisper', 'keyboard', 'customtkinter', 'pystray', 'PIL', 'PIL.Image', 'PIL.ImageDraw', 'google.genai', 'numpy']
 tmp_ret = collect_all('customtkinter')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 tmp_ret = collect_all('faster_whisper')
-datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-tmp_ret = collect_all('google')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
@@ -43,7 +41,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['C:\\Users\\joaop\\voice-commander\\build\\icon.ico'],
 )
 coll = COLLECT(
     exe,
