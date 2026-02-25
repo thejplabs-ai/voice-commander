@@ -57,10 +57,13 @@ class OnboardingWindow:
     """Wizard de configuração inicial — 5 steps."""
 
     MODES = [
-        ("Ctrl+Shift+Space",     "Transcrever",      "Transcrição pura — voz → texto"),
-        ("Ctrl+Alt+Space",       "Prompt simples",   "Injeta contexto na transcrição"),
-        ("Ctrl+CapsLock+Space",  "Prompt COSTAR",    "Formato estruturado COSTAR"),
-        ("Ctrl+Shift+Alt+Space", "Query Gemini",     "Pergunta direta ao Gemini AI"),
+        ("transcribe", "Transcrever",    "Voz → texto corrigido"),
+        ("simple",     "Prompt Simples", "Injeta contexto"),
+        ("prompt",     "Prompt COSTAR",  "Formato estruturado"),
+        ("query",      "Query AI",       "Pergunta direta à IA"),
+        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos"),
+        ("email",      "Email Draft",    "Voz → email profissional"),
+        ("translate",  "Traduzir",       "Traduz para EN/PT"),
     ]
 
     def __init__(self, done_callback=None):
@@ -212,32 +215,34 @@ class OnboardingWindow:
                      justify="center").pack()
 
     def _build_step_2(self, parent):
-        """Step 2 — Como funciona — grid 2×2 de mode cards."""
+        """Step 2 — Como funciona — grid 4+3 de mode cards (sem hotkeys)."""
+        hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space").title()
         ctk.CTkLabel(parent, text="COMO FUNCIONA",
                      font=("Segoe UI", 10, "bold"), text_color="#6B2FF8").pack(
-            anchor="w", pady=(0, 12))
+            anchor="w", pady=(0, 4))
+        ctk.CTkLabel(parent,
+                     text=f"Selecione o modo no ícone da bandeja e pressione {hotkey} para gravar.",
+                     font=("Segoe UI", 10), text_color="#808080", wraplength=400,
+                     justify="left").pack(anchor="w", pady=(0, 10))
         grid = ctk.CTkFrame(parent, fg_color="transparent")
         grid.pack(fill="both", expand=True)
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
-        for idx, (hotkey, label, desc) in enumerate(self.MODES):
-            row_idx, col_idx = divmod(idx, 2)
-            padx = (0, 4) if col_idx == 0 else (4, 0)
+        cols = 4
+        for i in range(cols):
+            grid.columnconfigure(i, weight=1)
+        for idx, (mode_id, label, desc) in enumerate(self.MODES):
+            row_idx, col_idx = divmod(idx, cols)
+            padx_l = 0 if col_idx == 0 else 3
+            padx_r = 0 if col_idx == cols - 1 else 3
             card = ctk.CTkFrame(grid, fg_color="#0D0C25", corner_radius=8)
-            card.grid(row=row_idx, column=col_idx, padx=padx, pady=(0, 6), sticky="nsew")
+            card.grid(row=row_idx, column=col_idx, padx=(padx_l, padx_r), pady=(0, 6), sticky="nsew")
             ctk.CTkLabel(card, text="●", font=("Segoe UI", 10),
-                         text_color="#6B2FF8").pack(anchor="w", padx=12, pady=(10, 2))
-            badge_frame = ctk.CTkFrame(card, fg_color="#1A1A2A", corner_radius=4,
-                                       border_width=1, border_color="#2A2A3A")
-            badge_frame.pack(anchor="w", padx=12, pady=(0, 4))
-            ctk.CTkLabel(badge_frame, text=hotkey, font=("Consolas", 9),
-                         text_color="#FFFFFF").pack(padx=6, pady=3)
+                         text_color="#6B2FF8").pack(anchor="w", padx=10, pady=(8, 2))
             ctk.CTkLabel(card, text=label,
-                         font=("Segoe UI", 11, "bold"), text_color="#FFFFFF").pack(
-                anchor="w", padx=12)
-            ctk.CTkLabel(card, text=desc, font=("Segoe UI", 10), text_color="#808080",
-                         wraplength=160, justify="left").pack(
-                anchor="w", padx=12, pady=(2, 10))
+                         font=("Segoe UI", 10, "bold"), text_color="#FFFFFF").pack(
+                anchor="w", padx=10)
+            ctk.CTkLabel(card, text=desc, font=("Segoe UI", 9), text_color="#808080",
+                         wraplength=100, justify="left").pack(
+                anchor="w", padx=10, pady=(2, 8))
 
     def _build_step_3(self, parent):
         """Step 3 — Gemini API."""
@@ -317,23 +322,33 @@ class OnboardingWindow:
         ctk.CTkLabel(parent, text="✓",
                      font=("Segoe UI", 48, "bold"), text_color="#22C55E").pack(pady=(8, 4))
         ctk.CTkLabel(parent, text="Tudo pronto!",
-                     font=("Segoe UI", 22, "bold"), text_color="#FFFFFF").pack(pady=(0, 16))
+                     font=("Segoe UI", 22, "bold"), text_color="#FFFFFF").pack(pady=(0, 8))
+        hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space").title()
         card = ctk.CTkFrame(parent, fg_color="#0D0C25", corner_radius=8)
-        card.pack(fill="x", pady=(0, 12))
-        for hotkey, label, _ in self.MODES:
+        card.pack(fill="x", pady=(0, 8))
+        r_hk = ctk.CTkFrame(card, fg_color="transparent")
+        r_hk.pack(fill="x", padx=12, pady=(10, 4))
+        badge_hk = ctk.CTkFrame(r_hk, fg_color="#1A1A2A", corner_radius=4,
+                                 border_width=1, border_color="#6B2FF8")
+        badge_hk.pack(side="left")
+        ctk.CTkLabel(badge_hk, text=hotkey, font=("Consolas", 10),
+                     text_color="#FFFFFF").pack(padx=8, pady=3)
+        ctk.CTkLabel(r_hk, text="  Gravar (modo selecionado na bandeja)",
+                     font=("Segoe UI", 11), text_color="#B3B3B3").pack(side="left")
+        ctk.CTkFrame(card, height=1, fg_color="#2A2A3A", corner_radius=0).pack(fill="x", padx=12, pady=4)
+        for _, label, desc in self.MODES:
             r = ctk.CTkFrame(card, fg_color="transparent")
-            r.pack(fill="x", padx=12, pady=3)
-            badge = ctk.CTkFrame(r, fg_color="#1A1A2A", corner_radius=4,
-                                 border_width=1, border_color="#2A2A3A")
-            badge.pack(side="left")
-            ctk.CTkLabel(badge, text=hotkey, font=("Consolas", 10),
-                         text_color="#FFFFFF").pack(padx=6, pady=2)
-            ctk.CTkLabel(r, text=f"  {label}", font=("Segoe UI", 11),
-                         text_color="#B3B3B3").pack(side="left")
+            r.pack(fill="x", padx=12, pady=2)
+            ctk.CTkLabel(r, text="●", font=("Segoe UI", 9), text_color="#6B2FF8",
+                         width=14).pack(side="left")
+            ctk.CTkLabel(r, text=f" {label}  ", font=("Segoe UI", 10, "bold"),
+                         text_color="#FFFFFF").pack(side="left")
+            ctk.CTkLabel(r, text=desc, font=("Segoe UI", 10),
+                         text_color="#808080").pack(side="left")
         ctk.CTkFrame(card, height=6, fg_color="transparent").pack()
         ctk.CTkLabel(parent,
-                     text="O ícone fica na bandeja do sistema (system tray)",
-                     font=("Segoe UI", 11), text_color="#808080",
+                     text="Troque o modo a qualquer momento via System Tray > Modo",
+                     font=("Segoe UI", 10), text_color="#808080",
                      justify="center").pack()
 
     # ── Navigation ─────────────────────────────────────────────────────────
@@ -349,7 +364,7 @@ class OnboardingWindow:
         # Update header labels
         titles = [
             ("Bem-vindo",    "Sua voz. Seu texto. Sem fricção."),
-            ("Como funciona", "4 modos de transcrição e geração"),
+            ("Como funciona", "7 modos — selecione na bandeja, grave com 1 hotkey"),
             ("Gemini API",   "Necessário para modos com IA"),
             ("Licença",      "Opcional — use gratuitamente"),
             ("Tudo pronto!", "Voice Commander está configurado"),
@@ -479,6 +494,15 @@ class SettingsWindow:
 
     MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
     LANGUAGES = ["auto-detect", "pt", "en"]
+    MODES = [
+        ("transcribe", "Transcrever",    "Voz → texto corrigido"),
+        ("simple",     "Prompt Simples", "Injeta contexto"),
+        ("prompt",     "Prompt COSTAR",  "Formato estruturado"),
+        ("query",      "Query AI",       "Pergunta direta à IA"),
+        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos"),
+        ("email",      "Email Draft",    "Voz → email profissional"),
+        ("translate",  "Traduzir",       "Traduz para EN/PT"),
+    ]
 
     def __init__(self):
         self._root = None
@@ -493,6 +517,19 @@ class SettingsWindow:
         self._save_btn = None
         self._eye_btn = None
         self._show_key = False
+        self._show_openai_key = False
+        # New fields
+        self._hotkey_entry = None
+        self._provider_var = None
+        self._openai_key_entry = None
+        self._openai_eye_btn = None
+        self._openai_key_frame = None
+        self._device_var = None
+        self._translate_lang_var = None
+        self._wake_enabled_var = None
+        self._wake_keyword_var = None
+        self._sound_entries: dict = {}
+        self._mode_card_refs: dict = {}
         # Sidebar navigation state
         self._current_section = "status"
         self._content_area = None
@@ -570,7 +607,7 @@ class SettingsWindow:
 
         # Build all section frames
         self._build_section_status()
-        self._build_section_hotkeys()
+        self._build_section_modes()
         self._build_section_config()
         self._build_section_about()
 
@@ -597,7 +634,7 @@ class SettingsWindow:
 
         nav_items = [
             ("status",  "● Status"),
-            ("hotkeys", "⌨ Atalhos"),
+            ("modes",   "🎤 Modo Ativo"),
             ("config",  "⚙ Config"),
             ("about",   "ℹ Sobre"),
         ]
@@ -664,37 +701,64 @@ class SettingsWindow:
                      font=("Segoe UI", 11),
                      text_color="#22C55E" if gemini_ok else "#808080").pack(side="left")
 
-    def _build_section_hotkeys(self):
+    def _build_section_modes(self):
         f = ctk.CTkScrollableFrame(
             self._content_area, fg_color="transparent",
             scrollbar_button_color="#2A2A3A",
             scrollbar_button_hover_color="#3A3A5A")
-        self._section_frames["hotkeys"] = f
+        self._section_frames["modes"] = f
 
-        hotkeys = [
-            ("Ctrl+Shift+Space",    "Transcrever",      "Transcrição pura — voz → texto"),
-            ("Ctrl+Alt+Space",      "Prompt simples",   "Injeta contexto na transcrição"),
-            ("Ctrl+CapsLock+Space", "Prompt COSTAR",    "Formato estruturado COSTAR"),
-            (state._CONFIG.get("QUERY_HOTKEY", "ctrl+shift+alt+space").title(),
-             "Query Gemini", "Pergunta direta ao Gemini AI"),
-        ]
-        for hotkey, label, desc in hotkeys:
-            card = ctk.CTkFrame(f, fg_color="#0D0C25", corner_radius=8)
-            card.pack(fill="x", padx=20, pady=(8, 0))
+        hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space").title()
+        hdr = ctk.CTkFrame(f, fg_color="transparent")
+        hdr.pack(fill="x", padx=20, pady=(16, 8))
+        ctk.CTkLabel(hdr, text="MODO ATIVO",
+                     font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(anchor="w")
+        ctk.CTkLabel(hdr, text=f"Clique para selecionar · pressione {hotkey} para gravar",
+                     font=("Segoe UI", 10), text_color="#808080").pack(anchor="w")
+
+        self._mode_card_refs = {}
+        for mode_id, label, desc in self.MODES:
+            is_active = (state.selected_mode == mode_id)
+            card = ctk.CTkFrame(
+                f, fg_color="#0D0C25", corner_radius=8,
+                border_width=2 if is_active else 1,
+                border_color="#6B2FF8" if is_active else "#2A2A3A",
+                cursor="hand2",
+            )
+            card.pack(fill="x", padx=20, pady=(4, 0))
             row = ctk.CTkFrame(card, fg_color="transparent")
             row.pack(fill="x", padx=12, pady=10)
-            badge = ctk.CTkFrame(row, fg_color="#1A1A2A", corner_radius=6,
-                                 border_width=1, border_color="#2A2A3A")
-            badge.pack(side="left")
-            ctk.CTkLabel(badge, text=hotkey, font=("Consolas", 11),
-                         text_color="#FFFFFF").pack(padx=8, pady=4)
+            ctk.CTkLabel(row, text="●", font=("Segoe UI", 12),
+                         text_color="#6B2FF8" if is_active else "#4A4A6A",
+                         width=18).pack(side="left")
             col = ctk.CTkFrame(row, fg_color="transparent")
-            col.pack(side="left", padx=(12, 0), fill="x", expand=True)
+            col.pack(side="left", padx=(8, 0), fill="x", expand=True)
             ctk.CTkLabel(col, text=label, font=("Segoe UI", 12, "bold"),
                          text_color="#FFFFFF", anchor="w").pack(anchor="w")
             ctk.CTkLabel(col, text=desc, font=("Segoe UI", 10),
                          text_color="#808080", anchor="w").pack(anchor="w")
+            # Bind click on all sub-widgets
+            for w in (card, row, col):
+                w.bind("<Button-1>", lambda e, m=mode_id: self._select_mode(m))
+            self._mode_card_refs[mode_id] = card
         ctk.CTkFrame(f, height=8, fg_color="transparent").pack()
+
+    def _select_mode(self, mode: str) -> None:
+        state.selected_mode = mode
+        try:
+            from voice.config import _save_env
+            _save_env({"SELECTED_MODE": mode})
+        except Exception as e:
+            print(f"[WARN] Falha ao salvar SELECTED_MODE: {e}")
+        self._refresh_mode_cards()
+
+    def _refresh_mode_cards(self) -> None:
+        for m, card in self._mode_card_refs.items():
+            is_active = (state.selected_mode == m)
+            card.configure(
+                border_width=2 if is_active else 1,
+                border_color="#6B2FF8" if is_active else "#2A2A3A",
+            )
 
     def _build_section_config(self):
         f = ctk.CTkScrollableFrame(
@@ -703,9 +767,25 @@ class SettingsWindow:
             scrollbar_button_hover_color="#3A3A5A")
         self._section_frames["config"] = f
 
-        # Subcard: Modelo e Idioma
+        # ── Hotkey ────────────────────────────────────────────────────────────
+        hkc = ctk.CTkFrame(f, fg_color="#0D0C25", corner_radius=12)
+        hkc.pack(fill="x", padx=20, pady=(16, 8))
+        ctk.CTkLabel(hkc, text="HOTKEY",
+                     font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
+            anchor="w", padx=16, pady=(12, 4))
+        ctk.CTkLabel(hkc, text="Hotkey de Gravação",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(
+            anchor="w", padx=16, pady=(0, 2))
+        self._hotkey_entry = ctk.CTkEntry(
+            hkc, height=36, font=("Consolas", 12), fg_color="#1A1A2A",
+            border_color="#1F1F1F", border_width=1, text_color="#FFFFFF",
+            placeholder_text="ctrl+shift+space")
+        self._hotkey_entry.insert(0, state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space"))
+        self._hotkey_entry.pack(fill="x", padx=16, pady=(0, 12))
+
+        # ── Modelo e Idioma ───────────────────────────────────────────────────
         mc = ctk.CTkFrame(f, fg_color="#0D0C25", corner_radius=12)
-        mc.pack(fill="x", padx=20, pady=(16, 8))
+        mc.pack(fill="x", padx=20, pady=(0, 8))
         ctk.CTkLabel(mc, text="MODELO E IDIOMA",
                      font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
             anchor="w", padx=16, pady=(12, 4))
@@ -731,12 +811,101 @@ class SettingsWindow:
                           height=36, corner_radius=6,
                           fg_color="#1A1A2A", button_color="#6B2FF8",
                           button_hover_color="#5A28D6",
+                          text_color="#FFFFFF").pack(fill="x", padx=16, pady=(0, 8))
+
+        ctk.CTkLabel(mc, text="Device Whisper",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(
+            anchor="w", padx=16, pady=(0, 2))
+        self._device_var = ctk.StringVar(value=state._CONFIG.get("WHISPER_DEVICE", "cpu"))
+        ctk.CTkOptionMenu(mc, variable=self._device_var, values=["cpu", "cuda", "auto"],
+                          height=36, corner_radius=6,
+                          fg_color="#1A1A2A", button_color="#6B2FF8",
+                          button_hover_color="#5A28D6",
+                          text_color="#FFFFFF").pack(fill="x", padx=16, pady=(0, 8))
+
+        ctk.CTkLabel(mc, text="Idioma de tradução (modo Traduzir)",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(
+            anchor="w", padx=16, pady=(0, 2))
+        self._translate_lang_var = ctk.StringVar(
+            value=state._CONFIG.get("TRANSLATE_TARGET_LANG", "en"))
+        ctk.CTkOptionMenu(mc, variable=self._translate_lang_var, values=["en", "pt"],
+                          height=36, corner_radius=6,
+                          fg_color="#1A1A2A", button_color="#6B2FF8",
+                          button_hover_color="#5A28D6",
                           text_color="#FFFFFF").pack(fill="x", padx=16, pady=(0, 12))
 
-        # Subcard: Chaves de API
+        # ── AI Provider ───────────────────────────────────────────────────────
+        ac = ctk.CTkFrame(f, fg_color="#0D0C25", corner_radius=12)
+        ac.pack(fill="x", padx=20, pady=(0, 8))
+        ctk.CTkLabel(ac, text="PROVEDOR DE IA",
+                     font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
+            anchor="w", padx=16, pady=(12, 4))
+
+        ctk.CTkLabel(ac, text="Provedor",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(
+            anchor="w", padx=16, pady=(0, 2))
+        self._provider_var = ctk.StringVar(value=state._CONFIG.get("AI_PROVIDER", "gemini"))
+        ctk.CTkOptionMenu(ac, variable=self._provider_var, values=["gemini", "openai"],
+                          height=36, corner_radius=6,
+                          fg_color="#1A1A2A", button_color="#6B2FF8",
+                          button_hover_color="#5A28D6",
+                          text_color="#FFFFFF",
+                          command=lambda _: self._update_openai_visibility(ac)).pack(
+            fill="x", padx=16, pady=(0, 8))
+
+        ctk.CTkLabel(ac, text="Gemini API Key",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(
+            anchor="w", padx=16, pady=(0, 2))
+        key_row = ctk.CTkFrame(ac, fg_color="transparent")
+        key_row.pack(fill="x", padx=16, pady=(0, 8))
+        self._api_entry = ctk.CTkEntry(
+            key_row, height=36, show="*",
+            font=("Consolas", 12), fg_color="#1A1A2A",
+            border_color="#1F1F1F", border_width=1, text_color="#FFFFFF",
+            placeholder_text="AIza...")
+        self._api_entry.pack(side="left", fill="x", expand=True)
+        self._api_entry.bind("<FocusIn>",
+            lambda e: self._api_entry.configure(border_color="#6B2FF8"))
+        self._api_entry.bind("<FocusOut>",
+            lambda e: self._api_entry.configure(border_color="#1F1F1F"))
+        if state._GEMINI_API_KEY:
+            self._api_entry.insert(0, state._GEMINI_API_KEY)
+        self._eye_btn = ctk.CTkButton(
+            key_row, text="👁", width=36, height=36,
+            fg_color="#1A1A2A", hover_color="#170433",
+            border_color="#1F1F1F", border_width=1, corner_radius=6,
+            command=self._toggle_key_visibility)
+        self._eye_btn.pack(side="left", padx=(6, 0))
+
+        # OpenAI key (conditionally shown)
+        self._openai_key_frame = ctk.CTkFrame(ac, fg_color="transparent")
+        ctk.CTkLabel(self._openai_key_frame, text="OpenAI API Key",
+                     font=("Segoe UI", 12), text_color="#B3B3B3").pack(
+            anchor="w", pady=(0, 2))
+        oai_row = ctk.CTkFrame(self._openai_key_frame, fg_color="transparent")
+        oai_row.pack(fill="x", pady=(0, 4))
+        self._openai_key_entry = ctk.CTkEntry(
+            oai_row, height=36, show="*",
+            font=("Consolas", 12), fg_color="#1A1A2A",
+            border_color="#1F1F1F", border_width=1, text_color="#FFFFFF",
+            placeholder_text="sk-...")
+        self._openai_key_entry.pack(side="left", fill="x", expand=True)
+        if state._CONFIG.get("OPENAI_API_KEY"):
+            self._openai_key_entry.insert(0, state._CONFIG.get("OPENAI_API_KEY"))
+        self._openai_eye_btn = ctk.CTkButton(
+            oai_row, text="👁", width=36, height=36,
+            fg_color="#1A1A2A", hover_color="#170433",
+            border_color="#1F1F1F", border_width=1, corner_radius=6,
+            command=self._toggle_openai_key_visibility)
+        self._openai_eye_btn.pack(side="left", padx=(6, 0))
+        self._update_openai_visibility(ac)
+
+        ctk.CTkFrame(ac, height=4, fg_color="transparent").pack()
+
+        # ── Chaves de API (license) ───────────────────────────────────────────
         kc = ctk.CTkFrame(f, fg_color="#0D0C25", corner_radius=12)
         kc.pack(fill="x", padx=20, pady=(0, 8))
-        ctk.CTkLabel(kc, text="CHAVES DE API",
+        ctk.CTkLabel(kc, text="LICENÇA",
                      font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
             anchor="w", padx=16, pady=(12, 4))
 
@@ -763,32 +932,77 @@ class SettingsWindow:
             self._license_entry.insert(0, cur_lic)
         self._license_status_label = ctk.CTkLabel(
             kc, text="", font=("Segoe UI", 11), text_color="#808080")
-        self._license_status_label.pack(anchor="w", padx=16, pady=(0, 8))
+        self._license_status_label.pack(anchor="w", padx=16, pady=(0, 12))
         self._refresh_license_status()
 
-        ctk.CTkLabel(kc, text="Gemini API Key",
+        # ── Wake Word ─────────────────────────────────────────────────────────
+        wc = ctk.CTkFrame(f, fg_color="#0D0C25", corner_radius=12)
+        wc.pack(fill="x", padx=20, pady=(0, 8))
+        ctk.CTkLabel(wc, text="WAKE WORD",
+                     font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
+            anchor="w", padx=16, pady=(12, 4))
+        ww_enabled = state._CONFIG.get("WAKE_WORD_ENABLED", "false").lower() == "true"
+        self._wake_enabled_var = ctk.BooleanVar(value=ww_enabled)
+        ctk.CTkCheckBox(wc, text="Ativar wake word",
+                        variable=self._wake_enabled_var,
+                        font=("Segoe UI", 12), text_color="#B3B3B3",
+                        fg_color="#6B2FF8", hover_color="#5A28D6",
+                        checkmark_color="#FFFFFF").pack(
+            anchor="w", padx=16, pady=(0, 8))
+        ctk.CTkLabel(wc, text="Keyword",
                      font=("Segoe UI", 12), text_color="#B3B3B3").pack(
             anchor="w", padx=16, pady=(0, 2))
-        key_row = ctk.CTkFrame(kc, fg_color="transparent")
-        key_row.pack(fill="x", padx=16, pady=(0, 12))
-        self._api_entry = ctk.CTkEntry(
-            key_row, height=36, show="*",
-            font=("Consolas", 12), fg_color="#1A1A2A",
-            border_color="#1F1F1F", border_width=1, text_color="#FFFFFF",
-            placeholder_text="sua chave Gemini...")
-        self._api_entry.pack(side="left", fill="x", expand=True)
-        self._api_entry.bind("<FocusIn>",
-            lambda e: self._api_entry.configure(border_color="#6B2FF8"))
-        self._api_entry.bind("<FocusOut>",
-            lambda e: self._api_entry.configure(border_color="#1F1F1F"))
-        if state._GEMINI_API_KEY:
-            self._api_entry.insert(0, state._GEMINI_API_KEY)
-        self._eye_btn = ctk.CTkButton(
-            key_row, text="👁", width=36, height=36,
-            fg_color="#1A1A2A", hover_color="#170433",
-            border_color="#1F1F1F", border_width=1, corner_radius=6,
-            command=self._toggle_key_visibility)
-        self._eye_btn.pack(side="left", padx=(6, 0))
+        self._wake_keyword_var = ctk.StringVar(
+            value=state._CONFIG.get("WAKE_WORD_KEYWORD", "hey_jarvis"))
+        ctk.CTkOptionMenu(wc, variable=self._wake_keyword_var,
+                          values=["hey_jarvis", "hey_mycroft", "alexa"],
+                          height=36, corner_radius=6,
+                          fg_color="#1A1A2A", button_color="#6B2FF8",
+                          button_hover_color="#5A28D6",
+                          text_color="#FFFFFF").pack(fill="x", padx=16, pady=(0, 8))
+        ctk.CTkLabel(wc, text="Requer: pip install openwakeword onnxruntime",
+                     font=("Segoe UI", 10), text_color="#4A4A6A").pack(
+            anchor="w", padx=16, pady=(0, 12))
+
+        # ── Sons customizados ────────────────────────────────────────────────
+        sc = ctk.CTkFrame(f, fg_color="#0D0C25", corner_radius=12)
+        sc.pack(fill="x", padx=20, pady=(0, 16))
+        ctk.CTkLabel(sc, text="SONS CUSTOMIZADOS",
+                     font=("Segoe UI", 10, "bold"), text_color="#4A4A6A").pack(
+            anchor="w", padx=16, pady=(12, 2))
+        ctk.CTkLabel(sc, text="Vazio = beep padrão. Selecione arquivo .wav",
+                     font=("Segoe UI", 10), text_color="#4A4A6A").pack(
+            anchor="w", padx=16, pady=(0, 8))
+        _SOUND_EVENTS = [
+            ("SOUND_START",   "Iniciar gravação"),
+            ("SOUND_SUCCESS", "Sucesso"),
+            ("SOUND_ERROR",   "Erro"),
+            ("SOUND_WARNING", "Aviso"),
+            ("SOUND_SKIP",    "Skip"),
+        ]
+        self._sound_entries = {}
+        for key, label in _SOUND_EVENTS:
+            ctk.CTkLabel(sc, text=label, font=("Segoe UI", 11), text_color="#B3B3B3").pack(
+                anchor="w", padx=16, pady=(0, 2))
+            snd_row = ctk.CTkFrame(sc, fg_color="transparent")
+            snd_row.pack(fill="x", padx=16, pady=(0, 6))
+            entry = ctk.CTkEntry(
+                snd_row, height=32, font=("Segoe UI", 10), fg_color="#1A1A2A",
+                border_color="#1F1F1F", border_width=1, text_color="#FFFFFF",
+                placeholder_text="caminho/para/arquivo.wav")
+            entry.pack(side="left", fill="x", expand=True)
+            cur_val = state._CONFIG.get(key, "")
+            if cur_val:
+                entry.insert(0, cur_val)
+            ctk.CTkButton(
+                snd_row, text="...", width=36, height=32,
+                fg_color="#1A1A2A", hover_color="#170433",
+                border_color="#1F1F1F", border_width=1, corner_radius=6,
+                font=("Segoe UI", 11),
+                command=lambda e=entry: self._pick_sound_file(e),
+            ).pack(side="left", padx=(4, 0))
+            self._sound_entries[key] = entry
+        ctk.CTkFrame(sc, height=4, fg_color="transparent").pack()
 
     def _build_section_about(self):
         f = ctk.CTkFrame(self._content_area, fg_color="transparent", corner_radius=0)
@@ -820,11 +1034,39 @@ class SettingsWindow:
             command=self._save)
         self._save_btn.pack(side="left")
 
+    def _update_openai_visibility(self, parent=None) -> None:
+        """Mostra/oculta campo OpenAI Key baseado no provider selecionado."""
+        if self._openai_key_frame is None:
+            return
+        if self._provider_var and self._provider_var.get() == "openai":
+            self._openai_key_frame.pack(fill="x", padx=16, before=None)
+        else:
+            self._openai_key_frame.pack_forget()
+
+    def _pick_sound_file(self, entry) -> None:
+        """Abre file picker para selecionar .wav customizado."""
+        try:
+            import tkinter.filedialog as fd
+            path = fd.askopenfilename(
+                title="Selecionar arquivo de som",
+                filetypes=[("WAV files", "*.wav"), ("All files", "*.*")],
+            )
+            if path:
+                entry.delete(0, "end")
+                entry.insert(0, path)
+        except Exception as e:
+            print(f"[WARN] File picker error: {e}")
+
     # ── Callbacks (mantidos intactos da versão anterior) ───────────────────
 
     def _toggle_key_visibility(self):
         self._show_key = not self._show_key
         self._api_entry.configure(show="" if self._show_key else "*")
+
+    def _toggle_openai_key_visibility(self):
+        self._show_openai_key = not self._show_openai_key
+        if self._openai_key_entry:
+            self._openai_key_entry.configure(show="" if self._show_openai_key else "*")
 
     def _check_license(self):
         key = self._license_entry.get().strip() if self._license_entry else ""
@@ -850,9 +1092,9 @@ class SettingsWindow:
             self._license_status_label.configure(text=f"✗ {msg}{suffix}", text_color=color)
 
     def _save(self):
-        model_val = self._model_var.get()
-        lang_val = self._lang_var.get()
-        api_key = self._api_entry.get().strip()
+        model_val = self._model_var.get() if self._model_var else "small"
+        lang_val = self._lang_var.get() if self._lang_var else "auto-detect"
+        api_key = self._api_entry.get().strip() if self._api_entry else ""
         license_key = self._license_entry.get().strip() if self._license_entry else ""
         new_values: dict = {
             "WHISPER_MODEL": model_val,
@@ -862,9 +1104,32 @@ class SettingsWindow:
             new_values["GEMINI_API_KEY"] = api_key
         if license_key:
             new_values["LICENSE_KEY"] = license_key
+        # New fields
+        if self._hotkey_entry:
+            hk = self._hotkey_entry.get().strip()
+            if hk:
+                new_values["RECORD_HOTKEY"] = hk
+        if self._provider_var:
+            new_values["AI_PROVIDER"] = self._provider_var.get()
+        if self._openai_key_entry:
+            oai_key = self._openai_key_entry.get().strip()
+            if oai_key:
+                new_values["OPENAI_API_KEY"] = oai_key
+        if self._device_var:
+            new_values["WHISPER_DEVICE"] = self._device_var.get()
+        if self._translate_lang_var:
+            new_values["TRANSLATE_TARGET_LANG"] = self._translate_lang_var.get()
+        if self._wake_enabled_var is not None:
+            new_values["WAKE_WORD_ENABLED"] = "true" if self._wake_enabled_var.get() else "false"
+        if self._wake_keyword_var:
+            new_values["WAKE_WORD_KEYWORD"] = self._wake_keyword_var.get()
+        for key, entry in self._sound_entries.items():
+            new_values[key] = entry.get().strip()
         _save_env(new_values)
         _reload_config()
         self._refresh_license_status()
+        if self._mode_card_refs:
+            self._refresh_mode_cards()
         self._save_btn.configure(text="Salvo!", fg_color="#22C55E", hover_color="#16A34A")
         self._root.after(1500, lambda: self._save_btn.configure(
             text="Salvar", fg_color="#6B2FF8", hover_color="#5A28D6"))

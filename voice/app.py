@@ -13,7 +13,7 @@ from voice.license import validate_license_key, _show_license_expired_notificati
 from voice.logging_ import _rotate_log
 from voice.mutex import _acquire_named_mutex
 from voice.tray import _start_tray, _stop_tray
-from voice.audio import on_hotkey, validate_microphone
+from voice.audio import on_hotkey, validate_microphone, get_whisper_model
 from voice.shutdown import graceful_shutdown
 
 try:
@@ -91,6 +91,7 @@ def main() -> None:
     # Carrega configurações uma vez (antes da rotação para ter LOG_KEEP_SESSIONS)
     state._CONFIG = load_config()
     state._GEMINI_API_KEY = state._CONFIG.get("GEMINI_API_KEY")
+    state.selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
 
     # Primeira execução — abre wizard de setup se necessário.
     # Licença é opcional (free tier disponível).
@@ -99,6 +100,7 @@ def main() -> None:
         # Recarregar config após wizard completar
         state._CONFIG = load_config()
         state._GEMINI_API_KEY = state._CONFIG.get("GEMINI_API_KEY")
+        state.selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
 
     # Story 3.2 — Rotação de log (antes de abrir novo log)
     _rotate_log()
@@ -114,27 +116,42 @@ def main() -> None:
     gemini_ok = state._GEMINI_API_KEY is not None
     key_display = f"***{state._GEMINI_API_KEY[-4:]}" if gemini_ok else "não configurada"
     device_display = str(state._CONFIG["AUDIO_DEVICE_INDEX"]) if state._CONFIG["AUDIO_DEVICE_INDEX"] is not None else "padrão do sistema"
-    query_hotkey = state._CONFIG.get("QUERY_HOTKEY", "ctrl+shift+alt+space")
+    record_hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space")
+    ai_provider_name = state._CONFIG.get("AI_PROVIDER", "gemini").upper()
     _lic_valid, _lic_msg = validate_license_key(state._CONFIG.get("LICENSE_KEY", "") or "")
 
     print("═" * 54)
-    print("  Voice-to-text v2  |  JP Labs")
+    print("  Voice Commander  |  Standalone")
     print("═" * 54)
-    print("  [Ctrl+Shift+Space]          Transcrição pura")
-    print("  [Ctrl+Alt+Space]            Prompt simples (bullet points)")
-    print("  [Ctrl+CapsLock+Space]       Prompt estruturado (COSTAR)")
-    print(f"  [{query_hotkey.title()}]  Query direta Gemini")
-    print("  Idiomas : PT-BR + EN (automático)")
+    print(f"  [{record_hotkey.title()}]  Gravar (modo ativo: {state.selected_mode})")
+    print("  Trocar modo : System Tray > Modo")
+    print("  Idiomas     : PT-BR + EN (automático)")
     gemini_model = state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash")
-    print(f"  Gemini  : {'ativo (' + key_display + ')' if gemini_ok else 'desativado (sem .env)'} [{gemini_model}]")
+    if ai_provider_name == "GEMINI":
+        print(f"  AI      : Gemini {'(' + key_display + ')' if gemini_ok else '(sem chave)'} [{gemini_model}]")
+    else:
+        openai_ok = bool(state._CONFIG.get("OPENAI_API_KEY"))
+        openai_model = state._CONFIG.get("OPENAI_MODEL", "gpt-4o-mini")
+        print(f"  AI      : OpenAI {'(configurado)' if openai_ok else '(sem chave)'} [{openai_model}]")
     print(f"  Licença : {_lic_msg}")
-    print(f"  Whisper : {state._CONFIG['WHISPER_MODEL']}")
+    whisper_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
+    print(f"  Whisper : {state._CONFIG['WHISPER_MODEL']} / {whisper_device}")
     print(f"  Timeout : {state._CONFIG['MAX_RECORD_SECONDS']}s")
     print(f"  Mic     : {device_display}")
+    if state._CONFIG.get("WAKE_WORD_ENABLED", "false").lower() == "true":
+        print(f"  Wake    : {state._CONFIG.get('WAKE_WORD_KEYWORD', 'hey_jarvis')} (ativo)")
     print("  Sair    : Ctrl+C (ou menu System Tray > Encerrar)")
     print("═" * 54 + "\n")
 
     _acquire_named_mutex()
+
+    # PERF-01 — Pre-load Whisper em background (evita delay na 1ª transcrição)
+    def _preload_whisper():
+        try:
+            get_whisper_model(state.selected_mode)
+        except Exception as e:
+            print(f"[WARN] Pre-load Whisper falhou: {e}")
+    threading.Thread(target=_preload_whisper, daemon=True).start()
 
     # Story 2.3 — Validar microfone após adquirir mutex
     validate_microphone()
@@ -144,6 +161,18 @@ def main() -> None:
 
     # Iniciar verificação periódica de expiração de licença (daemon)
     threading.Thread(target=_license_check_loop, daemon=True).start()
+
+    # FEAT-06 — Wake word (opcional)
+    if state._CONFIG.get("WAKE_WORD_ENABLED", "false").lower() == "true":
+        try:
+            from voice.wakeword import WakeWordListener
+            _ww = WakeWordListener(
+                keyword=state._CONFIG.get("WAKE_WORD_KEYWORD", "hey_jarvis"),
+                on_detected=lambda: on_hotkey(),
+            )
+            _ww.start()
+        except Exception as e:
+            print(f"[WARN] Wake word falhou ao iniciar: {e}")
 
     # Loop de resiliência: se keyboard.wait() retornar inesperadamente
     # (exception não capturada, sinal externo, etc.), os hotkeys são
@@ -157,21 +186,13 @@ def main() -> None:
             pass
 
         try:
-            # suppress=False: sem latência em Ctrl/Shift/Alt globais.
-            # O Space que "vaza" para a aplicação ativa é inofensivo na prática.
-            keyboard.add_hotkey("ctrl+shift+space",     lambda: on_hotkey("transcribe"), suppress=False)
-            keyboard.add_hotkey("ctrl+alt+space",       lambda: on_hotkey("simple"),     suppress=False)
-            keyboard.add_hotkey("ctrl+caps lock+space", lambda: on_hotkey("prompt"),     suppress=False)
-            keyboard.add_hotkey(
-                state._CONFIG.get("QUERY_HOTKEY", "ctrl+shift+alt+space"),
-                lambda: on_hotkey("query"),
-                suppress=False,
-            )
+            record_hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space")
+            keyboard.add_hotkey(record_hotkey, lambda: on_hotkey(), suppress=False)
 
             if _restart_count == 0:
-                print("[OK]   Hotkeys registrados. Aguardando...\n")
+                print(f"[OK]   Hotkey registrado: {record_hotkey}. Aguardando...\n")
             else:
-                print(f"[OK]   Hotkeys re-registrados (restart #{_restart_count}). Aguardando...\n")
+                print(f"[OK]   Hotkey re-registrado (restart #{_restart_count}). Aguardando...\n")
 
             keyboard.wait()
 

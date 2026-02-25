@@ -31,9 +31,15 @@ _tray_last_mode: str = "—"
 # Mutex handle
 _mutex_handle = None
 
+# Mode selection
+selected_mode: str = "transcribe"
+
 # Lazy singletons
 _gemini_client = None
 _whisper_model = None
+_whisper_cache_key: tuple = ()
+_openai_client = None
+_OPENAI_API_KEY: str | None = None
 
 # UI state
 _ctk_available: bool = False

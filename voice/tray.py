@@ -58,6 +58,28 @@ def _update_tray_state(tray_state: str, mode: str | None = None) -> None:
             print(f"[WARN] Falha ao atualizar ícone da tray: {e}")
 
 
+_MODES = [
+    ("transcribe", "Transcrever"),
+    ("simple",     "Prompt Simples"),
+    ("prompt",     "Prompt COSTAR"),
+    ("query",      "Query AI"),
+    ("bullet",     "Bullet Dump"),
+    ("email",      "Email Draft"),
+    ("translate",  "Traduzir"),
+]
+
+
+def _set_mode(mode: str) -> None:
+    """Seleciona o modo ativo e persiste no .env."""
+    state.selected_mode = mode
+    try:
+        from voice.config import _save_env
+        _save_env({"SELECTED_MODE": mode})
+    except Exception as e:
+        print(f"[WARN] Falha ao salvar SELECTED_MODE: {e}")
+    print(f"[INFO] Modo selecionado: {mode}")
+
+
 def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
     """Menu item 'Status' — abre popup CTk (ou MessageBox fallback) com info atual."""
     import ctypes
@@ -70,10 +92,13 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
         "processing": "Processando transcrição...",
     }
     mode_labels = {
-        "transcribe": "Transcrição pura",
-        "simple":     "Prompt simples",
+        "transcribe": "Transcrever",
+        "simple":     "Prompt Simples",
         "prompt":     "Prompt COSTAR",
-        "query":      "Query Gemini",
+        "query":      "Query AI",
+        "bullet":     "Bullet Dump",
+        "email":      "Email Draft",
+        "translate":  "Traduzir",
         "—":          "—",
     }
     gemini_status = "Ativo" if state._GEMINI_API_KEY else "Desativado"
@@ -181,7 +206,18 @@ def _start_tray(quit_callback=None) -> None:
         _open_settings()
 
     try:
+        mode_items = [
+            pystray.MenuItem(
+                label,
+                lambda icon, item, m=mode: _set_mode(m),
+                checked=lambda item, m=mode: state.selected_mode == m,
+                radio=True,
+            )
+            for mode, label in _MODES
+        ]
         menu = pystray.Menu(
+            pystray.MenuItem("Modo", pystray.Menu(*mode_items)),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("⚙ Configurações", lambda icon, item: _open_settings_from_tray()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Status", _tray_show_status),
