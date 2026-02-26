@@ -1047,10 +1047,11 @@ class SettingsWindow:
                         text="✓ Instalado! Salve e reinicie o Voice Commander.",
                         text_color=theme.SUCCESS)
                 self._root.after(0, _on_success)
-            except Exception as e:
-                def _on_error():
+            except Exception as exc:
+                _err_msg = str(exc)
+                def _on_error(_msg=_err_msg):
                     self._wake_status_label.configure(
-                        text=f"✗ Falha na instalação: {e}",
+                        text=f"✗ Falha na instalação: {_msg}",
                         text_color=theme.ERROR)
                 self._root.after(0, _on_error)
 

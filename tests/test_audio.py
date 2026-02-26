@@ -5,13 +5,11 @@ Strategy: mock sounddevice, winsound, numpy and faster_whisper at sys.modules le
 (already done in conftest.py). Additional mocking done per-test with monkeypatch.
 """
 
-import threading
 import time
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-import voice
 from voice import state, audio
 
 
@@ -185,9 +183,6 @@ class TestGetWhisperModel:
 class TestRecord:
     def test_record_acumula_frames(self, monkeypatch):
         """record() appends audio frames to state.frames_buf."""
-        import numpy as np_mock
-        import sys
-        sd_mock = sys.modules.get("sounddevice", MagicMock())
 
         # Simular stream com 3 reads e depois stop
         frame_data = MagicMock()
@@ -258,12 +253,10 @@ class TestRecord:
         })
         monkeypatch.setattr(state, "frames_buf", [])
 
-        SAMPLE_RATE = 16000
-        # max_frames = int(6 * 16000 / 1024) = 93
+        # max_frames = int(6 * 16000 / 1024) = 93  (SAMPLE_RATE=16000)
         # warn_frames = int((6-5) * 16000 / 1024) = 15
 
         read_count = [0]
-        warned = [False]
 
         def fake_read(n):
             read_count[0] += 1
@@ -325,7 +318,6 @@ class TestToggleRecording:
         monkeypatch.setattr(state, "record_thread", mock_thread)
         mock_thread.join = MagicMock()
 
-        transcribe_called = []
         with patch.object(audio, "_update_tray_state"), \
              patch("voice.audio.threading.Thread") as mock_t_class:
             mock_t = MagicMock()
@@ -381,7 +373,7 @@ class TestTranscribe:
         """transcribe() with empty frames logs error and returns."""
         with patch.object(audio, "play_sound") as mock_play, \
              patch.object(audio, "_update_tray_state"), \
-             patch("voice.logging_._append_history") as mock_hist:
+             patch("voice.logging_._append_history"):
             audio.transcribe([], "transcribe")
 
         mock_play.assert_called_once_with("error")
@@ -391,7 +383,6 @@ class TestTranscribe:
         monkeypatch.setattr(state, "_query_cooldown_until", 0.0)
 
         # Mock numpy concatenate
-        import numpy as np
         np_mock = MagicMock()
         np_mock.concatenate.return_value = MagicMock()
         np_mock.int16 = type("int16", (), {})()
@@ -418,7 +409,6 @@ class TestTranscribe:
         """transcribe() does NOT set cooldown for non-query modes."""
         monkeypatch.setattr(state, "_query_cooldown_until", 0.0)
 
-        import numpy as np
         np_mock = MagicMock()
         np_mock.concatenate.return_value = MagicMock()
         np_mock.int16 = type("int16", (), {})()

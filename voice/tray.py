@@ -227,7 +227,6 @@ def _start_tray(quit_callback=None) -> None:
 
     def _tray_on_quit(icon, item) -> None:  # type: ignore[type-arg]
         """Menu item 'Encerrar' — shutdown gracioso."""
-        import sys as _sys
         print("[INFO] Encerramento solicitado via system tray.")
         try:
             icon.stop()
@@ -255,7 +254,7 @@ def _start_tray(quit_callback=None) -> None:
                 return state.selected_mode == mode
             return pystray.MenuItem(label, _action, checked=_checked, radio=True)
 
-        mode_items = [_make_mode_item(m, l) for m, l in _MODES]
+        mode_items = [_make_mode_item(m, lbl) for m, lbl in _MODES]
         menu = pystray.Menu(
             pystray.MenuItem("Modo", pystray.Menu(*mode_items)),
             pystray.Menu.SEPARATOR,

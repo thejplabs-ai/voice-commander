@@ -59,15 +59,15 @@ def _font(family: str, size: int, bold: bool = False) -> tuple:
 
 
 # Font presets (callable so tkinter is initialized before first call)
-FONT_DISPLAY    = lambda: _font(_HEAD, 28, bold=True)
-FONT_HEADING    = lambda: _font(_HEAD, 18, bold=True)
-FONT_HEADING_SM = lambda: _font(_HEAD, 14, bold=True)
-FONT_BODY       = lambda: _font(_BODY, 13)
-FONT_BODY_BOLD  = lambda: _font(_BODY, 13, bold=True)
-FONT_CAPTION    = lambda: _font(_BODY, 11)
-FONT_OVERLINE   = lambda: _font(_BODY, 11, bold=True)
-FONT_MONO       = lambda: _font(_MONO, 12)
-FONT_MONO_SM    = lambda: _font(_MONO, 11)
+def FONT_DISPLAY():    return _font(_HEAD, 28, bold=True)
+def FONT_HEADING():    return _font(_HEAD, 18, bold=True)
+def FONT_HEADING_SM(): return _font(_HEAD, 14, bold=True)
+def FONT_BODY():       return _font(_BODY, 13)
+def FONT_BODY_BOLD():  return _font(_BODY, 13, bold=True)
+def FONT_CAPTION():    return _font(_BODY, 11)
+def FONT_OVERLINE():   return _font(_BODY, 11, bold=True)
+def FONT_MONO():       return _font(_MONO, 12)
+def FONT_MONO_SM():    return _font(_MONO, 11)
 
 # ── COMPONENT SIZES ───────────────────────────────────────────────────────────
 CORNER_SM  = 6    # badges, tags

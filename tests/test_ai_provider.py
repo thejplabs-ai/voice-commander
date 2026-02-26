@@ -5,7 +5,7 @@ Strategy: patch sys.modules to inject mock Gemini/OpenAI modules,
 and control AI_PROVIDER via state._CONFIG.
 """
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -97,7 +97,7 @@ def test_modo_desconhecido_retorna_texto_original(monkeypatch):
 def test_modo_desconhecido_openai_retorna_texto_original(monkeypatch):
     """Unknown mode returns the original text unchanged for OpenAI too."""
     monkeypatch.setattr(voice.state, "_CONFIG", {"AI_PROVIDER": "openai"})
-    mock = _mock_openai(monkeypatch)
+    _mock_openai(monkeypatch)
 
     result = ai_provider.process("modo_inexistente", "texto original")
 

@@ -249,7 +249,6 @@ class TestOnHotkeyDebounce:
 
         # Disparar 5 on_hotkey() calls simultaneamente em threads separadas
         # (simula o keyboard library disparando eventos em paralelo)
-        results = []
         barrier = threading.Barrier(5)
 
         def _concurrent_hotkey():

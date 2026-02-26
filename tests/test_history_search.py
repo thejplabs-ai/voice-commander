@@ -9,8 +9,8 @@ import json
 
 import pytest
 
-import voice
 from voice import state
+from voice.history_search import _load_history, _search_entries, _format_entry
 
 
 @pytest.fixture(autouse=True)
@@ -30,8 +30,6 @@ def _write_history(tmp_path, entries: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # _load_history()
 # ---------------------------------------------------------------------------
-
-from voice.history_search import _load_history, _search_entries, _format_entry
 
 
 class TestLoadHistory:

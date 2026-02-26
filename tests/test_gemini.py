@@ -5,7 +5,6 @@ Strategy: google.genai is already mocked in sys.modules by conftest.py.
 Per-test: patch state._GEMINI_API_KEY and state._gemini_client as needed.
 """
 
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -401,7 +400,7 @@ class TestTranslateWithGemini:
         monkeypatch.setattr(state, "_gemini_client", mock_client)
 
         with patch("voice.gemini._get_gemini_client", return_value=mock_client):
-            result = gemini.translate_with_gemini("Hello!")
+            gemini.translate_with_gemini("Hello!")
 
         # Verify the prompt includes the target language
         call_args = mock_client.models.generate_content.call_args
