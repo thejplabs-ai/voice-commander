@@ -59,13 +59,13 @@ class OnboardingWindow:
     """Wizard de configuração inicial — 5 steps."""
 
     MODES = [
-        ("transcribe", "Transcrever",    "Voz → texto corrigido"),
-        ("simple",     "Prompt Simples", "Injeta contexto"),
-        ("prompt",     "Prompt COSTAR",  "Formato estruturado"),
-        ("query",      "Query AI",       "Pergunta direta à IA"),
-        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos"),
-        ("email",      "Email Draft",    "Voz → email profissional"),
-        ("translate",  "Traduzir",       "Traduz para EN/PT"),
+        ("transcribe", "Transcrever",    "Voz → texto corrigido",        "✍"),
+        ("simple",     "Prompt Simples", "Injeta contexto",               "⚙"),
+        ("prompt",     "Prompt COSTAR",  "Formato estruturado XML",       "☰"),
+        ("query",      "Query AI",       "Pergunta direta à IA",          "❓"),
+        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos",    "•"),
+        ("email",      "Email Draft",    "Voz → email profissional",      "✉"),
+        ("translate",  "Traduzir",       "Traduz para EN/PT",             "⇄"),
     ]
 
     def __init__(self, done_callback=None):
@@ -203,24 +203,60 @@ class OnboardingWindow:
     # ── Step builders ──────────────────────────────────────────────────────
 
     def _build_step_1(self, parent):
-        """Step 1 — Bem-vindo."""
-        brand = ctk.CTkFrame(parent, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
-                             border_width=1, border_color=theme.BORDER_ACTIVE)
-        brand.pack(fill="x", pady=(8, 16))
-        ctk.CTkLabel(brand, text="VOICE COMMANDER",
-                     font=theme.FONT_HEADING(), text_color=theme.TEXT_PRIMARY).pack(pady=(24, 4))
-        ctk.CTkLabel(brand, text="Sua voz. Seu texto. Sem fricção.",
-                     font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED).pack(pady=(0, 24))
+        """Step 1 — Bem-vindo — hero card + stat badges + hotkey preview."""
+        # Hero card com borda PURPLE
+        hero = ctk.CTkFrame(parent, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
+                            border_width=2, border_color=theme.PURPLE)
+        hero.pack(fill="x", pady=(8, 12))
+        ctk.CTkLabel(hero, text="\U0001F399",
+                     font=theme.FONT_DISPLAY(), text_color=theme.TEXT_PRIMARY).pack(pady=(20, 4))
+        ctk.CTkLabel(hero, text="VOICE COMMANDER",
+                     font=theme.FONT_DISPLAY(), text_color=theme.TEXT_PRIMARY).pack(pady=(0, 4))
+        ctk.CTkLabel(hero, text="Sua voz. Seu texto. Sem fricção.",
+                     font=theme.FONT_CAPTION(), text_color=theme.TEXT_SECONDARY).pack(pady=(0, 20))
+
+        # Row de 3 stat badges
+        badges_row = ctk.CTkFrame(parent, fg_color="transparent")
+        badges_row.pack(fill="x", pady=(0, 10))
+        for i, (label, value) in enumerate([
+            ("7 Modos",     "Processar"),
+            ("Whisper",     "Local"),
+            ("Gemini AI",   "Rápido"),
+        ]):
+            badge = ctk.CTkFrame(badges_row, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_MD,
+                                 border_width=1, border_color=theme.BORDER_DEFAULT)
+            badge.pack(side="left", expand=True, fill="x", padx=(0 if i == 0 else 4, 0))
+            ctk.CTkLabel(badge, text=label, font=theme.FONT_OVERLINE(),
+                         text_color=theme.TEXT_PRIMARY).pack(pady=(8, 2))
+            ctk.CTkLabel(badge, text=value, font=theme.FONT_CAPTION(),
+                         text_color=theme.TEXT_MUTED).pack(pady=(0, 8))
+
+        # Instrução
         ctk.CTkLabel(parent,
-                     text="Levamos ~1 minuto para configurar.\nVamos começar.",
+                     text="Levamos ~1 minuto para configurar. Vamos começar.",
                      font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY,
-                     justify="center").pack()
+                     justify="center").pack(pady=(0, 8))
+
+        # Card de hotkey preview
+        hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space").title()
+        hk_card = ctk.CTkFrame(parent, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_MD,
+                               border_width=1, border_color=theme.BORDER_DEFAULT)
+        hk_card.pack(fill="x")
+        hk_inner = ctk.CTkFrame(hk_card, fg_color="transparent")
+        hk_inner.pack(padx=12, pady=8)
+        badge_hk = ctk.CTkFrame(hk_inner, fg_color=theme.BG_ELEVATED, corner_radius=theme.CORNER_SM,
+                                border_width=1, border_color=theme.BORDER_ACTIVE)
+        badge_hk.pack(side="left")
+        ctk.CTkLabel(badge_hk, text=hotkey, font=theme.FONT_MONO_SM(),
+                     text_color=theme.TEXT_PRIMARY).pack(padx=8, pady=3)
+        ctk.CTkLabel(hk_inner, text="  Pressione para gravar",
+                     font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(side="left")
 
     def _build_step_2(self, parent):
         """Step 2 — Como funciona — grid 4+3 de mode cards (sem hotkeys)."""
         hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space").title()
         ctk.CTkLabel(parent, text="COMO FUNCIONA",
-                     font=theme.FONT_OVERLINE(), text_color=theme.PURPLE).pack(
+                     font=theme.FONT_OVERLINE(), text_color=theme.TEXT_MUTED).pack(
             anchor="w", pady=(0, 4))
         ctk.CTkLabel(parent,
                      text=f"Selecione o modo no ícone da bandeja e pressione {hotkey} para gravar.",
@@ -231,15 +267,15 @@ class OnboardingWindow:
         cols = 4
         for i in range(cols):
             grid.columnconfigure(i, weight=1)
-        for idx, (mode_id, label, desc) in enumerate(self.MODES):
+        for idx, (mode_id, label, desc, icon) in enumerate(self.MODES):
             row_idx, col_idx = divmod(idx, cols)
             padx_l = 0 if col_idx == 0 else 3
             padx_r = 0 if col_idx == cols - 1 else 3
             card = ctk.CTkFrame(grid, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_MD,
                                 border_width=1, border_color=theme.BORDER_DEFAULT)
             card.grid(row=row_idx, column=col_idx, padx=(padx_l, padx_r), pady=(0, 6), sticky="nsew")
-            ctk.CTkLabel(card, text="●", font=theme.FONT_CAPTION(),
-                         text_color=theme.PURPLE).pack(anchor="w", padx=10, pady=(8, 2))
+            ctk.CTkLabel(card, text=icon, font=theme.FONT_CAPTION(),
+                         text_color=theme.TEXT_SECONDARY).pack(anchor="w", padx=10, pady=(8, 2))
             ctk.CTkLabel(card, text=label,
                          font=theme.FONT_OVERLINE(), text_color=theme.TEXT_PRIMARY).pack(
                 anchor="w", padx=10)
@@ -277,10 +313,11 @@ class OnboardingWindow:
             lambda e: self._gemini_entry.configure(border_color=theme.BORDER_DEFAULT))
 
         ctk.CTkButton(parent, text="Testar Conexão", height=theme.INPUT_HEIGHT,
-                      corner_radius=theme.CORNER_MD, fg_color="transparent",
-                      border_color=theme.PURPLE, border_width=1,
-                      hover_color=theme.BG_NIGHT, font=theme.FONT_BODY(),
-                      text_color=theme.PURPLE,
+                      corner_radius=theme.CORNER_MD,
+                      fg_color=theme.PURPLE,
+                      hover_color=theme.PURPLE_HOVER,
+                      font=theme.FONT_BODY_BOLD(),
+                      text_color=theme.TEXT_PRIMARY,
                       command=self._test_gemini).pack(fill="x", pady=(0, 8))
 
         self._gemini_status = ctk.CTkLabel(
@@ -341,10 +378,10 @@ class OnboardingWindow:
         ctk.CTkLabel(r_hk, text="  Gravar (modo selecionado na bandeja)",
                      font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(side="left")
         ctk.CTkFrame(card, height=1, fg_color=theme.BORDER_DEFAULT, corner_radius=0).pack(fill="x", padx=12, pady=4)
-        for _, label, desc in self.MODES:
+        for _, label, desc, icon in self.MODES:
             r = ctk.CTkFrame(card, fg_color="transparent")
             r.pack(fill="x", padx=12, pady=2)
-            ctk.CTkLabel(r, text="●", font=theme.FONT_CAPTION(), text_color=theme.PURPLE,
+            ctk.CTkLabel(r, text=icon, font=theme.FONT_CAPTION(), text_color=theme.TEXT_SECONDARY,
                          width=14).pack(side="left")
             ctk.CTkLabel(r, text=f" {label}  ", font=theme.FONT_BODY_BOLD(),
                          text_color=theme.TEXT_PRIMARY).pack(side="left")
@@ -503,13 +540,13 @@ class SettingsWindow:
     MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
     LANGUAGES = ["auto-detect", "pt", "en"]
     MODES = [
-        ("transcribe", "Transcrever",    "Voz → texto corrigido"),
-        ("simple",     "Prompt Simples", "Injeta contexto"),
-        ("prompt",     "Prompt COSTAR",  "Formato estruturado"),
-        ("query",      "Query AI",       "Pergunta direta à IA"),
-        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos"),
-        ("email",      "Email Draft",    "Voz → email profissional"),
-        ("translate",  "Traduzir",       "Traduz para EN/PT"),
+        ("transcribe", "Transcrever",    "Voz → texto corrigido",        "✍"),
+        ("simple",     "Prompt Simples", "Injeta contexto",               "⚙"),
+        ("prompt",     "Prompt COSTAR",  "Formato estruturado XML",       "☰"),
+        ("query",      "Query AI",       "Pergunta direta à IA",          "❓"),
+        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos",    "•"),
+        ("email",      "Email Draft",    "Voz → email profissional",      "✉"),
+        ("translate",  "Traduzir",       "Traduz para EN/PT",             "⇄"),
     ]
 
     def __init__(self):
@@ -623,7 +660,10 @@ class SettingsWindow:
         # Build all section frames
         self._build_section_status()
         self._build_section_modes()
-        self._build_section_config()
+        self._build_section_general()
+        self._build_section_ai()
+        self._build_section_license()
+        self._build_section_advanced()
         self._build_section_about()
 
         # Footer
@@ -648,10 +688,13 @@ class SettingsWindow:
             fill="x", padx=12, pady=(12, 8))
 
         nav_items = [
-            ("status",  "● Status"),
-            ("modes",   "🎤 Modo Ativo"),
-            ("config",  "⚙ Config"),
-            ("about",   "ℹ Sobre"),
+            ("status",    "● Status"),
+            ("modes",     "🎤 Modo Ativo"),
+            ("general",   "⚙ Geral"),
+            ("ai",        "🤖 Provedor IA"),
+            ("license",   "🔑 Licença"),
+            ("advanced",  "⚒ Avançado"),
+            ("about",     "ℹ Sobre"),
         ]
         for section_id, label in nav_items:
             btn = ctk.CTkButton(
@@ -733,7 +776,7 @@ class SettingsWindow:
                      font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED).pack(anchor="w")
 
         self._mode_card_refs = {}
-        for mode_id, label, desc in self.MODES:
+        for mode_id, label, desc, icon in self.MODES:
             is_active = (state.selected_mode == mode_id)
             card = ctk.CTkFrame(
                 f, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_MD,
@@ -744,8 +787,8 @@ class SettingsWindow:
             card.pack(fill="x", padx=20, pady=(4, 0))
             row = ctk.CTkFrame(card, fg_color="transparent")
             row.pack(fill="x", padx=12, pady=10)
-            ctk.CTkLabel(row, text="●", font=theme.FONT_BODY(),
-                         text_color=theme.PURPLE if is_active else theme.TEXT_DISABLED,
+            ctk.CTkLabel(row, text=icon, font=theme.FONT_BODY(),
+                         text_color=theme.TEXT_SECONDARY,
                          width=18).pack(side="left")
             col = ctk.CTkFrame(row, fg_color="transparent")
             col.pack(side="left", padx=(8, 0), fill="x", expand=True)
@@ -1099,19 +1142,46 @@ class SettingsWindow:
             self._sound_entries[key] = entry
         ctk.CTkFrame(sc, height=4, fg_color="transparent").pack()
 
-    def _build_section_config(self):
+    def _build_section_general(self):
         f = ctk.CTkScrollableFrame(
             self._content_area, fg_color="transparent",
             scrollbar_button_color=theme.BORDER_HOVER,
             scrollbar_button_hover_color=theme.BORDER_ACTIVE)
-        self._section_frames["config"] = f
-
+        self._section_frames["general"] = f
         self._build_hotkey_section(f)
         self._build_model_section(f)
+
+    def _build_section_ai(self):
+        f = ctk.CTkScrollableFrame(
+            self._content_area, fg_color="transparent",
+            scrollbar_button_color=theme.BORDER_HOVER,
+            scrollbar_button_hover_color=theme.BORDER_ACTIVE)
+        self._section_frames["ai"] = f
         self._build_ai_provider_section(f)
+
+    def _build_section_license(self):
+        f = ctk.CTkScrollableFrame(
+            self._content_area, fg_color="transparent",
+            scrollbar_button_color=theme.BORDER_HOVER,
+            scrollbar_button_hover_color=theme.BORDER_ACTIVE)
+        self._section_frames["license"] = f
         self._build_license_section(f)
+
+    def _build_section_advanced(self):
+        f = ctk.CTkScrollableFrame(
+            self._content_area, fg_color="transparent",
+            scrollbar_button_color=theme.BORDER_HOVER,
+            scrollbar_button_hover_color=theme.BORDER_ACTIVE)
+        self._section_frames["advanced"] = f
         self._build_wakeword_section(f)
         self._build_sounds_section(f)
+
+    def _build_section_config(self):
+        """Wrapper de compatibilidade — redireciona para os 4 builders granulares."""
+        self._build_section_general()
+        self._build_section_ai()
+        self._build_section_license()
+        self._build_section_advanced()
 
     def _build_section_about(self):
         f = ctk.CTkFrame(self._content_area, fg_color="transparent", corner_radius=0)
@@ -1123,7 +1193,7 @@ class SettingsWindow:
                      font=theme.FONT_BODY(), text_color=theme.TEXT_MUTED).pack(pady=(4, 0))
         ctk.CTkFrame(f, height=16, fg_color="transparent").pack()
         ctk.CTkLabel(f, text="voice.jplabs.ai",
-                     font=theme.FONT_BODY(), text_color=theme.PURPLE).pack()
+                     font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack()
 
     def _build_footer(self, parent):
         foot = ctk.CTkFrame(parent, fg_color=theme.BG_ABYSS, height=64, corner_radius=0)
