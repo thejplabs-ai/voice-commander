@@ -1,6 +1,10 @@
 # voice/gemini.py — Gemini client singleton and text processing helpers
 
+import threading
+
 from voice import state
+
+_gemini_lock = threading.Lock()
 
 _DEFAULT_QUERY_SYSTEM_PROMPT = (
     "Você é um assistente direto e preciso. "
@@ -11,10 +15,13 @@ _DEFAULT_QUERY_SYSTEM_PROMPT = (
 
 
 def _get_gemini_client():
-    """Retorna o cliente Gemini, criando-o na primeira chamada (lazy init)."""
+    """Retorna o cliente Gemini, criando-o na primeira chamada (lazy init, thread-safe)."""
     if state._gemini_client is None:
-        from google import genai
-        state._gemini_client = genai.Client(api_key=state._GEMINI_API_KEY)
+        with _gemini_lock:
+            # Double-checked locking: re-verificar após adquirir o lock
+            if state._gemini_client is None:
+                from google import genai
+                state._gemini_client = genai.Client(api_key=state._GEMINI_API_KEY)
     return state._gemini_client
 
 
@@ -31,7 +38,43 @@ def _rate_limit_msg() -> str:
     )
 
 
+def transcribe_audio_with_gemini(wav_path: str) -> str:
+    """
+    Transcreve áudio diretamente via Gemini Flash (audio input).
+    Substitui Whisper local — melhor PT-BR + code-switching EN.
+    Requer google-genai >= 1.0 (usa Part.from_bytes, não dict inline_data legado).
+    """
+    from google import genai
+    client = _get_gemini_client()
+
+    with open(wav_path, "rb") as f:
+        audio_bytes = f.read()
+
+    audio_part = genai.types.Part.from_bytes(
+        data=audio_bytes,
+        mime_type="audio/wav",
+    )
+
+    prompt = (
+        "Transcreva exatamente o que foi dito no áudio. "
+        "O falante usa português brasileiro com termos técnicos em inglês misturados "
+        "(ex: 'o build falhou', 'faz o deploy', 'o pipeline está quebrado'). "
+        "REGRAS: "
+        "- Preserve termos em inglês como estão (deploy, build, pipeline, API, etc). "
+        "- NÃO traduza, NÃO corrija, NÃO resuma. "
+        "- Retorne APENAS o texto transcrito, sem pontuação excessiva, sem explicações."
+    )
+
+    response = client.models.generate_content(
+        model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+        contents=[audio_part, prompt],
+    )
+    return (response.text or "").strip()
+
+
 def correct_with_gemini(text: str) -> str:
+    if state._CONFIG.get("GEMINI_CORRECT", "true").lower() == "false":
+        return text  # bypass — retorna raw sem correção
     if not state._GEMINI_API_KEY:
         return text
     try:
