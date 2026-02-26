@@ -88,9 +88,21 @@ def get_whisper_model(mode: str = "transcribe"):
         print(f"[...] Carregando Whisper {model_name} em {device} (modo: {mode})...")
 
     from faster_whisper import WhisperModel
-    state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
-    state._whisper_cache_key = cache_key
-    print(f"[OK]  Whisper {model_name}/{device} pronto (PT+EN bilíngue)")
+    try:
+        state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
+        state._whisper_cache_key = cache_key
+        print(f"[OK]  Whisper {model_name}/{device} pronto (PT+EN bilíngue)")
+    except Exception as _cuda_err:
+        # Fallback automático CUDA → CPU se DLLs CUDA não disponíveis
+        # (ex: cublas64_12.dll ausente no ambiente PyInstaller ou CUDA desatualizado)
+        if device == "cuda":
+            print(f"[WARN] CUDA indisponível ({type(_cuda_err).__name__}: {_cuda_err}) — fallback para CPU")
+            device = "cpu"
+            state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
+            state._whisper_cache_key = (model_name, device)
+            print(f"[OK]  Whisper {model_name}/cpu pronto (fallback CPU)")
+        else:
+            raise
     return state._whisper_model
 
 
@@ -186,6 +198,32 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
                 initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
             )
             raw_text = " ".join(s.text for s in segments_novad).strip()
+        elif "cublas" in err_msg or "cuda" in err_msg or "cudnn" in err_msg or "library" in err_msg:
+            # Fallback automático CUDA → CPU quando DLLs CUDA ausentes no ambiente.
+            # Acontece quando WHISPER_DEVICE=cuda mas cublas64_12.dll/cudart não
+            # está no PATH do sistema (PyInstaller, CUDA desatualizado, etc.).
+            # WhisperModel.__init__ pode ter sucesso com cuda mas model.transcribe()
+            # falha ao carregar o modelo na GPU para processamento real.
+            print(f"[WARN]  CUDA indisponível durante transcrição ({type(_vad_err).__name__}) — fallback CPU")
+            print(f"[WARN]  Configure WHISPER_DEVICE=cpu em Configurações para evitar este fallback.")
+            # Forçar reload do modelo em CPU (invalida o cache)
+            state._whisper_model = None
+            state._whisper_cache_key = ()
+            state._CONFIG["WHISPER_DEVICE"] = "cpu"  # override para esta sessão
+            model_cpu = get_whisper_model(mode)
+            segments_cpu, info = model_cpu.transcribe(
+                temp_path,
+                language=lang_hint,
+                task="transcribe",
+                vad_filter=True,
+                vad_parameters=dict(
+                    threshold=vad_threshold,
+                    min_silence_duration_ms=500,
+                    speech_pad_ms=200,
+                ),
+                initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+            )
+            raw_text = " ".join(s.text for s in segments_cpu).strip()
         else:
             raise
 
