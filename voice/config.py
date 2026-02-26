@@ -13,7 +13,7 @@ def load_config() -> dict:
         "GEMINI_MODEL": "gemini-2.5-flash",
         "LICENSE_KEY": None,
         "WHISPER_MODEL": "small",
-        "WHISPER_LANGUAGE": "",
+        "WHISPER_LANGUAGE": "pt",
         "MAX_RECORD_SECONDS": 120,
         "AUDIO_DEVICE_INDEX": None,
         "QUERY_HOTKEY": "ctrl+shift+alt+space",
@@ -43,6 +43,8 @@ def load_config() -> dict:
         "OPENAI_MODEL": "gpt-4o-mini",
         # Translate
         "TRANSLATE_TARGET_LANG": "en",
+        # Whisper initial prompt — vazio usa o padrão PT-BR + termos EN
+        "WHISPER_INITIAL_PROMPT": "",
     }
     if not os.path.exists(env_path):
         return config
@@ -79,8 +81,13 @@ def load_config() -> dict:
 
 
 def _save_env(new_values: dict) -> None:
-    """Reescreve o .env preservando comentários, apenas atualizando os keys fornecidos."""
+    """Reescreve o .env preservando comentários, apenas atualizando os keys fornecidos.
+
+    Escreve em .env.tmp primeiro e usa os.replace() para atomicidade —
+    evita corrupção do .env em caso de falha durante a escrita.
+    """
     env_path = os.path.join(state._BASE_DIR, ".env")
+    tmp_path = os.path.join(state._BASE_DIR, ".env.tmp")
     example_path = os.path.join(state._BASE_DIR, ".env.example")
     source = env_path if os.path.exists(env_path) else example_path
     lines = []
@@ -101,8 +108,17 @@ def _save_env(new_values: dict) -> None:
     for key, val in new_values.items():
         if key not in updated:
             new_lines.append(f"{key}={val}\n")
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(new_lines)
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+        os.replace(tmp_path, env_path)
+    except Exception:
+        # Limpar arquivo temporário em caso de falha
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _reload_config() -> None:

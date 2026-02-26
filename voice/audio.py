@@ -18,6 +18,21 @@ CHANNELS    = 1
 _FAST_MODES    = {"transcribe", "bullet", "email", "translate"}
 _QUALITY_MODES = {"simple", "prompt", "query"}
 
+_HOTWORDS = (
+    "deploy, build, pipeline, debounce, commit, branch, merge, "
+    "webhook, script, frontend, backend, API, token, workflow, "
+    "debug, SOP, prompt, buffer, cache, endpoint, payload, query"
+)
+
+_DEFAULT_INITIAL_PROMPT = (
+    "Falo português brasileiro com termos técnicos em inglês. "
+    "Exemplos: 'o build falhou', 'faz o deploy', 'testa o pipeline', "
+    "'o debounce não funciona', 'criar um SOP', 'estruturar o prompt', "
+    "'o webhook está caindo', 'revisar o script', 'o frontend quebrou', "
+    "'configurar a API', 'commitar as mudanças', 'fazer o merge', "
+    "'o token expirou', 'rodar o workflow', 'debug do backend'."
+)
+
 try:
     import sounddevice as sd
     import numpy as np
@@ -91,7 +106,7 @@ def get_whisper_model(mode: str = "transcribe"):
     try:
         state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
         state._whisper_cache_key = cache_key
-        print(f"[OK]  Whisper {model_name}/{device} pronto (PT+EN bilíngue)")
+        print(f"[OK]  Whisper {model_name}/{device} pronto (PT-BR âncora + termos EN via hotwords)")
     except Exception as _cuda_err:
         # Fallback automático CUDA → CPU se DLLs CUDA não disponíveis
         # (ex: cublas64_12.dll ausente no ambiente PyInstaller ou CUDA desatualizado)
@@ -172,18 +187,37 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
     vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
     info = None
 
+    initial_prompt = state._CONFIG.get("WHISPER_INITIAL_PROMPT") or _DEFAULT_INITIAL_PROMPT
+
+    # Detectar se faster-whisper suporta o parâmetro hotwords (introduzido em ≥1.0).
+    # Se não suportado, omitir silenciosamente para manter compatibilidade.
+    import inspect as _inspect
+    _transcribe_sig = _inspect.signature(model.transcribe)
+    _supports_hotwords = "hotwords" in _transcribe_sig.parameters
+
+    _transcribe_kwargs: dict = dict(
+        language=lang_hint,
+        task="transcribe",
+        initial_prompt=initial_prompt,
+        condition_on_previous_text=False,
+        temperature=0.0,
+        beam_size=5,
+    )
+    if _supports_hotwords:
+        _transcribe_kwargs["hotwords"] = _HOTWORDS
+
+    _vad_params = dict(
+        threshold=vad_threshold,
+        min_silence_duration_ms=500,
+        speech_pad_ms=200,
+    )
+
     try:
         segments, info = model.transcribe(
             temp_path,
-            language=lang_hint,
-            task="transcribe",
             vad_filter=True,
-            vad_parameters=dict(
-                threshold=vad_threshold,
-                min_silence_duration_ms=500,
-                speech_pad_ms=200,
-            ),
-            initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+            vad_parameters=_vad_params,
+            **_transcribe_kwargs,
         )
         raw_text = " ".join(s.text for s in segments).strip()
     except Exception as _vad_err:
@@ -192,10 +226,8 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
             print(f"[WARN]  VAD model indisponível ({type(_vad_err).__name__}) — usando transcrição sem VAD")
             segments_novad, info = model.transcribe(
                 temp_path,
-                language=lang_hint,
-                task="transcribe",
                 vad_filter=False,
-                initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+                **_transcribe_kwargs,
             )
             raw_text = " ".join(s.text for s in segments_novad).strip()
         elif "cublas" in err_msg or "cuda" in err_msg or "cudnn" in err_msg or "library" in err_msg:
@@ -213,15 +245,9 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
             model_cpu = get_whisper_model(mode)
             segments_cpu, info = model_cpu.transcribe(
                 temp_path,
-                language=lang_hint,
-                task="transcribe",
                 vad_filter=True,
-                vad_parameters=dict(
-                    threshold=vad_threshold,
-                    min_silence_duration_ms=500,
-                    speech_pad_ms=200,
-                ),
-                initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+                vad_parameters=_vad_params,
+                **_transcribe_kwargs,
             )
             raw_text = " ".join(s.text for s in segments_cpu).strip()
         else:
@@ -239,10 +265,8 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
             print("[...]  Tentando sem filtro VAD (fallback)...")
             segments_fallback, _ = model.transcribe(
                 temp_path,
-                language=lang_hint,
-                task="transcribe",
                 vad_filter=False,
-                initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+                **_transcribe_kwargs,
             )
             raw_text_fallback = " ".join(s.text for s in segments_fallback).strip()
             has_real_content = (
