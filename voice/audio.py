@@ -38,8 +38,13 @@ def _default_beep(event: str) -> None:
         "warning": [(600, 200)],
         "skip":    [(300, 150)],
     }
-    for freq, dur in beeps.get(event, []):
-        winsound.Beep(freq, dur)
+    sequence = beeps.get(event, [])
+
+    def _beep_thread():
+        for freq, dur in sequence:
+            winsound.Beep(freq, dur)
+
+    threading.Thread(target=_beep_thread, daemon=True).start()
 
 
 def play_sound(event: str) -> None:
@@ -131,20 +136,114 @@ def record() -> None:
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 
+_MODE_ACTIONS = {
+    "transcribe": "Corrigindo",
+    "simple":     "Simplificando prompt",
+    "prompt":     "Estruturando prompt (COSTAR)",
+    "query":      "Consultando AI (query direta)",
+    "bullet":     "Gerando bullets",
+    "email":      "Rascunhando email",
+    "translate":  "Traduzindo",
+}
+
+
+def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
+    """Executa o Whisper no arquivo WAV e retorna o texto transcrito.
+
+    audio_data: numpy array concatenado (usado para calcular duração sem re-abrir WAV).
+    Tenta com VAD primeiro; se VAD falhar, tenta sem VAD. Se o texto
+    ficar vazio, tenta fallback sem VAD. Retorna string vazia se nada
+    for reconhecido.
+    """
+    model = get_whisper_model(mode)
+    lang_hint = state._CONFIG.get("WHISPER_LANGUAGE") or None
+    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
+    info = None
+
+    try:
+        segments, info = model.transcribe(
+            temp_path,
+            language=lang_hint,
+            task="transcribe",
+            vad_filter=True,
+            vad_parameters=dict(
+                threshold=vad_threshold,
+                min_silence_duration_ms=500,
+                speech_pad_ms=200,
+            ),
+            initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+        )
+        raw_text = " ".join(s.text for s in segments).strip()
+    except Exception as _vad_err:
+        err_msg = str(_vad_err).lower()
+        if "silero" in err_msg or "onnx" in err_msg or "nosuchfile" in err_msg:
+            print(f"[WARN]  VAD model indisponível ({type(_vad_err).__name__}) — usando transcrição sem VAD")
+            segments_novad, info = model.transcribe(
+                temp_path,
+                language=lang_hint,
+                task="transcribe",
+                vad_filter=False,
+                initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+            )
+            raw_text = " ".join(s.text for s in segments_novad).strip()
+        else:
+            raise
+
+    if not raw_text and info is not None:
+        # VAD descartou o áudio — calcular duração a partir do audio_data já em memória
+        audio_duration = len(audio_data) / SAMPLE_RATE
+        vad_duration = getattr(info, "duration_after_vad", 0.0) or 0.0
+        print(
+            f"[WARN]  VAD descartou áudio (threshold={vad_threshold:.1f}, "
+            f"gravação={audio_duration:.1f}s, fala_detectada={vad_duration:.1f}s)"
+        )
+        if audio_duration >= 2.0 and vad_duration == 0.0:
+            print("[...]  Tentando sem filtro VAD (fallback)...")
+            segments_fallback, _ = model.transcribe(
+                temp_path,
+                language=lang_hint,
+                task="transcribe",
+                vad_filter=False,
+                initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
+            )
+            raw_text_fallback = " ".join(s.text for s in segments_fallback).strip()
+            has_real_content = (
+                len(raw_text_fallback) >= 8
+                and any(c.isalpha() for c in raw_text_fallback)
+                and raw_text_fallback.lower() not in {
+                    "you", "thank you", "thank you.", "thanks.",
+                    "gracias.", "obrigado.", "obrigado",
+                }
+            )
+            if has_real_content:
+                print(f"[OK]   Fallback VAD: {raw_text_fallback}")
+                raw_text = raw_text_fallback
+            else:
+                print(f"[WARN]  Fallback retornou conteúdo suspeito — descartado: [{raw_text_fallback}]")
+
+    return raw_text
+
+
+def _post_process_and_paste(raw_text: str, mode: str) -> str:
+    """Processa texto via AI, copia para clipboard e cola. Retorna texto processado."""
+    action = _MODE_ACTIONS.get(mode, "Processando")
+    print(f"[...]  {action}...")
+    text = ai_provider.process(mode, raw_text)
+
+    copy_to_clipboard(text)
+    print(f"[OK]   Texto no clipboard ({len(text)} chars)")
+
+    play_sound("success")
+    time.sleep(0.5)
+    paste_via_sendinput()
+    print("[OK]   Colado!\n")
+    return text
+
+
 def transcribe(frames: list, mode: str = "transcribe") -> None:
     import traceback as _tb
     t_start = time.time()
     temp_path = None
-
-    _MODE_ACTIONS = {
-        "transcribe": "Corrigindo",
-        "simple":     "Simplificando prompt",
-        "prompt":     "Estruturando prompt (COSTAR)",
-        "query":      "Consultando AI (query direta)",
-        "bullet":     "Gerando bullets",
-        "email":      "Rascunhando email",
-        "translate":  "Traduzindo",
-    }
 
     try:
         if not frames:
@@ -167,68 +266,7 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             wf.setframerate(SAMPLE_RATE)
             wf.writeframes((audio_data * 32767).astype(np.int16).tobytes())
 
-        model = get_whisper_model(mode)
-        lang_hint = state._CONFIG.get("WHISPER_LANGUAGE") or None
-        vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
-        try:
-            segments, info = model.transcribe(
-                temp_path,
-                language=lang_hint,
-                task="transcribe",
-                vad_filter=True,
-                vad_parameters=dict(
-                    threshold=vad_threshold,
-                    min_silence_duration_ms=500,
-                    speech_pad_ms=200,
-                ),
-                initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
-            )
-            raw_text = " ".join(s.text for s in segments).strip()
-        except Exception as _vad_err:
-            if "silero" in str(_vad_err).lower() or "onnx" in str(_vad_err).lower() or "nosuchfile" in str(_vad_err).lower():
-                print(f"[WARN]  VAD model indisponível ({type(_vad_err).__name__}) — usando transcrição sem VAD")
-                segments_novad, info = model.transcribe(
-                    temp_path,
-                    language=lang_hint,
-                    task="transcribe",
-                    vad_filter=False,
-                    initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
-                )
-                raw_text = " ".join(s.text for s in segments_novad).strip()
-            else:
-                raise
-
-        if not raw_text:
-            audio_duration = len(audio_data) / SAMPLE_RATE
-            vad_duration = getattr(info, "duration_after_vad", 0.0) or 0.0
-            print(
-                f"[WARN]  VAD descartou áudio (threshold={vad_threshold:.1f}, "
-                f"gravação={audio_duration:.1f}s, fala_detectada={vad_duration:.1f}s)"
-            )
-
-            if audio_duration >= 2.0 and vad_duration == 0.0:
-                print("[...]  Tentando sem filtro VAD (fallback)...")
-                segments_fallback, _ = model.transcribe(
-                    temp_path,
-                    language=lang_hint,
-                    task="transcribe",
-                    vad_filter=False,
-                    initial_prompt="Transcrição bilíngue em português brasileiro e inglês.",
-                )
-                raw_text_fallback = " ".join(s.text for s in segments_fallback).strip()
-                has_real_content = (
-                    len(raw_text_fallback) >= 8
-                    and any(c.isalpha() for c in raw_text_fallback)
-                    and raw_text_fallback.lower() not in {
-                        "you", "thank you", "thank you.", "thanks.",
-                        "gracias.", "obrigado.", "obrigado",
-                    }
-                )
-                if has_real_content:
-                    print(f"[OK]   Fallback VAD: {raw_text_fallback}")
-                    raw_text = raw_text_fallback
-                else:
-                    print(f"[WARN]  Fallback retornou conteúdo suspeito — descartado: [{raw_text_fallback}]")
+        raw_text = _do_transcription(temp_path, mode, audio_data)
 
         if not raw_text:
             print(
@@ -241,20 +279,7 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             return
 
         print(f"[OK]   Whisper: {raw_text}")
-
-        action = _MODE_ACTIONS.get(mode, "Processando")
-        print(f"[...]  {action}...")
-        text = ai_provider.process(mode, raw_text)
-
-        copy_to_clipboard(text)
-        print(f"[OK]   Texto no clipboard ({len(text)} chars)")
-
-        play_sound("success")
-
-        time.sleep(0.5)
-        paste_via_sendinput()
-
-        print("[OK]   Colado!\n")
+        text = _post_process_and_paste(raw_text, mode)
 
         duration = time.time() - t_start
         _append_history(mode, raw_text, text, duration)
@@ -270,8 +295,8 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
         if temp_path:
             try:
                 os.unlink(temp_path)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[WARN] Falha ao deletar arquivo temporário {temp_path}: {e}")
         _update_tray_state("idle")
 
 
@@ -300,6 +325,7 @@ def toggle_recording(mode: str = "transcribe") -> None:
             state.is_recording = True
             state.frames_buf = []
             state.stop_event.clear()
+            state.record_start_time = time.time()
 
             _update_tray_state("recording", mode)
 
@@ -310,6 +336,14 @@ def toggle_recording(mode: str = "transcribe") -> None:
             state.record_thread = threading.Thread(target=record, daemon=True)
             state.record_thread.start()
         else:
+            # Minimum recording time guard: ignore STOP if < 500ms from START.
+            # Prevents the keyboard library double-fire (key-down + key-up ~350-400ms apart)
+            # from triggering a premature STOP with frames=[] → error beep.
+            elapsed = time.time() - state.record_start_time
+            if elapsed < 0.5:
+                print(f"[SKIP] STOP ignorado — gravação muito curta ({elapsed*1000:.0f}ms < 500ms)\n")
+                return
+
             state.is_recording = False
             state.is_transcribing = True
             state.stop_event.set()
@@ -323,8 +357,20 @@ def toggle_recording(mode: str = "transcribe") -> None:
             ).start()
 
 
+_last_hotkey_time: float = 0.0
+
+
 def on_hotkey() -> None:
     """Hotkey único — usa state.selected_mode para determinar o modo."""
+    global _last_hotkey_time
+    now = time.time()
+    # Debounce incondicional: ignora qualquer re-fire dentro de 1000ms.
+    # O bounce do teclado chega ~350-400ms depois do key-down, o que passava
+    # o debounce anterior de 300ms. 1000ms é seguro — usuário nunca pressiona
+    # START e STOP em menos de 1s intencionalmente.
+    if now - _last_hotkey_time < 1.0:
+        return
+    _last_hotkey_time = now
     threading.Thread(target=toggle_recording, args=(state.selected_mode,), daemon=True).start()
 
 

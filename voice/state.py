@@ -21,6 +21,7 @@ frames_buf: list = []
 record_thread = None
 _toggle_lock = threading.Lock()
 current_mode: str = "transcribe"
+record_start_time: float = 0.0  # timestamp when recording started (for min-recording guard)
 
 # Tray state
 _tray_icon = None
@@ -45,3 +46,7 @@ _OPENAI_API_KEY: str | None = None
 _ctk_available: bool = False
 _settings_window_ref = None
 _settings_window_lock = threading.Lock()
+
+# AI rate limiting — cooldown de 2s entre chamadas AI (SEC-05)
+_ai_last_call_time: float = 0.0
+_AI_COOLDOWN_SECONDS: float = 2.0
