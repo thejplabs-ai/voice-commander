@@ -156,7 +156,7 @@ def _reload_config() -> None:
     if new_model != old_model or new_device != old_device:
         state._whisper_model = None
         state._whisper_cache_key = ()
-        print(f"[INFO] Whisper config mudou — reload no próximo uso")
+        print("[INFO] Whisper config mudou — reload no próximo uso")
 
     if state._GEMINI_API_KEY != old_key:
         state._gemini_client = None

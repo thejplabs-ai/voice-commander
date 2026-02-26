@@ -5,7 +5,6 @@ import tempfile
 import threading
 import time
 import wave
-import glob
 
 from voice import state
 from voice import ai_provider
@@ -254,7 +253,7 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
             # WhisperModel.__init__ pode ter sucesso com cuda mas model.transcribe()
             # falha ao carregar o modelo na GPU para processamento real.
             print(f"[WARN]  CUDA indisponível durante transcrição ({type(_vad_err).__name__}) — fallback CPU")
-            print(f"[WARN]  Configure WHISPER_DEVICE=cpu em Configurações para evitar este fallback.")
+            print("[WARN]  Configure WHISPER_DEVICE=cpu em Configurações para evitar este fallback.")
             # Forçar reload do modelo em CPU (invalida o cache)
             state._whisper_model = None
             state._whisper_cache_key = ()

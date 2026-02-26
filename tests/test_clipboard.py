@@ -7,7 +7,7 @@ All Win32 API calls are intercepted — no hardware interaction.
 """
 import ctypes
 import ctypes.wintypes
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 

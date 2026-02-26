@@ -7,10 +7,9 @@ a display and are explicitly out of scope.
 """
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pytest
 
-import voice
 from voice import state
 
 

@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import voice
 from voice import state, shutdown
 
 

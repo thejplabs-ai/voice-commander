@@ -8,7 +8,6 @@ We test state mutations and _save_env calls without touching real hardware.
 from unittest.mock import MagicMock, patch
 import pytest
 
-import voice
 from voice import state, tray, theme
 
 

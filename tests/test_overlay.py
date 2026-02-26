@@ -7,8 +7,7 @@ All assertions target the queue contents or public function behavior
 against a mock thread object.
 """
 import queue
-import threading
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 import pytest
 
