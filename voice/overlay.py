@@ -18,15 +18,25 @@ STATE_HIDE       = "hide"
 
 # Cores inline (sem importar theme para evitar dep de CTk)
 _COLORS = {
-    "bg":          "#0A0A0F",   # BG_ABYSS
-    "bg_card":     "#12121A",   # BG_DEEP
-    "border":      "#2A2A3E",   # BORDER_DEFAULT
-    "recording":   "#FF3366",   # TRAY_RECORDING
-    "processing":  "#1E38F7",   # TRAY_PROCESSING
-    "done":        "#00E68A",   # SUCCESS
-    "text":        "#E8E8F0",   # TEXT_PRIMARY
-    "muted":       "#6B6B8A",   # TEXT_MUTED
-    "purple":      "#6B2FF8",   # PURPLE
+    "bg":          "#01010D",   # theme.BG_ABYSS
+    "bg_card":     "#0D0C25",   # theme.BG_DEEP
+    "border":      "#1C1C32",   # theme.BORDER_DEFAULT
+    "recording":   "#FF3366",   # theme.ERROR (TRAY_RECORDING)
+    "processing":  "#1E38F7",   # theme.BLUE_NEO (TRAY_PROCESSING)
+    "done":        "#00FF88",   # theme.SUCCESS
+    "text":        "#FFFFFF",   # theme.TEXT_PRIMARY
+    "muted":       "#808099",   # theme.TEXT_MUTED
+    "purple":      "#6B2FF8",   # theme.PURPLE
+}
+
+_MODE_LABELS = {
+    "transcribe": "Transcrevendo",
+    "simple":     "Prompt Simples",
+    "prompt":     "Prompt COSTAR",
+    "query":      "Consultando IA",
+    "bullet":     "Bullet Dump",
+    "email":      "Email Draft",
+    "translate":  "Traduzindo",
 }
 
 _OVERLAY_W = 320
@@ -34,6 +44,19 @@ _OVERLAY_H = 72
 _MARGIN_RIGHT = 24
 _MARGIN_BOTTOM = 60
 _DONE_DISMISS_MS = 2000  # ms para auto-dismiss no estado "done"
+
+
+# Resolve font family com fallback — chamado dentro de _build() onde self._root já existe
+def _resolve_fonts(root) -> tuple:
+    """Retorna (font_heading, font_body) com fallback Segoe UI."""
+    try:
+        import tkinter.font as tkfont
+        available = tkfont.families(root)
+        head = "Poppins" if "Poppins" in available else "Segoe UI"
+        body = "Inter" if "Inter" in available else "Segoe UI"
+    except Exception:
+        head = body = "Segoe UI"
+    return (head, 11, "bold"), (body, 10)
 
 
 class _OverlayThread(threading.Thread):
@@ -68,6 +91,20 @@ class _OverlayThread(threading.Thread):
     def _build(self) -> None:
         root = self._root
 
+        # DPI awareness — melhora nitidez em monitores HiDPI
+        try:
+            import ctypes as _ct
+            _ct.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            try:
+                import ctypes as _ct
+                _ct.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
+
+        # Resolver fontes com fallback
+        self._font_heading, self._font_body = _resolve_fonts(root)
+
         # Sem borda, título, taskbar
         root.wm_overrideredirect(True)
         root.wm_attributes("-topmost", True)
@@ -94,17 +131,22 @@ class _OverlayThread(threading.Thread):
         top_row = tk.Frame(inner, bg=_COLORS["bg_card"])
         top_row.pack(fill="x")
 
-        # Indicador colorido (canvas pequeno 10x10)
+        # Canvas 14x14 com glow ring + dot principal
         self._dot_canvas = tk.Canvas(
-            top_row, width=10, height=10,
+            top_row, width=14, height=14,
             bg=_COLORS["bg_card"], highlightthickness=0,
         )
         self._dot_canvas.pack(side="left", padx=(0, 8))
-        self._dot_oval = self._dot_canvas.create_oval(1, 1, 9, 9, fill=_COLORS["recording"], outline="")
+        # Glow ring (oval externo)
+        self._dot_glow = self._dot_canvas.create_oval(0, 0, 13, 13,
+            fill="", outline=_COLORS["recording"], width=1)
+        # Dot principal (oval interno)
+        self._dot_oval = self._dot_canvas.create_oval(2, 2, 11, 11,
+            fill=_COLORS["recording"], outline="")
 
         self._state_label = tk.Label(
             top_row, text="Gravando...",
-            font=("Segoe UI", 10, "bold"),
+            font=self._font_heading,
             fg=_COLORS["text"], bg=_COLORS["bg_card"],
         )
         self._state_label.pack(side="left")
@@ -112,7 +154,7 @@ class _OverlayThread(threading.Thread):
         # Linha inferior: preview do texto
         self._text_label = tk.Label(
             inner, text="",
-            font=("Segoe UI", 9),
+            font=self._font_body,
             fg=_COLORS["muted"], bg=_COLORS["bg_card"],
             anchor="w", justify="left",
             wraplength=_OVERLAY_W - 40,
@@ -170,6 +212,8 @@ class _OverlayThread(threading.Thread):
             return
 
         self._dot_canvas.itemconfig(self._dot_oval, fill=color)
+        if hasattr(self, "_dot_glow"):
+            self._dot_canvas.itemconfig(self._dot_glow, outline=color)
         self._state_label.config(text=label, fg=color if overlay_state == STATE_DONE else _COLORS["text"])
         self._text_label.config(text=info)
 
@@ -195,17 +239,19 @@ class _OverlayThread(threading.Thread):
             self._root.withdraw()
 
     def _start_dot_anim(self) -> None:
-        """Anima o indicador piscando durante processamento."""
-        colors = [_COLORS["processing"], _COLORS["muted"]]
+        """Pulse suave de 3 frames durante processamento."""
+        colors = [_COLORS["processing"], "#4B5EF9", _COLORS["muted"]]
         self._dot_frame = 0
 
         def _anim():
             if self._current_state != STATE_PROCESSING:
                 return
-            c = colors[self._dot_frame % 2]
+            c = colors[self._dot_frame % 3]
             self._dot_canvas.itemconfig(self._dot_oval, fill=c)
+            if hasattr(self, "_dot_glow"):
+                self._dot_canvas.itemconfig(self._dot_glow, outline=c)
             self._dot_frame += 1
-            self._dot_anim_id = self._root.after(500, _anim)
+            self._dot_anim_id = self._root.after(300, _anim)
 
         _anim()
 
@@ -252,7 +298,8 @@ def show_processing(mode: str = "") -> None:
     t = _get_thread()
     if t is None:
         return
-    t.send("show", state=STATE_PROCESSING, text=mode)
+    label = _MODE_LABELS.get(mode, mode) if mode else ""
+    t.send("show", state=STATE_PROCESSING, text=label)
 
 
 def show_done(output_text: str = "") -> None:
