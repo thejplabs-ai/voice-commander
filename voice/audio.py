@@ -314,6 +314,11 @@ _MODE_LABELS = {
 
 
 def toggle_recording(mode: str = "transcribe") -> None:
+    # Captura snapshot das variáveis STOP fora do lock para o join posterior.
+    # Inicializados como None — só preenchidos no path STOP.
+    _stop_thread = None
+    _stop_mode = None
+
     with state._toggle_lock:
         if state.is_transcribing:
             print("[SKIP] Aguardando transcrição anterior terminar...\n")
@@ -347,30 +352,60 @@ def toggle_recording(mode: str = "transcribe") -> None:
             state.is_recording = False
             state.is_transcribing = True
             state.stop_event.set()
+            # Capturar refs locais antes de soltar o lock — join e transcribe
+            # executam FORA do lock para não bloquear toggles subsequentes.
+            _stop_thread = state.record_thread
+            _stop_mode = state.current_mode
             print("[STOP] Parando gravação...\n")
-            if state.record_thread:
-                state.record_thread.join(timeout=5)
-            threading.Thread(
-                target=transcribe,
-                args=(list(state.frames_buf), state.current_mode),
-                daemon=True,
-            ).start()
+            # Nota: frames são capturados APÓS o join (fora do lock) para
+            # incluir os últimos frames gravados. Como o debounce atômico de
+            # on_hotkey() garante ≥1000ms antes do próximo START, não há
+            # risco de frames_buf ser zerado durante o join.
+
+    # ── Fora do lock: join e launch da transcrição ──────────────────────────
+    # O join NÃO está dentro do with-block. Isso é intencional: manter o join
+    # dentro do lock bloquearia _toggle_lock por até 5s. Qualquer on_hotkey()
+    # que chegasse durante esse tempo teria seu thread de toggle_recording()
+    # enfileirado e executaria imediatamente após o lock ser liberado —
+    # disparando um START espúrio logo após o STOP.
+    # Com o debounce atômico de on_hotkey() (1000ms), o lock já está livre
+    # durante o join E nenhum novo toggle entra na fila.
+    if _stop_thread is not None:
+        _stop_thread.join(timeout=5)
+        threading.Thread(
+            target=transcribe,
+            args=(list(state.frames_buf), _stop_mode),
+            daemon=True,
+        ).start()
 
 
 _last_hotkey_time: float = 0.0
+_hotkey_debounce_lock = threading.Lock()
 
 
 def on_hotkey() -> None:
-    """Hotkey único — usa state.selected_mode para determinar o modo."""
+    """Hotkey único — usa state.selected_mode para determinar o modo.
+
+    Debounce atômico: o check-and-set de _last_hotkey_time é protegido por um
+    Lock para evitar race condition quando o keyboard library dispara o callback
+    em múltiplas threads quase simultaneamente (key-down + key-up + bounce do OS
+    chegam em ~1-5ms de diferença). Sem o lock, duas threads podem ler
+    _last_hotkey_time ao mesmo tempo, ambas passam pelo check, e lançam dois
+    toggle_recording() — causando START duplicado ou START+STOP imediatos.
+    """
     global _last_hotkey_time
     now = time.time()
-    # Debounce incondicional: ignora qualquer re-fire dentro de 1000ms.
-    # O bounce do teclado chega ~350-400ms depois do key-down, o que passava
-    # o debounce anterior de 300ms. 1000ms é seguro — usuário nunca pressiona
-    # START e STOP em menos de 1s intencionalmente.
-    if now - _last_hotkey_time < 1.0:
+    # Lock atômico: apenas uma thread por vez pode ler+atualizar _last_hotkey_time.
+    # non-blocking tryacquire: se o lock estiver ocupado (outra thread está passando
+    # pelo debounce agora), este fire é descartado imediatamente — é bounce.
+    if not _hotkey_debounce_lock.acquire(blocking=False):
         return
-    _last_hotkey_time = now
+    try:
+        if now - _last_hotkey_time < 1.0:
+            return
+        _last_hotkey_time = now
+    finally:
+        _hotkey_debounce_lock.release()
     threading.Thread(target=toggle_recording, args=(state.selected_mode,), daemon=True).start()
 
 
