@@ -1,4 +1,4 @@
-# voice/clipboard.py — copy to clipboard and paste via SendInput
+# voice/clipboard.py — copy to clipboard, paste via SendInput, read clipboard
 
 import ctypes
 import ctypes.wintypes
@@ -47,6 +47,49 @@ def copy_to_clipboard(text: str) -> None:
         ctypes.memmove(p_mem, encoded, size)
         kernel32.GlobalUnlock(h_mem)
         user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+    finally:
+        user32.CloseClipboard()
+
+
+def read_clipboard(max_chars: int = 0) -> str:
+    """Lê o texto atual do clipboard via win32 API. Retorna string vazia se falhar.
+
+    Args:
+        max_chars: Se > 0, trunca o texto retornado para este limite (Story 4.5.4).
+    """
+    CF_UNICODETEXT = 13
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    kernel32.GlobalLock.restype = ctypes.c_void_p
+    kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+
+    for _ in range(5):
+        if user32.OpenClipboard(None):
+            break
+        time.sleep(0.05)
+    else:
+        return ""
+
+    try:
+        h_data = user32.GetClipboardData(CF_UNICODETEXT)
+        if not h_data:
+            return ""
+        p_data = kernel32.GlobalLock(h_data)
+        if not p_data:
+            return ""
+        try:
+            text = ctypes.wstring_at(p_data)
+            if not text:
+                return ""
+            if max_chars > 0 and len(text) > max_chars:
+                return text[:max_chars]
+            return text
+        finally:
+            kernel32.GlobalUnlock(h_data)
+    except Exception:
+        return ""
     finally:
         user32.CloseClipboard()
 

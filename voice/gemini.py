@@ -264,6 +264,52 @@ def query_with_gemini(text: str) -> str:
     return f"[SEM RESPOSTA GEMINI] {text}"
 
 
+def query_with_clipboard_context(text: str, clipboard_content: str) -> str:
+    """
+    Story 4.5.4: Query Gemini com contexto do clipboard.
+    clipboard_content: texto copiado pelo usuário antes de acionar o hotkey (max 2000 chars).
+    Fallback para query_with_gemini() se clipboard vazio.
+    """
+    if not clipboard_content.strip():
+        print("[INFO] Clipboard vazio — modo query direto")
+        return query_with_gemini(text)
+
+    if not state._GEMINI_API_KEY:
+        return f"[SEM RESPOSTA GEMINI] {text}"
+
+    system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
+    if not system_prompt:
+        system_prompt = _DEFAULT_QUERY_SYSTEM_PROMPT
+
+    full_prompt = (
+        f"{system_prompt}\n\n"
+        f"[CONTEXTO DO CLIPBOARD]\n{clipboard_content}\n\n"
+        f"[INSTRUÇÃO]\n{text}"
+    )
+
+    print(f"[...]  Query com clipboard ({len(clipboard_content)} chars contexto + {len(text)} chars instrução)...")
+
+    try:
+        from google import genai
+        client = _get_gemini_client()
+        response = client.models.generate_content(
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=full_prompt,
+            config=genai.types.GenerateContentConfig(temperature=0.3),
+        )
+        answer = response.text.strip()
+        if answer:
+            print(f"[OK]   Resposta Gemini clipboard-context ({len(answer)} chars)")
+            return answer
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] Gemini indisponível ({e}), retornando transcrição com prefixo")
+
+    return f"[SEM RESPOSTA GEMINI] {text}"
+
+
 def bullet_dump_with_gemini(text: str) -> str:
     """Transforma transcrição em bullets hierárquicos. Preserva TODO o conteúdo."""
     if not state._GEMINI_API_KEY:

@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import wave
+import glob
 
 from voice import state
 from voice import ai_provider
@@ -175,13 +176,27 @@ _MODE_ACTIONS = {
 
 
 def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
-    """Executa o Whisper no arquivo WAV e retorna o texto transcrito.
+    """Executa transcrição no arquivo WAV e retorna o texto transcrito.
 
+    Roteia para Gemini STT ou Whisper local com base em STT_PROVIDER.
     audio_data: numpy array concatenado (usado para calcular duração sem re-abrir WAV).
     Tenta com VAD primeiro; se VAD falhar, tenta sem VAD. Se o texto
     ficar vazio, tenta fallback sem VAD. Retorna string vazia se nada
     for reconhecido.
     """
+    stt_provider = state._CONFIG.get("STT_PROVIDER", "whisper").lower()
+
+    if stt_provider == "gemini":
+        from voice import gemini as _gemini_mod
+        try:
+            result = _gemini_mod.transcribe_audio_with_gemini(temp_path)
+            if result:
+                return result
+            print("[WARN] Gemini STT retornou vazio — usando Whisper como fallback\n")
+        except Exception as e:
+            print(f"[WARN] Gemini STT falhou ({e}), usando Whisper como fallback\n")
+        # Continua para Whisper abaixo
+
     model = get_whisper_model(mode)
     lang_hint = state._CONFIG.get("WHISPER_LANGUAGE") or None
     vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
@@ -195,13 +210,15 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
     _transcribe_sig = _inspect.signature(model.transcribe)
     _supports_hotwords = "hotwords" in _transcribe_sig.parameters
 
+    beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 5)
+
     _transcribe_kwargs: dict = dict(
         language=lang_hint,
         task="transcribe",
         initial_prompt=initial_prompt,
         condition_on_previous_text=False,
-        temperature=0.0,
-        beam_size=5,
+        temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        beam_size=beam_size,
     )
     if _supports_hotwords:
         _transcribe_kwargs["hotwords"] = _HOTWORDS
@@ -296,7 +313,9 @@ def _post_process_and_paste(raw_text: str, mode: str) -> str:
     print(f"[OK]   Texto no clipboard ({len(text)} chars)")
 
     play_sound("success")
-    time.sleep(0.5)
+    paste_delay_ms = state._CONFIG.get("PASTE_DELAY_MS", 50)
+    paste_delay_s = max(0, paste_delay_ms) / 1000.0 + 0.5  # base 500ms + configurável
+    time.sleep(paste_delay_s)
     paste_via_sendinput()
     print("[OK]   Colado!\n")
     return text
@@ -316,7 +335,15 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
 
         _update_tray_state("processing", mode)
 
-        print("[...]  Transcrevendo (Whisper)...")
+        # Story 4.5.1: overlay "Processando"
+        try:
+            from voice import overlay as _overlay
+            _overlay.show_processing(_MODE_ACTIONS.get(mode, "Processando"))
+        except Exception:
+            pass
+
+        stt_provider = state._CONFIG.get("STT_PROVIDER", "whisper").title()
+        print(f"[...]  Transcrevendo ({stt_provider})...")
         audio_data = np.concatenate(frames, axis=0)
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
@@ -340,8 +367,19 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             _append_history(mode, "", None, duration, error=True)
             return
 
-        print(f"[OK]   Whisper: {raw_text}")
+        print(f"[OK]   {stt_provider}: {raw_text}")
         text = _post_process_and_paste(raw_text, mode)
+
+        # Story 4.5.1: overlay "Pronto" com preview do output
+        try:
+            from voice import overlay as _overlay
+            _overlay.show_done(text)
+        except Exception:
+            pass
+
+        # QW-1: definir cooldown de 2s após processamento de query
+        if mode == "query":
+            state._query_cooldown_until = time.time() + state._QUERY_HOTKEY_COOLDOWN
 
         duration = time.time() - t_start
         _append_history(mode, raw_text, text, duration)
@@ -360,6 +398,13 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             except Exception as e:
                 print(f"[WARN] Falha ao deletar arquivo temporário {temp_path}: {e}")
         _update_tray_state("idle")
+        # Story 4.5.1: esconder overlay se não foi para "done" (erro path)
+        try:
+            from voice import overlay as _overlay
+            if _overlay._thread and _overlay._thread._current_state not in ("done", "hide"):
+                _overlay.hide()
+        except Exception:
+            pass
 
 
 # ── Toggle / hotkey ───────────────────────────────────────────────────────────
@@ -387,6 +432,14 @@ def toggle_recording(mode: str = "transcribe") -> None:
             play_sound("skip")
             return
 
+        # QW-1: cooldown de 2s após processamento de modo query
+        if not state.is_recording and mode == "query":
+            now = time.time()
+            if now < state._query_cooldown_until:
+                remaining = state._query_cooldown_until - now
+                print(f"[SKIP] Cooldown ativo — ignorando hotkey ({remaining:.1f}s restantes)\n")
+                return
+
         if not state.is_recording:
             state.current_mode = mode
             state.is_recording = True
@@ -394,11 +447,32 @@ def toggle_recording(mode: str = "transcribe") -> None:
             state.stop_event.clear()
             state.record_start_time = time.time()
 
+            # Story 4.5.4: capturar clipboard context no início da gravação
+            state._clipboard_context = ""
+            if state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", "true").lower() == "true":
+                try:
+                    from voice.clipboard import read_clipboard
+                    max_chars = state._CONFIG.get("CLIPBOARD_CONTEXT_MAX_CHARS", 2000)
+                    raw_clip = read_clipboard(max_chars=max_chars)
+                    if raw_clip and max_chars > 0 and len(raw_clip) == max_chars:
+                        print(f"[INFO] Clipboard truncado para {max_chars} chars")
+                    state._clipboard_context = raw_clip or ""
+                except Exception as _e:
+                    print(f"[WARN] Falha ao ler clipboard: {_e}")
+
             _update_tray_state("recording", mode)
 
             label = _MODE_LABELS.get(mode, mode.upper())
             play_sound("start")
             print(f"[REC]  Gravando para {label}... (mesmo hotkey para parar)\n")
+
+            # Story 4.5.1: overlay de feedback
+            try:
+                from voice import overlay as _overlay
+                clip_chars = len(state._clipboard_context) if hasattr(state, "_clipboard_context") else 0
+                _overlay.show_recording(clipboard_chars=clip_chars)
+            except Exception as _ov_e:
+                pass  # overlay nunca deve crashar o recording
 
             state.record_thread = threading.Thread(target=record, daemon=True)
             state.record_thread.start()

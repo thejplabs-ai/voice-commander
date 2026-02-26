@@ -93,11 +93,13 @@ def _append_history(
         with open(state._history_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-        # Trim: manter apenas as max_entries mais recentes
+        # Trim: só reescreve quando ultrapassa max_entries * 1.1 (buffer de 10%)
+        # Reduz writes de trim para ~1/50 das operações em relação ao trim por entrada
+        trim_threshold = int(max_entries * 1.1)
         with open(state._history_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-        if len(lines) > max_entries:
+        if len(lines) > trim_threshold:
             lines = lines[-max_entries:]
             with open(state._history_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)

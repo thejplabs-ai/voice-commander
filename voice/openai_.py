@@ -1,6 +1,10 @@
 # voice/openai_.py — OpenAI client singleton and text processing helpers
 
+import threading
+
 from voice import state
+
+_openai_lock = threading.Lock()
 
 _DEFAULT_QUERY_SYSTEM_PROMPT = (
     "You are a direct and precise assistant. "
@@ -11,14 +15,17 @@ _DEFAULT_QUERY_SYSTEM_PROMPT = (
 
 
 def _get_openai_client():
-    """Retorna o cliente OpenAI, criando-o na primeira chamada (lazy init)."""
+    """Retorna o cliente OpenAI, criando-o na primeira chamada (lazy init, thread-safe)."""
     if state._openai_client is None:
-        try:
-            import openai
-        except ImportError as exc:
-            raise ImportError("openai-not-installed") from exc
-        state._OPENAI_API_KEY = state._CONFIG.get("OPENAI_API_KEY")
-        state._openai_client = openai.OpenAI(api_key=state._OPENAI_API_KEY)
+        with _openai_lock:
+            # Double-checked locking: re-verificar após adquirir o lock
+            if state._openai_client is None:
+                try:
+                    import openai
+                except ImportError as exc:
+                    raise ImportError("openai-not-installed") from exc
+                state._OPENAI_API_KEY = state._CONFIG.get("OPENAI_API_KEY")
+                state._openai_client = openai.OpenAI(api_key=state._OPENAI_API_KEY)
     return state._openai_client
 
 

@@ -45,6 +45,23 @@ def load_config() -> dict:
         "TRANSLATE_TARGET_LANG": "en",
         # Whisper initial prompt — vazio usa o padrão PT-BR + termos EN
         "WHISPER_INITIAL_PROMPT": "",
+        # STT Provider — "whisper" (local, offline) | "gemini" (cloud, melhor PT-BR)
+        "STT_PROVIDER": "whisper",
+        # Gemini correction — "true" (default) | "false" (bypass, retorna raw Whisper)
+        "GEMINI_CORRECT": "true",
+        # QW-4: Whisper beam size — 1 (rápido) a 10 (mais preciso) | default: 5
+        "WHISPER_BEAM_SIZE": 5,
+        # QW-4: Delay adicional antes de colar (ms) — ajustar se o paste falha em apps lentos
+        "PASTE_DELAY_MS": 50,
+        # Story 4.5.3: Hotkey de ciclo de modo
+        "CYCLE_HOTKEY": "ctrl+shift+tab",
+        # Story 4.5.4: Clipboard Context
+        "CLIPBOARD_CONTEXT_ENABLED": "true",
+        "CLIPBOARD_CONTEXT_MAX_CHARS": 2000,
+        # Story 4.5.5: Hotkey para abrir busca no histórico
+        "HISTORY_HOTKEY": "ctrl+shift+h",
+        # Story 4.5.1: Overlay de feedback visual
+        "OVERLAY_ENABLED": "true",
     }
     if not os.path.exists(env_path):
         return config
@@ -57,7 +74,8 @@ def load_config() -> dict:
             key = key.strip()
             val = val.strip().strip('"').strip("'")
             if key in config and val:
-                if key in ("MAX_RECORD_SECONDS", "HISTORY_MAX_ENTRIES", "LOG_KEEP_SESSIONS"):
+                if key in ("MAX_RECORD_SECONDS", "HISTORY_MAX_ENTRIES", "LOG_KEEP_SESSIONS",
+                           "WHISPER_BEAM_SIZE", "PASTE_DELAY_MS", "CLIPBOARD_CONTEXT_MAX_CHARS"):
                     try:
                         config[key] = int(val)
                     except ValueError:

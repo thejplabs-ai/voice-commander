@@ -50,3 +50,14 @@ _settings_window_lock = threading.Lock()
 # AI rate limiting — cooldown de 2s entre chamadas AI (SEC-05)
 _ai_last_call_time: float = 0.0
 _AI_COOLDOWN_SECONDS: float = 2.0
+
+# QW-1: cooldown pós-query — ignorar hotkey por 2s após processar modo query
+_query_cooldown_until: float = 0.0
+_QUERY_HOTKEY_COOLDOWN: float = 2.0
+
+# QW-6: duração da gravação para tooltip da tray
+_recording_start_time: float = 0.0
+_tray_tooltip_thread = None
+
+# Story 4.5.4: clipboard context capturado no início da gravação
+_clipboard_context: str = ""
