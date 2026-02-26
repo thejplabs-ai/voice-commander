@@ -45,6 +45,16 @@ import voice  # noqa: E402  (after stubs are in place)
 # Fixtures
 # ---------------------------------------------------------------------------
 
+@pytest.fixture(autouse=True)
+def reset_ai_cooldown(monkeypatch):
+    """Reset AI cooldown state before each test to prevent cross-test contamination.
+
+    SEC-05 introduced _ai_last_call_time which persists across parametrized test
+    runs if not reset — causing [SKIP] cooldown responses that break dispatch tests.
+    """
+    monkeypatch.setattr(voice.state, "_ai_last_call_time", 0.0)
+
+
 @pytest.fixture
 def tmp_base_dir(tmp_path, monkeypatch):
     """
