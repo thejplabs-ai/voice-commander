@@ -62,4 +62,4 @@ jobs:
           python-version: "3.13"
 
       - name: Compile all modules
-        run: python -m py_compile voice.py voice/state.py voice/config.py voice/license.py voice/logging_.py voice/gemini.py voice/audio.py voice/app.py
+        run: python -m compileall voice/ && python -m py_compile voice.py

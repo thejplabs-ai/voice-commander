@@ -16,7 +16,11 @@ Pillow==11.1.0
 customtkinter==5.2.2
 
 # AI alternativo — requerido no build machine para bundling no .exe
-openai>=1.0.0
+openai==2.24.0
+
+# Wake word — opcional, requerido somente se WAKE_WORD_ENABLED=true
+# openwakeword==0.6.0
+# onnxruntime==1.21.0
 
 # Dev / testing
 pytest==8.3.5
