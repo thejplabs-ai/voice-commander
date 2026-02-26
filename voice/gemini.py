@@ -1,6 +1,10 @@
 # voice/gemini.py — Gemini client singleton and text processing helpers
 
+import threading
+
 from voice import state
+
+_gemini_lock = threading.Lock()
 
 _DEFAULT_QUERY_SYSTEM_PROMPT = (
     "Você é um assistente direto e preciso. "
@@ -11,10 +15,13 @@ _DEFAULT_QUERY_SYSTEM_PROMPT = (
 
 
 def _get_gemini_client():
-    """Retorna o cliente Gemini, criando-o na primeira chamada (lazy init)."""
+    """Retorna o cliente Gemini, criando-o na primeira chamada (lazy init, thread-safe)."""
     if state._gemini_client is None:
-        from google import genai
-        state._gemini_client = genai.Client(api_key=state._GEMINI_API_KEY)
+        with _gemini_lock:
+            # Double-checked locking: re-verificar após adquirir o lock
+            if state._gemini_client is None:
+                from google import genai
+                state._gemini_client = genai.Client(api_key=state._GEMINI_API_KEY)
     return state._gemini_client
 
 
@@ -31,7 +38,43 @@ def _rate_limit_msg() -> str:
     )
 
 
+def transcribe_audio_with_gemini(wav_path: str) -> str:
+    """
+    Transcreve áudio diretamente via Gemini Flash (audio input).
+    Substitui Whisper local — melhor PT-BR + code-switching EN.
+    Requer google-genai >= 1.0 (usa Part.from_bytes, não dict inline_data legado).
+    """
+    from google import genai
+    client = _get_gemini_client()
+
+    with open(wav_path, "rb") as f:
+        audio_bytes = f.read()
+
+    audio_part = genai.types.Part.from_bytes(
+        data=audio_bytes,
+        mime_type="audio/wav",
+    )
+
+    prompt = (
+        "Transcreva exatamente o que foi dito no áudio. "
+        "O falante usa português brasileiro com termos técnicos em inglês misturados "
+        "(ex: 'o build falhou', 'faz o deploy', 'o pipeline está quebrado'). "
+        "REGRAS: "
+        "- Preserve termos em inglês como estão (deploy, build, pipeline, API, etc). "
+        "- NÃO traduza, NÃO corrija, NÃO resuma. "
+        "- Retorne APENAS o texto transcrito, sem pontuação excessiva, sem explicações."
+    )
+
+    response = client.models.generate_content(
+        model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+        contents=[audio_part, prompt],
+    )
+    return (response.text or "").strip()
+
+
 def correct_with_gemini(text: str) -> str:
+    if state._CONFIG.get("GEMINI_CORRECT", "true").lower() == "false":
+        return text  # bypass — retorna raw sem correção
     if not state._GEMINI_API_KEY:
         return text
     try:
@@ -219,3 +262,151 @@ def query_with_gemini(text: str) -> str:
         print(f"[WARN] Gemini indisponível ({e}), retornando transcrição com prefixo")
 
     return f"[SEM RESPOSTA GEMINI] {text}"
+
+
+def query_with_clipboard_context(text: str, clipboard_content: str) -> str:
+    """
+    Story 4.5.4: Query Gemini com contexto do clipboard.
+    clipboard_content: texto copiado pelo usuário antes de acionar o hotkey (max 2000 chars).
+    Fallback para query_with_gemini() se clipboard vazio.
+    """
+    if not clipboard_content.strip():
+        print("[INFO] Clipboard vazio — modo query direto")
+        return query_with_gemini(text)
+
+    if not state._GEMINI_API_KEY:
+        return f"[SEM RESPOSTA GEMINI] {text}"
+
+    system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
+    if not system_prompt:
+        system_prompt = _DEFAULT_QUERY_SYSTEM_PROMPT
+
+    full_prompt = (
+        f"{system_prompt}\n\n"
+        f"[CONTEXTO DO CLIPBOARD]\n{clipboard_content}\n\n"
+        f"[INSTRUÇÃO]\n{text}"
+    )
+
+    print(f"[...]  Query com clipboard ({len(clipboard_content)} chars contexto + {len(text)} chars instrução)...")
+
+    try:
+        from google import genai
+        client = _get_gemini_client()
+        response = client.models.generate_content(
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=full_prompt,
+            config=genai.types.GenerateContentConfig(temperature=0.3),
+        )
+        answer = response.text.strip()
+        if answer:
+            print(f"[OK]   Resposta Gemini clipboard-context ({len(answer)} chars)")
+            return answer
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] Gemini indisponível ({e}), retornando transcrição com prefixo")
+
+    return f"[SEM RESPOSTA GEMINI] {text}"
+
+
+def bullet_dump_with_gemini(text: str) -> str:
+    """Transforma transcrição em bullets hierárquicos. Preserva TODO o conteúdo."""
+    if not state._GEMINI_API_KEY:
+        return text
+    try:
+        from google import genai
+        client = _get_gemini_client()
+        prompt = (
+            "Você é especialista em organização de informação.\n"
+            "Transforme a transcrição abaixo em bullet points hierárquicos.\n"
+            "REGRAS ABSOLUTAS:\n"
+            "- Preserve TODO o conteúdo — zero omissão.\n"
+            "- Use estrutura H1 (##) → H2 (###) → itens (- ) onde aplicável.\n"
+            "- Retorne APENAS os bullets, sem explicações.\n\n"
+            f"Transcrição: {text}"
+        )
+        response = client.models.generate_content(
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(temperature=0.2),
+        )
+        result = response.text.strip()
+        if result:
+            print(f"[OK]   Bullet dump ({len(result)} chars)")
+            return result
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] Gemini indisponível ({e}), retornando texto original")
+    return text
+
+
+def draft_email_with_gemini(text: str) -> str:
+    """Transforma transcrição em email profissional com assunto + corpo + assinatura."""
+    if not state._GEMINI_API_KEY:
+        return text
+    try:
+        from google import genai
+        client = _get_gemini_client()
+        prompt = (
+            "Você é um redator profissional de emails.\n"
+            "Transforme a transcrição abaixo em um email profissional.\n"
+            "ESTRUTURA OBRIGATÓRIA:\n"
+            "Assunto: [linha de assunto]\n\n"
+            "[corpo do email — direto, sem hype]\n\n"
+            "Atenciosamente,\n{Nome}\n\n"
+            "REGRAS:\n"
+            "- Tom direto e profissional, sem linguagem excessivamente formal.\n"
+            "- Preserve toda a intenção e detalhes da transcrição.\n"
+            "- Retorne APENAS o email, sem explicações adicionais.\n\n"
+            f"Transcrição: {text}"
+        )
+        response = client.models.generate_content(
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(temperature=0.3),
+        )
+        result = response.text.strip()
+        if result:
+            print(f"[OK]   Email draft ({len(result)} chars)")
+            return result
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] Gemini indisponível ({e}), retornando texto original")
+    return text
+
+
+def translate_with_gemini(text: str) -> str:
+    """Detecta idioma e traduz para TRANSLATE_TARGET_LANG. Preserva formatação."""
+    if not state._GEMINI_API_KEY:
+        return text
+    try:
+        from google import genai
+        client = _get_gemini_client()
+        target_lang = state._CONFIG.get("TRANSLATE_TARGET_LANG", "en")
+        lang_name = "inglês" if target_lang == "en" else "português brasileiro"
+        prompt = (
+            f"Detecte o idioma do texto abaixo e traduza para {lang_name}.\n"
+            "Preserve a formatação original.\n"
+            "Retorne APENAS o texto traduzido, sem explicações.\n\n"
+            f"Texto: {text}"
+        )
+        response = client.models.generate_content(
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(temperature=0.1),
+        )
+        result = response.text.strip()
+        if result:
+            print(f"[OK]   Traduzido → {target_lang} ({len(result)} chars)")
+            return result
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] Gemini indisponível ({e}), retornando texto original")
+    return text

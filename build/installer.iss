@@ -3,8 +3,8 @@
 
 [Setup]
 AppName=Voice Commander
-AppVersion=1.0.13
-; TODO: sync version — manter em sincronia com __version__ em voice/ui.py
+AppVersion=1.0.14
+; Manter em sincronia com __version__ em voice/ui.py
 AppCopyright=Copyright (C) 2026 JP Labs
 AppPublisher=JP Labs
 AppPublisherURL=https://voice.jplabs.ai

@@ -34,3 +34,8 @@ VoiceCommander-*.zip
 # Windows
 Thumbs.db
 desktop.ini
+# AIOS link (recreate with: aios install)
+.aios-link/
+# AIOS local cache
+.aios-local/cache/
+.aios-local/knowledge/

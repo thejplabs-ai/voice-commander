@@ -2,8 +2,10 @@
 # quit_callback injected from app.py — no import of shutdown to avoid cycle
 
 import threading
+import time
 
 from voice import state
+from voice import theme
 
 # Tentar importar pystray e Pillow — fallback silencioso se não disponíveis
 try:
@@ -15,23 +17,30 @@ except ImportError:
           "Instale com: pip install pystray Pillow")
 
 
+_STATE_COLORS = {
+    "idle":       theme.TRAY_IDLE,       # #6B2FF8 purple-labs
+    "recording":  theme.TRAY_RECORDING,  # #FF3366 error red
+    "processing": theme.TRAY_PROCESSING, # #1E38F7 blue-neo
+}
+
+
 def _make_tray_icon(tray_state: str = "idle") -> "Image.Image":
     """
-    Gera ícone 64x64 RGBA com círculo colorido indicando o estado:
-    - idle:       cinza  (#808080)
-    - recording:  vermelho (#FF3333)
-    - processing: amarelo  (#FFD700)
+    Gera ícone 64x64 RGBA com rounded square + wave bars indicando o estado:
+    - idle:       roxo   (#6B2FF8) — brand purple
+    - recording:  vermelho (#FF3366) — error red
+    - processing: azul   (#1E38F7) — blue-neo
     """
-    color_map = {
-        "idle":       "#808080",
-        "recording":  "#FF3333",
-        "processing": "#FFD700",
-    }
-    color = color_map.get(tray_state, "#808080")
+    color = _STATE_COLORS.get(tray_state, theme.TRAY_IDLE)
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Círculo preenchido com margem de 4px
-    draw.ellipse([4, 4, 60, 60], fill=color)
+    # Rounded square background
+    draw.rounded_rectangle([4, 4, 60, 60], radius=14, fill=color)
+    # Wave bars (sound visualization) — white 80% opacity
+    bar = (255, 255, 255, 200)
+    draw.rounded_rectangle([19, 24, 25, 40], radius=3, fill=bar)  # short
+    draw.rounded_rectangle([29, 18, 35, 46], radius=3, fill=bar)  # tall
+    draw.rounded_rectangle([39, 22, 45, 42], radius=3, fill=bar)  # medium
     return img
 
 
@@ -42,7 +51,28 @@ def _tray_tooltip() -> str:
         "processing": "Processando",
     }
     label = state_labels.get(state._tray_state, state._tray_state)
+    # QW-6: exibir duração da gravação durante estado recording
+    if state._tray_state == "recording" and state._recording_start_time > 0:
+        elapsed = int(time.time() - state._recording_start_time)
+        m, s = divmod(elapsed, 60)
+        label = f"Gravando: {m}:{s:02d}"
     return f"Voice Commander | {label} | Último: {state._tray_last_mode}"
+
+
+def _start_recording_tooltip_thread() -> None:
+    """QW-6: Inicia thread que atualiza o tooltip da tray a cada 1s durante gravação."""
+    def _update_loop():
+        while state._tray_state == "recording":
+            if state._tray_icon is not None and state._tray_available:
+                try:
+                    state._tray_icon.title = _tray_tooltip()
+                except Exception:
+                    pass
+            time.sleep(1)
+
+    t = threading.Thread(target=_update_loop, daemon=True)
+    t.start()
+    state._tray_tooltip_thread = t
 
 
 def _update_tray_state(tray_state: str, mode: str | None = None) -> None:
@@ -50,12 +80,40 @@ def _update_tray_state(tray_state: str, mode: str | None = None) -> None:
     state._tray_state = tray_state
     if mode is not None:
         state._tray_last_mode = mode
+    # QW-6: rastrear início da gravação para tooltip dinâmico
+    if tray_state == "recording":
+        state._recording_start_time = time.time()
+        _start_recording_tooltip_thread()
+    elif tray_state != "recording":
+        state._recording_start_time = 0.0
     if state._tray_icon is not None and state._tray_available:
         try:
             state._tray_icon.icon = _make_tray_icon(tray_state)
             state._tray_icon.title = _tray_tooltip()
         except Exception as e:
             print(f"[WARN] Falha ao atualizar ícone da tray: {e}")
+
+
+_MODES = [
+    ("transcribe", "Transcrever"),
+    ("simple",     "Prompt Simples"),
+    ("prompt",     "Prompt COSTAR"),
+    ("query",      "Query AI"),
+    ("bullet",     "Bullet Dump"),
+    ("email",      "Email Draft"),
+    ("translate",  "Traduzir"),
+]
+
+
+def _set_mode(mode: str) -> None:
+    """Seleciona o modo ativo e persiste no .env."""
+    state.selected_mode = mode
+    try:
+        from voice.config import _save_env
+        _save_env({"SELECTED_MODE": mode})
+    except Exception as e:
+        print(f"[WARN] Falha ao salvar SELECTED_MODE: {e}")
+    print(f"[INFO] Modo selecionado: {mode}")
 
 
 def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
@@ -70,10 +128,13 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
         "processing": "Processando transcrição...",
     }
     mode_labels = {
-        "transcribe": "Transcrição pura",
-        "simple":     "Prompt simples",
+        "transcribe": "Transcrever",
+        "simple":     "Prompt Simples",
         "prompt":     "Prompt COSTAR",
-        "query":      "Query Gemini",
+        "query":      "Query AI",
+        "bullet":     "Bullet Dump",
+        "email":      "Email Draft",
+        "translate":  "Traduzir",
         "—":          "—",
     }
     gemini_status = "Ativo" if state._GEMINI_API_KEY else "Desativado"
@@ -90,7 +151,7 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
                 win = _ctk.CTk()
                 win.title("Voice Commander — Status")
                 win.attributes("-topmost", True)
-                win.configure(fg_color="#01010D")
+                win.configure(fg_color=theme.BG_ABYSS)
                 win.resizable(False, False)
                 _icon = _resource_path("icon.ico")
                 if _icon.exists():
@@ -101,9 +162,9 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
 
                 pad_x, pad_y = 28, 12
                 _ctk.CTkLabel(win, text="Voice Commander",
-                              font=("Segoe UI", 16, "bold"),
-                              text_color="#FFFFFF").pack(anchor="w", padx=pad_x, pady=(20, 2))
-                _ctk.CTkFrame(win, height=1, fg_color="#2A2A3A",
+                              font=theme.FONT_HEADING_SM(),
+                              text_color=theme.TEXT_PRIMARY).pack(anchor="w", padx=pad_x, pady=(20, 2))
+                _ctk.CTkFrame(win, height=1, fg_color=theme.BORDER_DEFAULT,
                               corner_radius=0).pack(fill="x", padx=pad_x, pady=(0, 12))
 
                 rows = [
@@ -117,17 +178,17 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
                     row = _ctk.CTkFrame(win, fg_color="transparent")
                     row.pack(fill="x", padx=pad_x, pady=(0, pad_y))
                     _ctk.CTkLabel(row, text=f"{label}:",
-                                  font=("Segoe UI", 11), text_color="#808080",
+                                  font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED,
                                   width=90, anchor="w").pack(side="left")
                     _ctk.CTkLabel(row, text=value,
-                                  font=("Segoe UI", 11, "bold"), text_color="#FFFFFF",
+                                  font=theme.FONT_BODY_BOLD(), text_color=theme.TEXT_PRIMARY,
                                   anchor="w", wraplength=240, justify="left").pack(
                         side="left", padx=(4, 0))
 
-                _ctk.CTkButton(win, text="Fechar", width=180, height=38,
-                               corner_radius=8, fg_color="#6B2FF8",
-                               hover_color="#5A28D6",
-                               font=("Segoe UI", 12, "bold"),
+                _ctk.CTkButton(win, text="Fechar", width=180, height=theme.BTN_HEIGHT,
+                               corner_radius=theme.CORNER_MD, fg_color=theme.PURPLE,
+                               hover_color=theme.PURPLE_HOVER,
+                               font=theme.FONT_BODY_BOLD(),
                                command=win.destroy).pack(pady=(8, 20))
 
                 win.update_idletasks()
@@ -166,14 +227,19 @@ def _start_tray(quit_callback=None) -> None:
 
     def _tray_on_quit(icon, item) -> None:  # type: ignore[type-arg]
         """Menu item 'Encerrar' — shutdown gracioso."""
-        import os as _os
         print("[INFO] Encerramento solicitado via system tray.")
         try:
             icon.stop()
-        except Exception:
-            pass
-        if quit_callback is not None:
-            quit_callback()
+        except Exception as e:
+            print(f"[WARN] Falha ao parar ícone da tray: {e}")
+        try:
+            if quit_callback is not None:
+                quit_callback()
+        except Exception as e:
+            print(f"[WARN] Erro no quit_callback durante shutdown: {e}")
+        # os._exit necessário aqui: threads daemon do pystray impedem sys.exit()
+        # quit_callback já executou todo o cleanup (mutex, transcrição pendente)
+        import os as _os
         _os._exit(0)
 
     def _open_settings_from_tray():
@@ -181,7 +247,17 @@ def _start_tray(quit_callback=None) -> None:
         _open_settings()
 
     try:
+        def _make_mode_item(mode, label):
+            def _action(icon, item):
+                _set_mode(mode)
+            def _checked(item):
+                return state.selected_mode == mode
+            return pystray.MenuItem(label, _action, checked=_checked, radio=True)
+
+        mode_items = [_make_mode_item(m, lbl) for m, lbl in _MODES]
         menu = pystray.Menu(
+            pystray.MenuItem("Modo", pystray.Menu(*mode_items)),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("⚙ Configurações", lambda icon, item: _open_settings_from_tray()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Status", _tray_show_status),
@@ -213,6 +289,6 @@ def _stop_tray() -> None:
     if state._tray_icon is not None and state._tray_available:
         try:
             state._tray_icon.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[WARN] Falha ao remover ícone da tray: {e}")
         state._tray_icon = None

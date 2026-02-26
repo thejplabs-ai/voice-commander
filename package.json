@@ -1,0 +1,18 @@
+{
+  "name": "voice-commander",
+  "version": "1.0.11",
+  "description": "Windows voice-to-text utility — local Whisper + Gemini AI, global hotkeys, system tray",
+  "private": true,
+  "scripts": {
+    "aios": "node \"../AIOS JP Labs/.aios-core/cli/index.js\""
+  },
+  "keywords": [
+    "voice",
+    "speech-to-text",
+    "whisper",
+    "gemini",
+    "windows"
+  ],
+  "author": "JP Labs",
+  "license": "UNLICENSED"
+}

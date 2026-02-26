@@ -161,7 +161,7 @@ def test_transcribe_passes_vad_threshold_to_model(audio_env, monkeypatch):
     info.duration_after_vad = 0.5
 
     model, call_kwargs, _ = _make_model_mock([([ seg], info)])
-    monkeypatch.setattr(audio, "get_whisper_model", lambda: model)
+    monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
     monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: None)
     monkeypatch.setattr(audio, "paste_via_sendinput", lambda: None)
 
@@ -190,7 +190,7 @@ def test_transcribe_falls_back_without_vad_when_vad_duration_zero(audio_env, mon
         ([seg], MagicMock(duration_after_vad=0.0)),        # 2nd call: fallback → text
     ]
     model, _, call_count = _make_model_mock(results)
-    monkeypatch.setattr(audio, "get_whisper_model", lambda: model)
+    monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
 
     pasted = []
     monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: pasted.append(t))
@@ -212,7 +212,7 @@ def test_transcribe_no_fallback_when_audio_short(audio_env, monkeypatch):
 
     results = [([], MagicMock(duration_after_vad=0.0))]
     model, _, call_count = _make_model_mock(results)
-    monkeypatch.setattr(audio, "get_whisper_model", lambda: model)
+    monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
     monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: None)
     monkeypatch.setattr(audio, "paste_via_sendinput", lambda: None)
 
@@ -236,7 +236,7 @@ def test_transcribe_fallback_discards_hallucination(audio_env, monkeypatch):
         ([seg_hallucination], MagicMock(duration_after_vad=0.0)),
     ]
     model, _, call_count = _make_model_mock(results)
-    monkeypatch.setattr(audio, "get_whisper_model", lambda: model)
+    monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
 
     pasted = []
     monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: pasted.append(t))

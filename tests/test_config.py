@@ -24,7 +24,7 @@ def test_defaults_sem_env(tmp_path, monkeypatch):
     assert cfg["GEMINI_API_KEY"] is None
     assert cfg["LICENSE_KEY"] is None
     assert cfg["WHISPER_MODEL"] == "small"
-    assert cfg["WHISPER_LANGUAGE"] == ""
+    assert cfg["WHISPER_LANGUAGE"] == "pt"
     assert cfg["MAX_RECORD_SECONDS"] == 120
     assert cfg["AUDIO_DEVICE_INDEX"] is None
     assert cfg["QUERY_HOTKEY"] == "ctrl+shift+alt+space"
@@ -103,3 +103,49 @@ def test_chave_vazia_ignorada(tmp_path, monkeypatch):
     # Empty value → val is "" → `if key in config and val:` is False → default kept
     assert cfg["MAX_RECORD_SECONDS"] == 120
     assert cfg["LOG_KEEP_SESSIONS"] == 5
+
+
+def test_novas_variaveis_qw4_defaults(tmp_path, monkeypatch):
+    """QW-4: WHISPER_BEAM_SIZE and PASTE_DELAY_MS have correct defaults."""
+    monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+
+    cfg = voice.load_config()
+
+    assert cfg["WHISPER_BEAM_SIZE"] == 5
+    assert isinstance(cfg["WHISPER_BEAM_SIZE"], int)
+    assert cfg["PASTE_DELAY_MS"] == 50
+    assert isinstance(cfg["PASTE_DELAY_MS"], int)
+
+
+def test_novas_variaveis_stories_defaults(tmp_path, monkeypatch):
+    """Stories 4.5.3/4/5: new config vars have correct defaults."""
+    monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+
+    cfg = voice.load_config()
+
+    assert cfg["CYCLE_HOTKEY"] == "ctrl+shift+tab"
+    assert cfg["CLIPBOARD_CONTEXT_ENABLED"] == "true"
+    assert cfg["CLIPBOARD_CONTEXT_MAX_CHARS"] == 2000
+    assert cfg["HISTORY_HOTKEY"] == "ctrl+shift+h"
+    assert cfg["OVERLAY_ENABLED"] == "true"
+
+
+def test_whisper_beam_size_parseable(tmp_path, monkeypatch):
+    """WHISPER_BEAM_SIZE parses correctly from .env."""
+    monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+    _write_env(tmp_path, "WHISPER_BEAM_SIZE=3\n")
+
+    cfg = voice.load_config()
+
+    assert cfg["WHISPER_BEAM_SIZE"] == 3
+    assert isinstance(cfg["WHISPER_BEAM_SIZE"], int)
+
+
+def test_clipboard_context_max_chars_parseable(tmp_path, monkeypatch):
+    """CLIPBOARD_CONTEXT_MAX_CHARS parses correctly from .env."""
+    monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+    _write_env(tmp_path, "CLIPBOARD_CONTEXT_MAX_CHARS=1000\n")
+
+    cfg = voice.load_config()
+
+    assert cfg["CLIPBOARD_CONTEXT_MAX_CHARS"] == 1000
