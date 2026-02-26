@@ -1125,6 +1125,7 @@ class SettingsWindow:
             new_values["WAKE_WORD_KEYWORD"] = self._wake_keyword_var.get()
         for key, entry in self._sound_entries.items():
             new_values[key] = entry.get().strip()
+        new_values["SELECTED_MODE"] = state.selected_mode
         _save_env(new_values)
         _reload_config()
         self._refresh_license_status()

@@ -13,7 +13,10 @@ _DEFAULT_QUERY_SYSTEM_PROMPT = (
 def _get_openai_client():
     """Retorna o cliente OpenAI, criando-o na primeira chamada (lazy init)."""
     if state._openai_client is None:
-        import openai
+        try:
+            import openai
+        except ImportError as exc:
+            raise ImportError("openai-not-installed") from exc
         state._OPENAI_API_KEY = state._CONFIG.get("OPENAI_API_KEY")
         state._openai_client = openai.OpenAI(api_key=state._OPENAI_API_KEY)
     return state._openai_client
@@ -28,6 +31,13 @@ def _rate_limit_msg() -> str:
     return (
         "[LIMITE ATINGIDO] OpenAI rate limit atingido.\n"
         "Aguarde alguns instantes e use o atalho novamente."
+    )
+
+
+def _missing_package_msg() -> str:
+    return (
+        "[ERRO] Pacote 'openai' não instalado.\n"
+        "Execute: pip install \"openai>=1.0.0\" e reinicie o app."
     )
 
 
@@ -64,6 +74,8 @@ def correct_with_openai(text: str) -> str:
             print(f"[OK]   Corrigido (OpenAI): {result[:80]}")
             return result
     except Exception as e:
+        if isinstance(e, ImportError):
+            return _missing_package_msg()
         if _is_rate_limit(e):
             return _rate_limit_msg()
         print(f"[WARN] OpenAI indisponível ({e}), usando texto original")
@@ -87,6 +99,8 @@ def simplify_with_openai(text: str) -> str:
             print(f"[OK]   Prompt simplificado (OpenAI, {len(result)} chars)")
             return result
     except Exception as e:
+        if isinstance(e, ImportError):
+            return _missing_package_msg()
         if _is_rate_limit(e):
             return _rate_limit_msg()
         print(f"[WARN] OpenAI indisponível ({e}), retornando texto original")
@@ -109,6 +123,8 @@ def structure_as_prompt_openai(text: str) -> str:
             print(f"[OK]   Prompt COSTAR (OpenAI, {len(result)} chars)")
             return result
     except Exception as e:
+        if isinstance(e, ImportError):
+            return _missing_package_msg()
         if _is_rate_limit(e):
             return _rate_limit_msg()
         print(f"[WARN] OpenAI indisponível ({e}), retornando texto original")
@@ -127,6 +143,8 @@ def query_with_openai(text: str) -> str:
             print(f"[OK]   Resposta OpenAI ({len(result)} chars)")
             return result
     except Exception as e:
+        if isinstance(e, ImportError):
+            return _missing_package_msg()
         if _is_rate_limit(e):
             return _rate_limit_msg()
         print(f"[WARN] OpenAI indisponível ({e}), retornando transcrição com prefixo")
@@ -148,6 +166,8 @@ def bullet_dump_with_openai(text: str) -> str:
             print(f"[OK]   Bullet dump (OpenAI, {len(result)} chars)")
             return result
     except Exception as e:
+        if isinstance(e, ImportError):
+            return _missing_package_msg()
         if _is_rate_limit(e):
             return _rate_limit_msg()
         print(f"[WARN] OpenAI indisponível ({e}), retornando texto original")
@@ -169,6 +189,8 @@ def draft_email_with_openai(text: str) -> str:
             print(f"[OK]   Email draft (OpenAI, {len(result)} chars)")
             return result
     except Exception as e:
+        if isinstance(e, ImportError):
+            return _missing_package_msg()
         if _is_rate_limit(e):
             return _rate_limit_msg()
         print(f"[WARN] OpenAI indisponível ({e}), retornando texto original")
@@ -191,6 +213,8 @@ def translate_with_openai(text: str) -> str:
             print(f"[OK]   Traduzido → {target_lang} (OpenAI, {len(result)} chars)")
             return result
     except Exception as e:
+        if isinstance(e, ImportError):
+            return _missing_package_msg()
         if _is_rate_limit(e):
             return _rate_limit_msg()
         print(f"[WARN] OpenAI indisponível ({e}), retornando texto original")

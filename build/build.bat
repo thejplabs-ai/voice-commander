@@ -41,8 +41,10 @@ python -m pyinstaller voice.py ^
     --hidden-import PIL.ImageDraw ^
     --hidden-import google.genai ^
     --hidden-import numpy ^
+    --hidden-import openai ^
     --collect-all customtkinter ^
     --collect-all faster_whisper ^
+    --collect-all openai ^
     --add-data "%SILERO_ONNX%;faster_whisper/assets" ^
     --distpath dist ^
     --workpath build\pyinstaller-work ^

@@ -15,6 +15,9 @@ pystray==0.19.5
 Pillow==11.1.0
 customtkinter==5.2.2
 
+# AI alternativo — requerido no build machine para bundling no .exe
+openai>=1.0.0
+
 # Dev / testing
 pytest==8.3.5
 ruff==0.9.10
