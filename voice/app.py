@@ -134,9 +134,15 @@ def _log_startup_info() -> None:
         print(f"  AI      : OpenAI {'(configurado)' if openai_ok else '(sem chave)'} [{openai_model}]")
     print(f"  Licença : {_lic_msg}")
     whisper_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
-    beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 5)
+    beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)
     paste_delay = state._CONFIG.get("PASTE_DELAY_MS", 50)
-    print(f"  Whisper : {state._CONFIG['WHISPER_MODEL']} / {whisper_device} (beam={beam_size})")
+    fast_model = state._CONFIG.get("WHISPER_MODEL_FAST", "tiny")
+    quality_model = state._CONFIG.get("WHISPER_MODEL_QUALITY", "small")
+    if fast_model == quality_model:
+        whisper_display = f"{fast_model} / {whisper_device} (beam={beam_size})"
+    else:
+        whisper_display = f"{fast_model} (fast) / {quality_model} (quality) / {whisper_device} (beam={beam_size})"
+    print(f"  Whisper : {whisper_display}")
     print(f"  Timeout : {state._CONFIG['MAX_RECORD_SECONDS']}s")
     print(f"  Paste   : +{paste_delay}ms delay")
     print(f"  Mic     : {device_display}")
@@ -147,10 +153,14 @@ def _log_startup_info() -> None:
 
 
 def _cycle_mode() -> None:
-    """Story 4.5.3: Cicla entre os modos disponíveis em ordem circular."""
-    from voice.tray import _set_mode, _update_tray_state, _MODES
+    """Story 4.5.3/4.6.4: Cicla entre modos configurados em CYCLE_MODES."""
+    from voice.tray import _set_mode, _update_tray_state
     from voice.audio import play_sound
-    modes = [m for m, _ in _MODES]
+    # Story 4.6.4: usar CYCLE_MODES do config (default: 5 modos, sem visual/pipeline)
+    raw_cycle = state._CONFIG.get("CYCLE_MODES", "transcribe,email,simple,prompt,query")
+    modes = [m.strip() for m in raw_cycle.split(",") if m.strip()]
+    if not modes:
+        modes = ["transcribe", "email", "simple", "prompt", "query"]
     current = state.selected_mode
     try:
         idx = modes.index(current)
@@ -162,6 +172,12 @@ def _cycle_mode() -> None:
     _update_tray_state("idle")
     print(f"[INFO] Modo ciclado: {current} → {next_mode}")
     play_sound("skip")  # bip distinto ao ciclar
+    # Story 4.6.2: overlay mostrando novo modo por 1.5s
+    try:
+        from voice import overlay as _overlay
+        _overlay.show_mode_change(next_mode)
+    except Exception:
+        pass
 
 
 def _hotkey_loop() -> None:
@@ -177,8 +193,8 @@ def _hotkey_loop() -> None:
             record_hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space")
             cycle_hotkey = state._CONFIG.get("CYCLE_HOTKEY", "ctrl+shift+tab")
             history_hotkey = state._CONFIG.get("HISTORY_HOTKEY", "ctrl+shift+h")
-            visual_hotkey = state._CONFIG.get("VISUAL_HOTKEY", "ctrl+alt+shift+v")
-            pipeline_hotkey = state._CONFIG.get("PIPELINE_HOTKEY", "ctrl+alt+shift+p")
+            visual_hotkey = state._CONFIG.get("VISUAL_HOTKEY", "").strip()
+            pipeline_hotkey = state._CONFIG.get("PIPELINE_HOTKEY", "").strip()
             keyboard.add_hotkey(record_hotkey, lambda: on_hotkey(), suppress=False)
             try:
                 keyboard.add_hotkey(cycle_hotkey, lambda: _cycle_mode(), suppress=False)
@@ -189,24 +205,33 @@ def _hotkey_loop() -> None:
                 keyboard.add_hotkey(history_hotkey, lambda: open_history_search(), suppress=False)
             except Exception as e:
                 print(f"[WARN] Falha ao registrar HISTORY_HOTKEY ({history_hotkey}): {e}")
-            # Feature 3: Visual Query hotkey
-            try:
-                from voice.audio import toggle_recording as _tr
-                keyboard.add_hotkey(visual_hotkey, lambda: _tr("visual"), suppress=False)
-            except Exception as e:
-                print(f"[WARN] Falha ao registrar VISUAL_HOTKEY ({visual_hotkey}): {e}")
-            # Feature 5: Pipeline hotkey
-            try:
-                from voice.audio import toggle_recording as _tr
-                keyboard.add_hotkey(pipeline_hotkey, lambda: _tr("pipeline"), suppress=False)
-            except Exception as e:
-                print(f"[WARN] Falha ao registrar PIPELINE_HOTKEY ({pipeline_hotkey}): {e}")
+            # Feature 3: Visual Query hotkey — Story 4.6.5: só registra se não vazio
+            if visual_hotkey:
+                try:
+                    from voice.audio import toggle_recording as _tr
+                    keyboard.add_hotkey(visual_hotkey, lambda: _tr("visual"), suppress=False)
+                except Exception as e:
+                    print(f"[WARN] Falha ao registrar VISUAL_HOTKEY ({visual_hotkey}): {e}")
+            else:
+                print("[INFO] Visual Query: desativado (configure VISUAL_HOTKEY para ativar)")
+            # Feature 5: Pipeline hotkey — Story 4.6.5: só registra se não vazio
+            if pipeline_hotkey:
+                try:
+                    from voice.audio import toggle_recording as _tr
+                    keyboard.add_hotkey(pipeline_hotkey, lambda: _tr("pipeline"), suppress=False)
+                except Exception as e:
+                    print(f"[WARN] Falha ao registrar PIPELINE_HOTKEY ({pipeline_hotkey}): {e}")
+            else:
+                print("[INFO] Pipeline: desativado (configure PIPELINE_HOTKEY para ativar)")
 
             if _restart_count == 0:
                 print(f"[OK]   Hotkey registrado: {record_hotkey}. Aguardando...\n")
                 print(f"[INFO] Ciclar modo : {cycle_hotkey}")
                 print(f"[INFO] Histórico   : {history_hotkey}")
-                print(f"[INFO] Visual Query: {visual_hotkey}  |  Pipeline: {pipeline_hotkey}")
+                if visual_hotkey:
+                    print(f"[INFO] Visual Query: {visual_hotkey}")
+                if pipeline_hotkey:
+                    print(f"[INFO] Pipeline    : {pipeline_hotkey}")
                 print(f"[INFO] Modo atual  : {state.selected_mode}")
             else:
                 print(f"[OK]   Hotkey re-registrado (restart #{_restart_count}). Aguardando...\n")

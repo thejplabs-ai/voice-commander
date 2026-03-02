@@ -12,7 +12,7 @@ def load_config() -> dict:
         "GEMINI_API_KEY": None,
         "GEMINI_MODEL": "gemini-2.5-flash",
         "LICENSE_KEY": None,
-        "WHISPER_MODEL": "small",
+        "WHISPER_MODEL": "tiny",
         "WHISPER_LANGUAGE": "pt",
         "MAX_RECORD_SECONDS": 120,
         "AUDIO_DEVICE_INDEX": None,
@@ -49,8 +49,8 @@ def load_config() -> dict:
         "STT_PROVIDER": "whisper",
         # Gemini correction — "true" (default) | "false" (bypass, retorna raw Whisper)
         "GEMINI_CORRECT": "true",
-        # QW-4: Whisper beam size — 1 (rápido) a 10 (mais preciso) | default: 5
-        "WHISPER_BEAM_SIZE": 5,
+        # QW-4: Whisper beam size — 1 (rápido) a 10 (mais preciso) | default: 1
+        "WHISPER_BEAM_SIZE": 1,
         # QW-4: Delay adicional antes de colar (ms) — ajustar se o paste falha em apps lentos
         "PASTE_DELAY_MS": 50,
         # Story 4.5.3: Hotkey de ciclo de modo
@@ -63,18 +63,20 @@ def load_config() -> dict:
         # Story 4.5.1: Overlay de feedback visual
         "OVERLAY_ENABLED": "true",
         # Feature 1: User Profile
-        "USER_PROFILE_ENABLED": "true",
+        "USER_PROFILE_ENABLED": "false",  # 4.6.5: OFF by default
         # Feature 2: Active Window Context (default OFF — privacidade)
         "WINDOW_CONTEXT_ENABLED": "false",
         # Feature 3: Screenshot + Voice
-        "VISUAL_HOTKEY": "ctrl+alt+shift+v",
+        "VISUAL_HOTKEY": "",  # 4.6.5: vazio = desativado por padrão
         "SCREENSHOT_MAX_WIDTH": 1280,
         # Feature 4: Briefing Matinal
-        "BRIEFING_ENABLED": "true",
+        "BRIEFING_ENABLED": "false",  # 4.6.5: OFF by default
         "BRIEFING_MIN_ENTRIES": 3,
         # Feature 5: Pipeline Composto
-        "PIPELINE_HOTKEY": "ctrl+alt+shift+p",
+        "PIPELINE_HOTKEY": "",  # 4.6.5: vazio = desativado por padrão
         "PIPELINE_CLIPBOARD_MAX_CHARS": 8000,
+        # Story 4.6.4: Ciclo de modos reduzido (visual e pipeline excluídos)
+        "CYCLE_MODES": "transcribe,email,simple,prompt,query",
     }
     if not os.path.exists(env_path):
         return config
@@ -156,7 +158,7 @@ def _save_env(new_values: dict) -> None:
 def _reload_config() -> None:
     """Recarrega _CONFIG e _GEMINI_API_KEY do .env sem restart."""
     old_key = state._GEMINI_API_KEY
-    old_model = state._CONFIG.get("WHISPER_MODEL", "small")
+    old_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
     old_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
     old_provider = state._CONFIG.get("AI_PROVIDER", "gemini")
     old_openai_key = state._CONFIG.get("OPENAI_API_KEY")
@@ -165,7 +167,7 @@ def _reload_config() -> None:
     state._GEMINI_API_KEY = state._CONFIG.get("GEMINI_API_KEY")
     state.selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
 
-    new_model = state._CONFIG.get("WHISPER_MODEL", "small")
+    new_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
     new_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
     if new_model != old_model or new_device != old_device:
         state._whisper_model = None

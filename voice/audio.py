@@ -76,6 +76,17 @@ def play_sound(event: str) -> None:
 
 # ── Whisper model ─────────────────────────────────────────────────────────────
 
+def _log_whisper_startup_info() -> None:
+    """Story 4.6.1: Loga info de modelos Whisper fast/quality no startup."""
+    fast_model = state._CONFIG.get("WHISPER_MODEL_FAST", "tiny")
+    quality_model = state._CONFIG.get("WHISPER_MODEL_QUALITY", "small")
+    beam = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)
+    if fast_model == quality_model:
+        print(f"[INFO] Whisper: {fast_model} (todos os modos) | beam={beam}")
+    else:
+        print(f"[INFO] Whisper: {fast_model} (fast) / {quality_model} (quality) | beam={beam}")
+
+
 def get_whisper_model(mode: str = "transcribe"):
     """Lazy-load Whisper. Seleciona modelo e device com base no modo."""
     device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
@@ -87,11 +98,11 @@ def get_whisper_model(mode: str = "transcribe"):
             device = "cpu"
 
     if mode in _FAST_MODES:
-        model_name = state._CONFIG.get("WHISPER_MODEL_FAST") or state._CONFIG.get("WHISPER_MODEL", "small")
+        model_name = state._CONFIG.get("WHISPER_MODEL_FAST") or state._CONFIG.get("WHISPER_MODEL", "tiny")
     elif mode in _QUALITY_MODES:
-        model_name = state._CONFIG.get("WHISPER_MODEL_QUALITY") or state._CONFIG.get("WHISPER_MODEL", "small")
+        model_name = state._CONFIG.get("WHISPER_MODEL_QUALITY") or state._CONFIG.get("WHISPER_MODEL", "tiny")
     else:
-        model_name = state._CONFIG.get("WHISPER_MODEL", "small")
+        model_name = state._CONFIG.get("WHISPER_MODEL", "tiny")
 
     cache_key = (model_name, device)
     if state._whisper_model is not None and state._whisper_cache_key == cache_key:
@@ -304,11 +315,17 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
     return raw_text
 
 
-def _post_process_and_paste(raw_text: str, mode: str) -> str:
-    """Processa texto via AI, copia para clipboard e cola. Retorna texto processado."""
+def _post_process_and_paste(raw_text: str, mode: str) -> tuple:
+    """Processa texto via AI, copia para clipboard e cola.
+
+    Retorna (texto_processado, gemini_ms, paste_ms).
+    """
     action = _MODE_ACTIONS.get(mode, "Processando")
     print(f"[...]  {action}...")
+
+    t_gemini_start = time.monotonic()
     text = ai_provider.process(mode, raw_text)
+    gemini_ms = int((time.monotonic() - t_gemini_start) * 1000)
 
     copy_to_clipboard(text)
     print(f"[OK]   Texto no clipboard ({len(text)} chars)")
@@ -316,16 +333,26 @@ def _post_process_and_paste(raw_text: str, mode: str) -> str:
     play_sound("success")
     paste_delay_ms = state._CONFIG.get("PASTE_DELAY_MS", 50)
     paste_delay_s = max(0, paste_delay_ms) / 1000.0 + 0.1  # base 100ms + configurável
+
+    t_paste_start = time.monotonic()
     time.sleep(paste_delay_s)
     paste_via_sendinput()
+    paste_ms = int((time.monotonic() - t_paste_start) * 1000)
+
     print("[OK]   Colado!\n")
-    return text
+    return text, gemini_ms, paste_ms
 
 
 def transcribe(frames: list, mode: str = "transcribe") -> None:
     import traceback as _tb
     t_start = time.time()
+    t_mono_start = time.monotonic()
     temp_path = None
+
+    # Story 4.6.6: guardar tempo de gravação (capturado de state)
+    recording_ms = 0
+    if hasattr(state, "record_start_time") and state.record_start_time > 0:
+        recording_ms = int((time.time() - state.record_start_time) * 1000)
 
     try:
         if not frames:
@@ -356,7 +383,10 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             wf.setframerate(SAMPLE_RATE)
             wf.writeframes((audio_data * 32767).astype(np.int16).tobytes())
 
+        # Story 4.6.6: medir fase Whisper
+        t_whisper_start = time.monotonic()
         raw_text = _do_transcription(temp_path, mode, audio_data)
+        whisper_ms = int((time.monotonic() - t_whisper_start) * 1000)
 
         if not raw_text:
             print(
@@ -369,7 +399,7 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             return
 
         print(f"[OK]   {stt_provider}: {raw_text}")
-        text = _post_process_and_paste(raw_text, mode)
+        text, gemini_ms, paste_ms = _post_process_and_paste(raw_text, mode)
 
         # Story 4.5.1: overlay "Pronto" com preview do output
         try:
@@ -383,7 +413,29 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             state._query_cooldown_until = time.time() + state._QUERY_HOTKEY_COOLDOWN
 
         duration = time.time() - t_start
-        _append_history(mode, raw_text, text, duration)
+        total_ms = int((time.monotonic() - t_mono_start) * 1000)
+
+        # Story 4.6.6: montar timing breakdown
+        timing: dict = {
+            "recording": recording_ms,
+            "whisper": whisper_ms,
+            "total": total_ms,
+        }
+        if gemini_ms > 0:
+            timing["gemini"] = gemini_ms
+        if paste_ms > 0:
+            timing["paste"] = paste_ms
+
+        # Story 4.6.6: log de performance
+        parts = [f"Gravação: {recording_ms/1000:.1f}s", f"Whisper: {whisper_ms/1000:.1f}s"]
+        if gemini_ms > 0:
+            parts.append(f"Gemini: {gemini_ms/1000:.1f}s")
+        if paste_ms > 0:
+            parts.append(f"Paste: {paste_ms/1000:.1f}s")
+        parts.append(f"Total: {total_ms/1000:.1f}s")
+        print(f"[PERF] {' | '.join(parts)}")
+
+        _append_history(mode, raw_text, text, duration, timing_ms=timing)
 
     except Exception as e:
         print(f"[ERRO]  {type(e).__name__}: {e}\n")

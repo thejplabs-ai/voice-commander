@@ -44,19 +44,37 @@ def _make_tray_icon(tray_state: str = "idle") -> "Image.Image":
     return img
 
 
+# Story 4.6.2: mapeamento de nomes de modo em português claro
+_MODE_NAMES_PT = {
+    "transcribe":        "Transcrever",
+    "email":             "Email",
+    "simple":            "Prompt Simples",
+    "prompt":            "Prompt COSTAR",
+    "query":             "Perguntar ao Gemini",
+    "visual":            "Screenshot + Voz",
+    "pipeline":          "Pipeline",
+    "clipboard_context": "Contexto do Clipboard",
+    "bullet":            "Bullet Dump",
+    "translate":         "Traduzir",
+    "—":                 "—",
+}
+
+
 def _tray_tooltip() -> str:
     state_labels = {
-        "idle":       "Idle",
+        "idle":       "Aguardando",
         "recording":  "Gravando",
         "processing": "Processando",
     }
-    label = state_labels.get(state._tray_state, state._tray_state)
+    estado = state_labels.get(state._tray_state, state._tray_state)
     # QW-6: exibir duração da gravação durante estado recording
     if state._tray_state == "recording" and state._recording_start_time > 0:
         elapsed = int(time.time() - state._recording_start_time)
         m, s = divmod(elapsed, 60)
-        label = f"Gravando: {m}:{s:02d}"
-    return f"Voice Commander | {label} | Último: {state._tray_last_mode}"
+        estado = f"Gravando: {m}:{s:02d}"
+    # Story 4.6.2: formato "Voice Commander — {modo} | {estado}"
+    mode_name = _MODE_NAMES_PT.get(state.selected_mode, state.selected_mode)
+    return f"Voice Commander — {mode_name} | {estado}"
 
 
 def _start_recording_tooltip_thread() -> None:
@@ -263,10 +281,18 @@ def _start_tray(quit_callback=None) -> None:
             return pystray.MenuItem(label, _action, checked=_checked, radio=True)
 
         mode_items = [_make_mode_item(m, lbl) for m, lbl in _MODES]
+
+        # Story 4.6.2: item de modo ativo no topo do menu (não clicável)
+        def _active_mode_label(item):
+            mode_name = _MODE_NAMES_PT.get(state.selected_mode, state.selected_mode)
+            return f"Modo: {mode_name}"
+
         menu = pystray.Menu(
-            pystray.MenuItem("Modo", pystray.Menu(*mode_items)),
+            pystray.MenuItem(_active_mode_label, None, enabled=False),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("⚙ Configurações", lambda icon, item: _open_settings_from_tray()),
+            pystray.MenuItem("Selecionar Modo", pystray.Menu(*mode_items)),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Configuracoes", lambda icon, item: _open_settings_from_tray()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Status", _tray_show_status),
             pystray.Menu.SEPARATOR,

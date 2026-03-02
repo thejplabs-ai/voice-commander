@@ -23,7 +23,7 @@ def test_defaults_sem_env(tmp_path, monkeypatch):
 
     assert cfg["GEMINI_API_KEY"] is None
     assert cfg["LICENSE_KEY"] is None
-    assert cfg["WHISPER_MODEL"] == "small"
+    assert cfg["WHISPER_MODEL"] == "tiny"  # 4.6.1: default mudou para tiny
     assert cfg["WHISPER_LANGUAGE"] == "pt"
     assert cfg["MAX_RECORD_SECONDS"] == 120
     assert cfg["AUDIO_DEVICE_INDEX"] is None
@@ -111,7 +111,7 @@ def test_novas_variaveis_qw4_defaults(tmp_path, monkeypatch):
 
     cfg = voice.load_config()
 
-    assert cfg["WHISPER_BEAM_SIZE"] == 5
+    assert cfg["WHISPER_BEAM_SIZE"] == 1  # 4.6.1: default mudou para 1
     assert isinstance(cfg["WHISPER_BEAM_SIZE"], int)
     assert cfg["PASTE_DELAY_MS"] == 50
     assert isinstance(cfg["PASTE_DELAY_MS"], int)

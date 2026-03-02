@@ -14,8 +14,10 @@ def run_briefing_check() -> None:
     """Ponto de entrada — chamado em thread daemon após startup.
 
     Verifica condições e exibe janela de briefing se aplicável.
+    Story 4.6.5: retorno imediato se BRIEFING_ENABLED=false (OFF por padrão).
     """
-    if state._CONFIG.get("BRIEFING_ENABLED", "true").lower() != "true":
+    briefing_enabled = state._CONFIG.get("BRIEFING_ENABLED", "false")
+    if str(briefing_enabled).lower() not in ("true", "1", "yes"):
         return
 
     # Aguardar 3s para o app estar totalmente inicializado

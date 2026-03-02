@@ -537,10 +537,25 @@ class OnboardingWindow:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class SettingsWindow:
-    """Settings window com sidebar — Raycast DNA, 600×520px."""
+    """Settings window com sidebar — Raycast DNA, 640×540px."""
 
     MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
     LANGUAGES = ["auto-detect", "pt", "en"]
+
+    # Grid 3x3 — ordem: (mode_id, icon, label, desc)
+    MODES_GRID = [
+        ("transcribe", "✍",  "Transcrever",    "Voz → texto"),
+        ("simple",     "⚙",  "Prompt Simples",  "+contexto"),
+        ("prompt",     "☰",  "COSTAR",          "XML estruturado"),
+        ("query",      "❓", "Perguntar",        "Gemini responde"),
+        ("bullet",     "•",  "Bullet Points",   "Lista hierárquica"),
+        ("email",      "✉",  "Email",           "Profissional"),
+        ("translate",  "⇄",  "Traduzir",        "EN/PT"),
+        ("visual",     "👁", "Visual",          "Screenshot+Voz"),
+        ("pipeline",   "⛓",  "Pipeline",        "Clipboard"),
+    ]
+
+    # Mantida para compatibilidade com OnboardingWindow e step_5
     MODES = [
         ("transcribe", "Transcrever",    "Voz → texto corrigido",        "✍"),
         ("simple",     "Prompt Simples", "Injeta contexto",               "⚙"),
@@ -580,6 +595,7 @@ class SettingsWindow:
         self._wake_status_label = None
         self._sound_entries: dict = {}
         self._mode_card_refs: dict = {}
+        self._speed_var = None
         # Sidebar navigation state
         self._current_section = "status"
         self._content_area = None
@@ -661,12 +677,10 @@ class SettingsWindow:
         self._content_area = ctk.CTkFrame(right, fg_color=theme.BG_ABYSS, corner_radius=0)
         self._content_area.pack(fill="both", expand=True)
 
-        # Build all section frames
+        # Build all section frames (6 nav items — ai e license agora dentro de general)
         self._build_section_status()
         self._build_section_modes()
         self._build_section_general()
-        self._build_section_ai()
-        self._build_section_license()
         self._build_section_advanced()
         self._build_section_profile()
         self._build_section_about()
@@ -680,7 +694,7 @@ class SettingsWindow:
         self._refresh_status()
 
     def _build_sidebar(self, parent):
-        """Logo + version + nav items."""
+        """Logo + version + nav items (6 items)."""
         logo = ctk.CTkFrame(parent, fg_color="transparent")
         logo.pack(fill="x", padx=16, pady=(20, 4))
         ctk.CTkLabel(logo, text="Voice Commander",
@@ -693,14 +707,12 @@ class SettingsWindow:
             fill="x", padx=12, pady=(12, 8))
 
         nav_items = [
-            ("status",    "● Status"),
-            ("modes",     "🎤 Modo Ativo"),
-            ("general",   "⚙ Geral"),
-            ("ai",        "🤖 Provedor IA"),
-            ("license",   "🔑 Licença"),
-            ("advanced",  "⚒ Avançado"),
-            ("profile",   "👤 Perfil"),
-            ("about",     "ℹ Sobre"),
+            ("status",   "● Status"),
+            ("modes",    "🎤 Modo Ativo"),
+            ("general",  "⚙ Geral"),
+            ("advanced", "⚒ Avançado"),
+            ("profile",  "👤 Perfil"),
+            ("about",    "ℹ Sobre"),
         ]
         for section_id, label in nav_items:
             btn = ctk.CTkButton(
@@ -733,6 +745,23 @@ class SettingsWindow:
         if section_id in self._section_frames:
             self._section_frames[section_id].pack(fill="both", expand=True)
 
+    # ── Helper ─────────────────────────────────────────────────────────────
+
+    def _get_mode_display_name(self, mode_id: str) -> str:
+        names = {
+            "transcribe":       "Transcrever",
+            "email":            "Email",
+            "simple":           "Prompt Simples",
+            "prompt":           "Prompt COSTAR",
+            "query":            "Perguntar ao Gemini",
+            "visual":           "Screenshot + Voz",
+            "pipeline":         "Pipeline",
+            "clipboard_context": "Contexto do Clipboard",
+            "bullet":           "Bullet Points",
+            "translate":        "Traduzir",
+        }
+        return names.get(mode_id, mode_id)
+
     # ── Section builders ───────────────────────────────────────────────────
 
     def _build_section_status(self):
@@ -742,9 +771,70 @@ class SettingsWindow:
             scrollbar_button_hover_color=theme.BORDER_ACTIVE)
         self._section_frames["status"] = f
 
+        # ── Resumo Rápido (acima do status card) ──────────────────────────
+        summary_card = ctk.CTkFrame(
+            f, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
+            border_width=1, border_color=theme.BORDER_DEFAULT)
+        summary_card.pack(fill="x", padx=20, pady=(16, 8))
+
+        ctk.CTkLabel(
+            summary_card, text="RESUMO RÁPIDO",
+            font=theme.FONT_OVERLINE(), text_color=theme.TEXT_MUTED,
+        ).pack(anchor="w", padx=16, pady=(12, 8))
+
+        # Row: Modo ativo
+        mode_row = ctk.CTkFrame(summary_card, fg_color="transparent")
+        mode_row.pack(fill="x", padx=16, pady=(0, 6))
+        ctk.CTkLabel(
+            mode_row, text="Modo ativo", width=100,
+            font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(side="left")
+        mode_badge_frame = ctk.CTkFrame(
+            mode_row, fg_color=theme.BG_NIGHT, corner_radius=theme.CORNER_SM,
+            border_width=1, border_color=theme.BORDER_ACTIVE)
+        mode_badge_frame.pack(side="left")
+        ctk.CTkLabel(
+            mode_badge_frame,
+            text=self._get_mode_display_name(state.selected_mode),
+            font=theme.FONT_BODY_BOLD(), text_color=theme.TEXT_PRIMARY,
+        ).pack(padx=8, pady=3)
+
+        # Row: Whisper
+        whisper_row = ctk.CTkFrame(summary_card, fg_color="transparent")
+        whisper_row.pack(fill="x", padx=16, pady=(0, 6))
+        ctk.CTkLabel(
+            whisper_row, text="Whisper", width=100,
+            font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(side="left")
+        whisper_model = state._CONFIG.get("WHISPER_MODEL", "small")
+        fast_model = state._CONFIG.get("WHISPER_MODEL_FAST", "tiny")
+        speed_label = "Rápido" if whisper_model == fast_model else "Qualidade"
+        ctk.CTkLabel(
+            whisper_row, text=f"{whisper_model} ({speed_label})",
+            font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY,
+        ).pack(side="left")
+
+        # Row: Hotkey
+        hotkey_row = ctk.CTkFrame(summary_card, fg_color="transparent")
+        hotkey_row.pack(fill="x", padx=16, pady=(0, 12))
+        ctk.CTkLabel(
+            hotkey_row, text="Hotkey", width=100,
+            font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED, anchor="w",
+        ).pack(side="left")
+        hotkey_val = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space").title()
+        hk_badge = ctk.CTkFrame(
+            hotkey_row, fg_color=theme.BG_ELEVATED, corner_radius=theme.CORNER_SM,
+            border_width=1, border_color=theme.BORDER_ACTIVE)
+        hk_badge.pack(side="left")
+        ctk.CTkLabel(
+            hk_badge, text=hotkey_val,
+            font=theme.FONT_MONO_SM(), text_color=theme.TEXT_PRIMARY,
+        ).pack(padx=8, pady=3)
+
+        # ── Status card (existente) ────────────────────────────────────────
         card = ctk.CTkFrame(f, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
                             border_width=1, border_color=theme.BORDER_DEFAULT)
-        card.pack(fill="x", padx=20, pady=(16, 8))
+        card.pack(fill="x", padx=20, pady=(0, 8))
 
         row1 = ctk.CTkFrame(card, fg_color="transparent")
         row1.pack(fill="x", padx=20, pady=(16, 4))
@@ -773,48 +863,76 @@ class SettingsWindow:
             scrollbar_button_hover_color=theme.BORDER_ACTIVE)
         self._section_frames["modes"] = f
 
-        hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space").title()
+        # Header
         hdr = ctk.CTkFrame(f, fg_color="transparent")
         hdr.pack(fill="x", padx=20, pady=(16, 8))
         ctk.CTkLabel(hdr, text="MODO ATIVO",
                      font=theme.FONT_OVERLINE(), text_color=theme.TEXT_DISABLED).pack(anchor="w")
-        ctk.CTkLabel(hdr, text=f"Clique para selecionar · pressione {hotkey} para gravar",
+        ctk.CTkLabel(hdr, text="Clique para selecionar",
                      font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED).pack(anchor="w")
 
+        # Grid 3x3
+        grid = ctk.CTkFrame(f, fg_color="transparent")
+        grid.pack(fill="x", padx=20, pady=(0, 8))
+        for i in range(3):
+            grid.columnconfigure(i, weight=1)
+
         self._mode_card_refs = {}
-        for mode_id, label, desc, icon in self.MODES:
+        for idx, (mode_id, icon, label, desc) in enumerate(self.MODES_GRID):
+            row_idx, col_idx = divmod(idx, 3)
             is_active = (state.selected_mode == mode_id)
             card = ctk.CTkFrame(
-                f, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_MD,
+                grid,
+                fg_color=theme.BG_NIGHT if is_active else theme.BG_DEEP,
+                corner_radius=theme.CORNER_MD,
                 border_width=2 if is_active else 1,
                 border_color=theme.BORDER_ACTIVE if is_active else theme.BORDER_DEFAULT,
                 cursor="hand2",
             )
-            card.pack(fill="x", padx=20, pady=(4, 0))
-            row = ctk.CTkFrame(card, fg_color="transparent")
-            row.pack(fill="x", padx=12, pady=10)
-            ctk.CTkLabel(row, text=icon, font=theme.FONT_BODY(),
-                         text_color=theme.TEXT_SECONDARY,
-                         width=18).pack(side="left")
-            col = ctk.CTkFrame(row, fg_color="transparent")
-            col.pack(side="left", padx=(8, 0), fill="x", expand=True)
-            ctk.CTkLabel(col, text=label, font=theme.FONT_BODY_BOLD(),
-                         text_color=theme.TEXT_PRIMARY, anchor="w").pack(anchor="w")
-            ctk.CTkLabel(col, text=desc, font=theme.FONT_CAPTION(),
-                         text_color=theme.TEXT_MUTED, anchor="w").pack(anchor="w")
-            # Bind click + hover on all sub-widgets
-            for w in (card, row, col):
+            card.grid(row=row_idx, column=col_idx, padx=3, pady=3, sticky="nsew")
+            ctk.CTkLabel(card, text=icon, font=theme.FONT_HEADING(),
+                         text_color=theme.TEXT_SECONDARY).pack(pady=(12, 4))
+            ctk.CTkLabel(card, text=label, font=theme.FONT_BODY_BOLD(),
+                         text_color=theme.TEXT_PRIMARY).pack(pady=(0, 2))
+            ctk.CTkLabel(card, text=desc, font=theme.FONT_CAPTION(),
+                         text_color=theme.TEXT_MUTED, wraplength=110,
+                         justify="center").pack(pady=(0, 12))
+            # Bind click on card and all children
+            for w in [card] + list(card.winfo_children()):
                 w.bind("<Button-1>", lambda e, m=mode_id: self._select_mode(m))
-                w.bind("<Enter>", lambda e, c=card, m=mode_id: self._on_mode_hover(c, m, True))
-                w.bind("<Leave>", lambda e, c=card, m=mode_id: self._on_mode_hover(c, m, False))
+            card.bind("<Enter>", lambda e, c=card, m=mode_id: self._on_mode_card_hover(c, m, True))
+            card.bind("<Leave>", lambda e, c=card, m=mode_id: self._on_mode_card_hover(c, m, False))
             self._mode_card_refs[mode_id] = card
-        ctk.CTkFrame(f, height=8, fg_color="transparent").pack()
+
+        # Card de hotkeys
+        hk_card = ctk.CTkFrame(f, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
+                                border_width=1, border_color=theme.BORDER_DEFAULT)
+        hk_card.pack(fill="x", padx=20, pady=(8, 16))
+        ctk.CTkLabel(hk_card, text="HOTKEYS",
+                     font=theme.FONT_OVERLINE(), text_color=theme.TEXT_MUTED).pack(
+            anchor="w", padx=16, pady=(12, 8))
+        for key, desc in [
+            (state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space"), "Gravar"),
+            (state._CONFIG.get("CYCLE_HOTKEY", "ctrl+shift+tab"), "Alternar modo"),
+            (state._CONFIG.get("HISTORY_HOTKEY", "ctrl+shift+h"), "Buscar histórico"),
+        ]:
+            hk_row = ctk.CTkFrame(hk_card, fg_color="transparent")
+            hk_row.pack(fill="x", padx=16, pady=(0, 6))
+            badge_frame = ctk.CTkFrame(
+                hk_row, fg_color=theme.BG_ELEVATED, corner_radius=theme.CORNER_SM,
+                border_width=1, border_color=theme.BORDER_ACTIVE)
+            badge_frame.pack(side="left", padx=(0, 8))
+            ctk.CTkLabel(badge_frame, text=key.title(),
+                         font=theme.FONT_MONO_SM(), text_color=theme.TEXT_PRIMARY).pack(padx=8, pady=3)
+            ctk.CTkLabel(hk_row, text=desc,
+                         font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(side="left")
+        ctk.CTkFrame(hk_card, fg_color="transparent", height=4).pack()
 
     def _select_mode(self, mode: str) -> None:
         state.selected_mode = mode
         try:
-            from voice.config import _save_env
-            _save_env({"SELECTED_MODE": mode})
+            from voice.config import _save_env as _sv
+            _sv({"SELECTED_MODE": mode})
         except Exception as e:
             print(f"[WARN] Falha ao salvar SELECTED_MODE: {e}")
         self._refresh_mode_cards()
@@ -823,23 +941,29 @@ class SettingsWindow:
         for m, card in self._mode_card_refs.items():
             is_active = (state.selected_mode == m)
             card.configure(
+                fg_color=theme.BG_NIGHT if is_active else theme.BG_DEEP,
                 border_width=2 if is_active else 1,
                 border_color=theme.BORDER_ACTIVE if is_active else theme.BORDER_DEFAULT,
             )
 
-    def _on_mode_hover(self, card, mode_id: str, entering: bool) -> None:
-        if state.selected_mode == mode_id:
-            return  # Active card keeps its style
+    def _on_mode_card_hover(self, card, mode_id: str, entering: bool) -> None:
+        is_active = (state.selected_mode == mode_id)
+        if is_active:
+            return
         if entering:
             card.configure(fg_color=theme.BG_ELEVATED, border_color=theme.BORDER_HOVER)
         else:
             card.configure(fg_color=theme.BG_DEEP, border_color=theme.BORDER_DEFAULT)
 
+    # Alias mantido para compatibilidade interna (usado em _build_section_modes anterior)
+    def _on_mode_hover(self, card, mode_id: str, entering: bool) -> None:
+        self._on_mode_card_hover(card, mode_id, entering)
+
     def _build_hotkey_section(self, parent) -> None:
         """Seção de configuração do hotkey de gravação."""
         hkc = ctk.CTkFrame(parent, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
                             border_width=1, border_color=theme.BORDER_DEFAULT)
-        hkc.pack(fill="x", padx=20, pady=(16, 8))
+        hkc.pack(fill="x", padx=20, pady=(0, 8))
         ctk.CTkLabel(hkc, text="HOTKEY",
                      font=theme.FONT_OVERLINE(), text_color=theme.TEXT_MUTED).pack(
             anchor="w", padx=16, pady=(12, 4))
@@ -854,7 +978,7 @@ class SettingsWindow:
         self._hotkey_entry.pack(fill="x", padx=16, pady=(0, 12))
 
     def _build_model_section(self, parent) -> None:
-        """Seção de configuração de modelo Whisper e idioma."""
+        """Seção de configuração de modelo Whisper e idioma (dropdown completo — Avançado)."""
         mc = ctk.CTkFrame(parent, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
                           border_width=1, border_color=theme.BORDER_DEFAULT)
         mc.pack(fill="x", padx=20, pady=(0, 8))
@@ -1083,10 +1207,10 @@ class SettingsWindow:
 
         def _install():
             import subprocess
-            import sys
+            import sys as _sys
             try:
                 subprocess.check_call(
-                    [sys.executable, "-m", "pip", "install", "openwakeword", "onnxruntime"],
+                    [_sys.executable, "-m", "pip", "install", "openwakeword", "onnxruntime"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
@@ -1149,45 +1273,82 @@ class SettingsWindow:
         ctk.CTkFrame(sc, height=4, fg_color="transparent").pack()
 
     def _build_section_general(self):
+        """Seção Geral: Whisper SegmentedButton + Provedor IA + Licença."""
         f = ctk.CTkScrollableFrame(
             self._content_area, fg_color="transparent",
             scrollbar_button_color=theme.BORDER_HOVER,
             scrollbar_button_hover_color=theme.BORDER_ACTIVE)
         self._section_frames["general"] = f
-        self._build_hotkey_section(f)
-        self._build_model_section(f)
 
-    def _build_section_ai(self):
-        f = ctk.CTkScrollableFrame(
-            self._content_area, fg_color="transparent",
-            scrollbar_button_color=theme.BORDER_HOVER,
-            scrollbar_button_hover_color=theme.BORDER_ACTIVE)
-        self._section_frames["ai"] = f
+        # ── Whisper card com SegmentedButton ──────────────────────────────
+        whisper_card = ctk.CTkFrame(f, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
+                                    border_width=1, border_color=theme.BORDER_DEFAULT)
+        whisper_card.pack(fill="x", padx=20, pady=(16, 8))
+        ctk.CTkLabel(whisper_card, text="WHISPER",
+                     font=theme.FONT_OVERLINE(), text_color=theme.TEXT_MUTED).pack(
+            anchor="w", padx=16, pady=(12, 4))
+        ctk.CTkLabel(whisper_card, text="Velocidade de transcrição",
+                     font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(
+            anchor="w", padx=16, pady=(0, 8))
+
+        fast_model = state._CONFIG.get("WHISPER_MODEL_FAST", "tiny")
+        quality_model = state._CONFIG.get("WHISPER_MODEL_QUALITY", "small")
+        cur_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
+        initial_speed = "Qualidade" if cur_model == quality_model else "Rápido"
+
+        self._speed_var = ctk.StringVar(value=initial_speed)
+        speed_seg = ctk.CTkSegmentedButton(
+            whisper_card,
+            values=["Rápido", "Qualidade"],
+            variable=self._speed_var,
+            fg_color=theme.BG_ABYSS,
+            selected_color=theme.PURPLE,
+            selected_hover_color=theme.PURPLE_HOVER,
+            unselected_color=theme.BG_DEEP,
+            unselected_hover_color=theme.BG_ELEVATED,
+            text_color=theme.TEXT_PRIMARY,
+            corner_radius=theme.CORNER_MD,
+            height=36,
+            font=theme.FONT_BODY_BOLD(),
+            command=self._on_speed_change,
+        )
+        speed_seg.pack(fill="x", padx=16, pady=(0, 8))
+
+        ctk.CTkLabel(
+            whisper_card,
+            text=f"Rápido = {fast_model} | Qualidade = {quality_model}",
+            font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED,
+        ).pack(anchor="w", padx=16, pady=(0, 12))
+
+        # ── Provedor IA ───────────────────────────────────────────────────
         self._build_ai_provider_section(f)
 
-    def _build_section_license(self):
-        f = ctk.CTkScrollableFrame(
-            self._content_area, fg_color="transparent",
-            scrollbar_button_color=theme.BORDER_HOVER,
-            scrollbar_button_hover_color=theme.BORDER_ACTIVE)
-        self._section_frames["license"] = f
+        # ── Licença ───────────────────────────────────────────────────────
         self._build_license_section(f)
 
+    def _on_speed_change(self, value: str) -> None:
+        """Atualiza _model_var (dropdown completo em Avançado) ao mudar velocidade."""
+        fast_model = state._CONFIG.get("WHISPER_MODEL_FAST", "tiny")
+        quality_model = state._CONFIG.get("WHISPER_MODEL_QUALITY", "small")
+        if value == "Rápido":
+            model = fast_model
+        else:
+            model = quality_model
+        if self._model_var is not None:
+            self._model_var.set(model)
+
     def _build_section_advanced(self):
+        """Seção Avançado: hotkey + modelo completo + wakeword + sons."""
         f = ctk.CTkScrollableFrame(
             self._content_area, fg_color="transparent",
             scrollbar_button_color=theme.BORDER_HOVER,
             scrollbar_button_hover_color=theme.BORDER_ACTIVE)
         self._section_frames["advanced"] = f
+
+        self._build_hotkey_section(f)
+        self._build_model_section(f)
         self._build_wakeword_section(f)
         self._build_sounds_section(f)
-
-    def _build_section_config(self):
-        """Wrapper de compatibilidade — redireciona para os 4 builders granulares."""
-        self._build_section_general()
-        self._build_section_ai()
-        self._build_section_license()
-        self._build_section_advanced()
 
     def _build_section_profile(self):
         """Feature 1: User Profile — lista de fatos injetados em todas as chamadas Gemini."""
@@ -1381,6 +1542,18 @@ class SettingsWindow:
             suffix = "  Renovar → voice.jplabs.ai" if expired else ""
             self._license_status_label.configure(text=f"✗ {msg}{suffix}", text_color=color)
 
+    def _on_save_success(self):
+        """Feedback visual: botão Salvar fica verde por 1.5s."""
+        self._save_btn.configure(
+            fg_color=theme.SUCCESS, hover_color="#00CC6E",
+            text_color=theme.BG_ABYSS, text="Salvo ✓")
+        self._root.after(1500, self._reset_save_btn)
+
+    def _reset_save_btn(self):
+        self._save_btn.configure(
+            fg_color=theme.PURPLE, hover_color=theme.PURPLE_HOVER,
+            text_color=theme.TEXT_PRIMARY, text="Salvar")
+
     def _save(self):
         model_val = self._model_var.get() if self._model_var else "small"
         lang_val = self._lang_var.get() if self._lang_var else "auto-detect"
@@ -1421,11 +1594,7 @@ class SettingsWindow:
         self._refresh_license_status()
         if self._mode_card_refs:
             self._refresh_mode_cards()
-        self._save_btn.configure(text="Salvo!", fg_color=theme.SUCCESS,
-                                 hover_color="#00CC6E", text_color=theme.BG_ABYSS)
-        self._root.after(1500, lambda: self._save_btn.configure(
-            text="Salvar", fg_color=theme.PURPLE, hover_color=theme.PURPLE_HOVER,
-            text_color=theme.TEXT_PRIMARY))
+        self._on_save_success()
 
     def _refresh_status(self):
         if self._root is None:

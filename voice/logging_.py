@@ -69,10 +69,12 @@ def _append_history(
     processed_text: str | None,
     duration_seconds: float,
     error: bool = False,
+    timing_ms: dict | None = None,
 ) -> None:
     """
     Acrescenta uma entrada ao history.jsonl (append-only).
     Faz trim automático se o número de entradas ultrapassar HISTORY_MAX_ENTRIES.
+    timing_ms: dict opcional com breakdown de tempo por fase (recording, whisper, gemini, paste, total).
     """
     max_entries = state._CONFIG.get("HISTORY_MAX_ENTRIES", 500)
 
@@ -87,6 +89,8 @@ def _append_history(
     if error:
         entry["error"] = True
         entry["processed_text"] = None
+    if timing_ms:
+        entry["timing_ms"] = timing_ms
 
     try:
         # Append da nova entrada

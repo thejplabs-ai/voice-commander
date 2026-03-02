@@ -11,10 +11,14 @@ import tkinter as tk
 from voice import state
 
 # Estados do overlay
-STATE_RECORDING  = "recording"
-STATE_PROCESSING = "processing"
-STATE_DONE       = "done"
-STATE_HIDE       = "hide"
+STATE_RECORDING    = "recording"
+STATE_PROCESSING   = "processing"
+STATE_DONE         = "done"
+STATE_MODE_CHANGE  = "mode_change"  # Story 4.6.2: ciclo de modo
+STATE_HIDE         = "hide"
+
+# Story 4.6.2: duração do overlay de ciclo de modo (ms)
+_MODE_CHANGE_DISMISS_MS = 1500
 
 # Cores inline (sem importar theme para evitar dep de CTk)
 _COLORS = {
@@ -39,6 +43,20 @@ _MODE_LABELS = {
     "translate":  "Traduzindo",
     "visual":     "Visual Query",
     "pipeline":   "Pipeline",
+}
+
+# Story 4.6.2: nomes de modo em português claro para ciclo
+_MODE_NAMES_PT = {
+    "transcribe":        "Transcrever",
+    "email":             "Email",
+    "simple":            "Prompt Simples",
+    "prompt":            "Prompt COSTAR",
+    "query":             "Perguntar ao Gemini",
+    "visual":            "Screenshot + Voz",
+    "pipeline":          "Pipeline",
+    "clipboard_context": "Contexto do Clipboard",
+    "bullet":            "Bullet Dump",
+    "translate":         "Traduzir",
 }
 
 _OVERLAY_W = 320
@@ -209,6 +227,12 @@ class _OverlayThread(threading.Thread):
             info = text[:60] + ("..." if len(text) > 60 else "") if text else ""
             # Auto-dismiss após 2s
             self._dismiss_id = self._root.after(_DONE_DISMISS_MS, self._hide)
+        elif overlay_state == STATE_MODE_CHANGE:
+            # Story 4.6.2: fundo escuro, seta + nome do modo em destaque, 1.5s
+            color = _COLORS["purple"]
+            label = f"→ {text}" if text else "→ Modo"
+            info = ""
+            self._dismiss_id = self._root.after(_MODE_CHANGE_DISMISS_MS, self._hide)
         else:
             self._hide()
             return
@@ -324,6 +348,15 @@ def show_done(output_text: str = "") -> None:
     if t is None:
         return
     t.send("show", state=STATE_DONE, text=output_text)
+
+
+def show_mode_change(mode: str) -> None:
+    """Story 4.6.2: Exibe overlay com nome do novo modo por 1.5s ao ciclar."""
+    t = _get_thread()
+    if t is None:
+        return
+    mode_name = _MODE_NAMES_PT.get(mode, mode)
+    t.send("show", state=STATE_MODE_CHANGE, text=mode_name)
 
 
 def hide() -> None:

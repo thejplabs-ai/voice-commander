@@ -393,7 +393,7 @@ class TestTranscribe:
              patch("voice.audio.wave"), \
              patch("voice.audio.tempfile") as mock_tmp, \
              patch.object(audio, "_do_transcription", return_value="test query result"), \
-             patch.object(audio, "_post_process_and_paste", return_value="processed"), \
+             patch.object(audio, "_post_process_and_paste", return_value=("processed", 1200, 100)), \
              patch.object(audio, "_update_tray_state"), \
              patch("voice.logging_._append_history"):
             mock_tmp.NamedTemporaryFile.return_value.__enter__ = MagicMock(return_value=MagicMock(name="test.wav"))
@@ -419,7 +419,7 @@ class TestTranscribe:
              patch("voice.audio.wave"), \
              patch("voice.audio.tempfile") as mock_tmp, \
              patch.object(audio, "_do_transcription", return_value="transcribed text"), \
-             patch.object(audio, "_post_process_and_paste", return_value="processed"), \
+             patch.object(audio, "_post_process_and_paste", return_value=("processed", 1200, 100)), \
              patch.object(audio, "_update_tray_state"), \
              patch("voice.logging_._append_history"):
             mock_tmp.NamedTemporaryFile.return_value.__enter__ = MagicMock(return_value=MagicMock(name="test.wav"))
