@@ -62,6 +62,19 @@ def load_config() -> dict:
         "HISTORY_HOTKEY": "ctrl+shift+h",
         # Story 4.5.1: Overlay de feedback visual
         "OVERLAY_ENABLED": "true",
+        # Feature 1: User Profile
+        "USER_PROFILE_ENABLED": "true",
+        # Feature 2: Active Window Context (default OFF — privacidade)
+        "WINDOW_CONTEXT_ENABLED": "false",
+        # Feature 3: Screenshot + Voice
+        "VISUAL_HOTKEY": "ctrl+alt+shift+v",
+        "SCREENSHOT_MAX_WIDTH": 1280,
+        # Feature 4: Briefing Matinal
+        "BRIEFING_ENABLED": "true",
+        "BRIEFING_MIN_ENTRIES": 3,
+        # Feature 5: Pipeline Composto
+        "PIPELINE_HOTKEY": "ctrl+alt+shift+p",
+        "PIPELINE_CLIPBOARD_MAX_CHARS": 8000,
     }
     if not os.path.exists(env_path):
         return config
@@ -75,7 +88,8 @@ def load_config() -> dict:
             val = val.strip().strip('"').strip("'")
             if key in config and val:
                 if key in ("MAX_RECORD_SECONDS", "HISTORY_MAX_ENTRIES", "LOG_KEEP_SESSIONS",
-                           "WHISPER_BEAM_SIZE", "PASTE_DELAY_MS", "CLIPBOARD_CONTEXT_MAX_CHARS"):
+                           "WHISPER_BEAM_SIZE", "PASTE_DELAY_MS", "CLIPBOARD_CONTEXT_MAX_CHARS",
+                           "SCREENSHOT_MAX_WIDTH", "BRIEFING_MIN_ENTRIES", "PIPELINE_CLIPBOARD_MAX_CHARS"):
                     try:
                         config[key] = int(val)
                     except ValueError:

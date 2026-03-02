@@ -73,7 +73,7 @@ def test_gemini_provider_dispatch(monkeypatch):
 
 def test_openai_provider_dispatch(monkeypatch):
     """When AI_PROVIDER=openai, routes to OpenAI functions."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {"AI_PROVIDER": "openai"})
+    monkeypatch.setattr(voice.state, "_CONFIG", {"AI_PROVIDER": "openai", "OPENAI_API_KEY": "test-key"})
     mock = _mock_openai(monkeypatch)
     mock.correct_with_openai.return_value = "openai_result"
 
@@ -191,7 +191,7 @@ def test_query_clipboard_desativado_usa_query_normal(monkeypatch):
 ])
 def test_todos_modos_openai(monkeypatch, mode, openai_fn):
     """Each of the 7 modes dispatches to the correct OpenAI function."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {"AI_PROVIDER": "openai"})
+    monkeypatch.setattr(voice.state, "_CONFIG", {"AI_PROVIDER": "openai", "OPENAI_API_KEY": "test-key"})
     mock = _mock_openai(monkeypatch)
     getattr(mock, openai_fn).return_value = f"{mode}_output"
 

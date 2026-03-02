@@ -37,6 +37,8 @@ _MODE_LABELS = {
     "bullet":     "Bullet Dump",
     "email":      "Email Draft",
     "translate":  "Traduzindo",
+    "visual":     "Visual Query",
+    "pipeline":   "Pipeline",
 }
 
 _OVERLAY_W = 320
@@ -229,14 +231,15 @@ class _OverlayThread(threading.Thread):
 
     def _hide(self) -> None:
         self._current_state = STATE_HIDE
+        if not self._root:
+            return
         if self._dot_anim_id is not None:
             self._root.after_cancel(self._dot_anim_id)
             self._dot_anim_id = None
         if self._dismiss_id is not None:
             self._root.after_cancel(self._dismiss_id)
             self._dismiss_id = None
-        if self._root:
-            self._root.withdraw()
+        self._root.withdraw()
 
     def _start_dot_anim(self) -> None:
         """Pulse suave de 3 frames durante processamento."""
@@ -278,18 +281,31 @@ def _get_thread() -> _OverlayThread | None:
             t = _OverlayThread()
             t.start()
             t._ready.wait(timeout=3)
+            if not t._ready.is_set():
+                print("[WARN] Overlay thread não inicializou — overlay desativado")
+                return None
             _thread = t
     return _thread
 
 
-def show_recording(clipboard_chars: int = 0) -> None:
-    """Exibe overlay no estado 'Gravando'. clipboard_chars > 0 indica contexto carregado."""
+def show_recording(clipboard_chars: int = 0, window_hint: str = "", screenshot_taken: bool = False) -> None:
+    """Exibe overlay no estado 'Gravando'.
+
+    clipboard_chars > 0 indica contexto carregado.
+    window_hint: nome do processo da janela ativa (Feature 2).
+    screenshot_taken: True se screenshot foi capturado (Feature 3).
+    """
     t = _get_thread()
     if t is None:
         return
-    info = ""
-    if clipboard_chars > 0:
-        info = f"Clipboard carregado ({clipboard_chars} chars)"
+    parts = []
+    if screenshot_taken:
+        parts.append("Screenshot capturado")
+    elif clipboard_chars > 0:
+        parts.append(f"Clipboard carregado ({clipboard_chars} chars)")
+    if window_hint:
+        parts.append(window_hint)
+    info = " · ".join(parts)
     t.send("show", state=STATE_RECORDING, text=info)
 
 

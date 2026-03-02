@@ -61,3 +61,12 @@ _tray_tooltip_thread = None
 
 # Story 4.5.4: clipboard context capturado no início da gravação
 _clipboard_context: str = ""
+
+# Feature 1: User Profile — fatos sobre o usuário injetados em todas as chamadas Gemini
+_user_profile: dict = {}
+
+# Feature 2: Active Window Context — título+processo da janela ativa no início da gravação
+_window_context: str = ""
+
+# Feature 3: Screenshot — bytes PNG capturados no modo visual
+_screenshot_bytes: bytes | None = None
