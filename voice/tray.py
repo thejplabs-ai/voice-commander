@@ -6,6 +6,7 @@ import time
 
 from voice import state
 from voice import theme
+from voice.modes import MODE_NAMES_PT as _MODE_NAMES_PT
 
 # Tentar importar pystray e Pillow — fallback silencioso se não disponíveis
 try:
@@ -43,21 +44,6 @@ def _make_tray_icon(tray_state: str = "idle") -> "Image.Image":
     draw.rounded_rectangle([39, 22, 45, 42], radius=3, fill=bar)  # medium
     return img
 
-
-# Story 4.6.2: mapeamento de nomes de modo em português claro
-_MODE_NAMES_PT = {
-    "transcribe":        "Transcrever",
-    "email":             "Email",
-    "simple":            "Prompt Simples",
-    "prompt":            "Prompt COSTAR",
-    "query":             "Perguntar ao Gemini",
-    "visual":            "Screenshot + Voz",
-    "pipeline":          "Pipeline",
-    "clipboard_context": "Contexto do Clipboard",
-    "bullet":            "Bullet Dump",
-    "translate":         "Traduzir",
-    "—":                 "—",
-}
 
 
 def _tray_tooltip() -> str:

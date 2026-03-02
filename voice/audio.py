@@ -76,17 +76,6 @@ def play_sound(event: str) -> None:
 
 # ── Whisper model ─────────────────────────────────────────────────────────────
 
-def _log_whisper_startup_info() -> None:
-    """Story 4.6.1: Loga info de modelos Whisper fast/quality no startup."""
-    fast_model = state._CONFIG.get("WHISPER_MODEL_FAST", "tiny")
-    quality_model = state._CONFIG.get("WHISPER_MODEL_QUALITY", "small")
-    beam = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)
-    if fast_model == quality_model:
-        print(f"[INFO] Whisper: {fast_model} (todos os modos) | beam={beam}")
-    else:
-        print(f"[INFO] Whisper: {fast_model} (fast) / {quality_model} (quality) | beam={beam}")
-
-
 def get_whisper_model(mode: str = "transcribe"):
     """Lazy-load Whisper. Seleciona modelo e device com base no modo."""
     device = state._CONFIG.get("WHISPER_DEVICE", "cpu")

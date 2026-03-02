@@ -639,6 +639,10 @@ class SettingsWindow:
         ctk.set_default_color_theme("dark-blue")
 
         self._root = ctk.CTk()
+        # W-04: inicializar _model_var aqui (após CTk root) para que _on_speed_change
+        # na seção Geral funcione mesmo sem visitar a seção Avançado primeiro.
+        cur_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
+        self._model_var = ctk.StringVar(value=cur_model)
         self._root.title("Voice Commander — Configurações")
         self._root.attributes("-topmost", True)
         self._root.configure(fg_color=theme.BG_ABYSS)
@@ -989,8 +993,10 @@ class SettingsWindow:
         ctk.CTkLabel(mc, text="Modelo Whisper",
                      font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(
             anchor="w", padx=16, pady=(0, 2))
-        cur_model = state._CONFIG.get("WHISPER_MODEL", "small")
-        self._model_var = ctk.StringVar(value=cur_model if cur_model in self.MODELS else "small")
+        # W-04: _model_var já inicializado em _build() — apenas ajustar valor se necessário
+        cur_model = self._model_var.get()
+        if cur_model not in self.MODELS:
+            self._model_var.set("small")
         ctk.CTkOptionMenu(mc, variable=self._model_var, values=self.MODELS,
                           height=theme.INPUT_HEIGHT, corner_radius=theme.CORNER_MD,
                           fg_color=theme.BG_ABYSS, button_color=theme.PURPLE,
@@ -1334,8 +1340,7 @@ class SettingsWindow:
             model = fast_model
         else:
             model = quality_model
-        if self._model_var is not None:
-            self._model_var.set(model)
+        self._model_var.set(model)
 
     def _build_section_advanced(self):
         """Seção Avançado: hotkey + modelo completo + wakeword + sons."""

@@ -9,6 +9,7 @@ import threading
 import tkinter as tk
 
 from voice import state
+from voice.modes import MODE_LABELS as _MODE_LABELS, MODE_NAMES_PT as _MODE_NAMES_PT
 
 # Estados do overlay
 STATE_RECORDING    = "recording"
@@ -33,31 +34,6 @@ _COLORS = {
     "purple":      "#6B2FF8",   # theme.PURPLE
 }
 
-_MODE_LABELS = {
-    "transcribe": "Transcrevendo",
-    "simple":     "Prompt Simples",
-    "prompt":     "Prompt COSTAR",
-    "query":      "Consultando IA",
-    "bullet":     "Bullet Dump",
-    "email":      "Email Draft",
-    "translate":  "Traduzindo",
-    "visual":     "Visual Query",
-    "pipeline":   "Pipeline",
-}
-
-# Story 4.6.2: nomes de modo em português claro para ciclo
-_MODE_NAMES_PT = {
-    "transcribe":        "Transcrever",
-    "email":             "Email",
-    "simple":            "Prompt Simples",
-    "prompt":            "Prompt COSTAR",
-    "query":             "Perguntar ao Gemini",
-    "visual":            "Screenshot + Voz",
-    "pipeline":          "Pipeline",
-    "clipboard_context": "Contexto do Clipboard",
-    "bullet":            "Bullet Dump",
-    "translate":         "Traduzir",
-}
 
 _OVERLAY_W = 320
 _OVERLAY_H = 72
