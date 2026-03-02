@@ -38,6 +38,27 @@ def _rate_limit_msg() -> str:
     )
 
 
+def _build_context_prefix() -> str:
+    """Monta prefixo combinando user profile + window context. Retorna '' se ambos vazios."""
+    parts = []
+
+    # Feature 1: User Profile
+    try:
+        from voice.user_profile import get_profile_prefix
+        profile_prefix = get_profile_prefix()
+        if profile_prefix:
+            parts.append(profile_prefix)
+    except Exception:
+        pass
+
+    # Feature 2: Window Context (opt-in)
+    window_ctx = getattr(state, "_window_context", "")
+    if window_ctx and state._CONFIG.get("WINDOW_CONTEXT_ENABLED", "false").lower() == "true":
+        parts.append(f"[JANELA ATIVA]\n{window_ctx}\n[FIM DA JANELA]\n\n")
+
+    return "".join(parts)
+
+
 def transcribe_audio_with_gemini(wav_path: str) -> str:
     """
     Transcreve áudio diretamente via Gemini Flash (audio input).
@@ -78,8 +99,10 @@ def correct_with_gemini(text: str) -> str:
     if not state._GEMINI_API_KEY:
         return text
     try:
+        ctx = _build_context_prefix()
         client = _get_gemini_client()
         prompt = (
+            f"{ctx}"
             "Você é um corretor MINIMALISTA de transcrição de voz para texto.\n"
             "REGRAS ABSOLUTAS:\n"
             "- NÃO traduza nada. Se a palavra está em inglês, deixe em inglês.\n"
@@ -112,10 +135,11 @@ def simplify_as_prompt(text: str) -> str:
     if not state._GEMINI_API_KEY:
         return text
 
+    ctx = _build_context_prefix()
     word_count = len(text.split())
     print(f"[...]  Input: {word_count} palavras → modo prompt simples (fidelidade total)")
 
-    meta_prompt = f"""Você é especialista em prompt engineering.
+    meta_prompt = f"""{ctx}Você é especialista em prompt engineering.
 O texto abaixo é transcrição de voz informal (pode misturar PT e EN).
 Transforme-o em um prompt limpo e direto para usar em qualquer LLM.
 
@@ -161,7 +185,8 @@ def structure_as_prompt(text: str) -> str:
         print("[WARN] Gemini sem chave — retornando texto original")
         return text
 
-    meta_prompt = f"""Você é especialista em prompt engineering para LLMs (Claude, GPT-4, Gemini).
+    ctx = _build_context_prefix()
+    meta_prompt = f"""{ctx}Você é especialista em prompt engineering para LLMs (Claude, GPT-4, Gemini).
 O texto abaixo é transcrição de voz informal (pode misturar PT e EN).
 Transforme-o em prompt estruturado profissional usando o framework COSTAR com XML tags.
 
@@ -233,6 +258,7 @@ def query_with_gemini(text: str) -> str:
         print("[WARN] Gemini sem chave — retornando transcrição com prefixo")
         return f"[SEM RESPOSTA GEMINI] {text}"
 
+    ctx = _build_context_prefix()
     system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
     if not system_prompt:
         system_prompt = _DEFAULT_QUERY_SYSTEM_PROMPT
@@ -243,8 +269,8 @@ def query_with_gemini(text: str) -> str:
         from google import genai
         client = _get_gemini_client()
 
-        # Combina system prompt + query do usuário em um único contents
-        full_prompt = f"{system_prompt}\n\n{text}"
+        # Combina context prefix + system prompt + query do usuário
+        full_prompt = f"{ctx}{system_prompt}\n\n{text}"
 
         response = client.models.generate_content(
             model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
@@ -277,12 +303,13 @@ def query_with_clipboard_context(text: str, clipboard_content: str) -> str:
     if not state._GEMINI_API_KEY:
         return f"[SEM RESPOSTA GEMINI] {text}"
 
+    ctx = _build_context_prefix()
     system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
     if not system_prompt:
         system_prompt = _DEFAULT_QUERY_SYSTEM_PROMPT
 
     full_prompt = (
-        f"{system_prompt}\n\n"
+        f"{ctx}{system_prompt}\n\n"
         f"[CONTEXTO DO CLIPBOARD]\n{clipboard_content}\n\n"
         f"[INSTRUÇÃO]\n{text}"
     )
@@ -316,8 +343,10 @@ def bullet_dump_with_gemini(text: str) -> str:
         return text
     try:
         from google import genai
+        ctx = _build_context_prefix()
         client = _get_gemini_client()
         prompt = (
+            f"{ctx}"
             "Você é especialista em organização de informação.\n"
             "Transforme a transcrição abaixo em bullet points hierárquicos.\n"
             "REGRAS ABSOLUTAS:\n"
@@ -349,8 +378,10 @@ def draft_email_with_gemini(text: str) -> str:
         return text
     try:
         from google import genai
+        ctx = _build_context_prefix()
         client = _get_gemini_client()
         prompt = (
+            f"{ctx}"
             "Você é um redator profissional de emails.\n"
             "Transforme a transcrição abaixo em um email profissional.\n"
             "ESTRUTURA OBRIGATÓRIA:\n"
@@ -386,10 +417,12 @@ def translate_with_gemini(text: str) -> str:
         return text
     try:
         from google import genai
+        ctx = _build_context_prefix()
         client = _get_gemini_client()
         target_lang = state._CONFIG.get("TRANSLATE_TARGET_LANG", "en")
         lang_name = "inglês" if target_lang == "en" else "português brasileiro"
         prompt = (
+            f"{ctx}"
             f"Detecte o idioma do texto abaixo e traduza para {lang_name}.\n"
             "Preserve a formatação original.\n"
             "Retorne APENAS o texto traduzido, sem explicações.\n\n"
@@ -410,3 +443,170 @@ def translate_with_gemini(text: str) -> str:
             return _rate_limit_msg()
         print(f"[WARN] Gemini indisponível ({e}), retornando texto original")
     return text
+
+
+# ── Feature 3: Visual Query ────────────────────────────────────────────────────
+
+def visual_query_with_gemini(text: str, image_bytes: bytes | None) -> str:
+    """Feature 3: Envia screenshot + transcrição ao Gemini multimodal.
+
+    O screenshot é usado como contexto visual — nunca colado no output.
+    Fallback para query_with_gemini() se image_bytes for None.
+    """
+    if not state._GEMINI_API_KEY:
+        return f"[SEM RESPOSTA GEMINI] {text}"
+
+    if image_bytes is None:
+        print("[WARN] Visual query sem screenshot — fallback para query direta")
+        return query_with_gemini(text)
+
+    ctx = _build_context_prefix()
+    system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
+    if not system_prompt:
+        system_prompt = _DEFAULT_QUERY_SYSTEM_PROMPT
+
+    print(f"[...]  Visual query Gemini ({len(image_bytes)//1024}KB screenshot + {len(text)} chars)...")
+
+    try:
+        from google import genai
+        client = _get_gemini_client()
+
+        image_part = genai.types.Part.from_bytes(
+            data=image_bytes,
+            mime_type="image/png",
+        )
+
+        full_prompt = (
+            f"{ctx}{system_prompt}\n\n"
+            f"[INSTRUÇÃO DO USUÁRIO]\n{text}"
+        )
+
+        response = client.models.generate_content(
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=[image_part, full_prompt],
+            config=genai.types.GenerateContentConfig(temperature=0.3),
+        )
+        answer = response.text.strip()
+        if answer:
+            print(f"[OK]   Resposta visual query ({len(answer)} chars)")
+            return answer
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] Gemini visual query falhou ({e}), fallback query direta")
+        return query_with_gemini(text)
+
+    return f"[SEM RESPOSTA GEMINI] {text}"
+
+
+# ── Feature 4: Daily Briefing ─────────────────────────────────────────────────
+
+def generate_daily_briefing(entries: list) -> str:
+    """Feature 4: Gera 3 bullet points de resumo das entradas do histórico das últimas 24h.
+
+    Temperatura 0.3. Retorna '' se falhar ou se Gemini indisponível.
+    """
+    if not state._GEMINI_API_KEY:
+        return ""
+    if not entries:
+        return ""
+
+    # Preparar resumo das entradas para o Gemini
+    entry_summaries = []
+    for e in entries[:50]:  # máximo 50 entradas para evitar context overflow
+        mode = e.get("mode", "")
+        text = e.get("raw_text") or e.get("output") or ""
+        if text:
+            entry_summaries.append(f"[{mode}] {text[:200]}")
+
+    if not entry_summaries:
+        return ""
+
+    entries_text = "\n".join(entry_summaries)
+    prompt = (
+        "Analise as transcrições de voz abaixo do dia de hoje e gere um briefing matinal.\n\n"
+        "FORMATO OBRIGATÓRIO — exatamente 3 bullet points:\n"
+        "• O que foi trabalhado hoje\n"
+        "• Temas/projetos mais mencionados\n"
+        "• Possíveis pendências ou próximos passos\n\n"
+        "REGRAS:\n"
+        "- Máximo 3 bullets, cada um com no máximo 2 linhas.\n"
+        "- Tom informativo e direto.\n"
+        "- Retorne APENAS os 3 bullets, sem título, sem explicações.\n\n"
+        f"Transcrições de hoje:\n{entries_text}"
+    )
+
+    try:
+        from google import genai
+        client = _get_gemini_client()
+        response = client.models.generate_content(
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(temperature=0.3),
+        )
+        result = response.text.strip()
+        if result:
+            print(f"[OK]   Briefing gerado ({len(result)} chars)")
+            return result
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit ao gerar briefing")
+        else:
+            print(f"[WARN] Gemini briefing falhou ({e})")
+    return ""
+
+
+# ── Feature 5: Pipeline Composto ─────────────────────────────────────────────
+
+def execute_pipeline(instruction: str, source_text: str) -> str:
+    """Feature 5: Executa pipeline composto — instrução + texto-fonte → transformação.
+
+    source_text: conteúdo do clipboard (pode ser vazio).
+    instruction: transcrição da instrução do usuário.
+    Temperatura 0.2 (mais determinístico).
+    """
+    if not state._GEMINI_API_KEY:
+        return f"[SEM RESPOSTA GEMINI] {instruction}"
+
+    ctx = _build_context_prefix()
+
+    if source_text.strip():
+        print(f"[...]  Pipeline ({len(source_text)} chars texto + {len(instruction)} chars instrução)...")
+        full_prompt = (
+            f"{ctx}"
+            "Você é um processador de texto preciso e eficiente.\n"
+            "Execute EXATAMENTE a instrução abaixo sobre o texto-fonte fornecido.\n"
+            "Retorne APENAS o resultado final — sem explicações, sem comentários.\n\n"
+            f"[TEXTO-FONTE]\n{source_text}\n\n"
+            f"[INSTRUÇÃO DE PIPELINE]\n{instruction}"
+        )
+    else:
+        # Sem clipboard: trata como query direta com intent de pipeline
+        print(f"[...]  Pipeline sem texto-fonte ({len(instruction)} chars instrução)...")
+        full_prompt = (
+            f"{ctx}"
+            "Você é um assistente direto e preciso.\n"
+            "Execute a instrução abaixo e retorne APENAS o resultado.\n\n"
+            f"[INSTRUÇÃO]\n{instruction}"
+        )
+
+    try:
+        from google import genai
+        client = _get_gemini_client()
+        response = client.models.generate_content(
+            model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=full_prompt,
+            config=genai.types.GenerateContentConfig(temperature=0.2),
+        )
+        result = response.text.strip()
+        if result:
+            print(f"[OK]   Pipeline resultado ({len(result)} chars)")
+            return result
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] Gemini pipeline falhou ({e})")
+
+    return f"[SEM RESPOSTA GEMINI] {instruction}"

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('C:\\Users\\joaop\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python313\\site-packages\\faster_whisper\\assets\\silero_vad_v6.onnx', 'faster_whisper/assets')]
+datas = [('C:/Users/joaop/AppData/Local/Packages/PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0/LocalCache/local-packages/Python313/site-packages/faster_whisper/assets/silero_vad_v6.onnx', 'faster_whisper/assets')]
 binaries = []
 hiddenimports = ['sounddevice', 'faster_whisper', 'keyboard', 'customtkinter', 'pystray', 'PIL', 'PIL.Image', 'PIL.ImageDraw', 'google.genai', 'numpy', 'openai']
 tmp_ret = collect_all('customtkinter')

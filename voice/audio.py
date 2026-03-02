@@ -171,6 +171,8 @@ _MODE_ACTIONS = {
     "bullet":     "Gerando bullets",
     "email":      "Rascunhando email",
     "translate":  "Traduzindo",
+    "visual":     "Visual Query (Gemini)",
+    "pipeline":   "Executando pipeline",
 }
 
 
@@ -313,7 +315,7 @@ def _post_process_and_paste(raw_text: str, mode: str) -> str:
 
     play_sound("success")
     paste_delay_ms = state._CONFIG.get("PASTE_DELAY_MS", 50)
-    paste_delay_s = max(0, paste_delay_ms) / 1000.0 + 0.5  # base 500ms + configurável
+    paste_delay_s = max(0, paste_delay_ms) / 1000.0 + 0.1  # base 100ms + configurável
     time.sleep(paste_delay_s)
     paste_via_sendinput()
     print("[OK]   Colado!\n")
@@ -337,7 +339,7 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
         # Story 4.5.1: overlay "Processando"
         try:
             from voice import overlay as _overlay
-            _overlay.show_processing(_MODE_ACTIONS.get(mode, "Processando"))
+            _overlay.show_processing(mode)
         except Exception:
             pass
 
@@ -416,6 +418,8 @@ _MODE_LABELS = {
     "bullet":     "BULLET DUMP",
     "email":      "EMAIL DRAFT",
     "translate":  "TRADUZIR",
+    "visual":     "VISUAL QUERY",
+    "pipeline":   "PIPELINE",
 }
 
 
@@ -447,17 +451,52 @@ def toggle_recording(mode: str = "transcribe") -> None:
             state.record_start_time = time.time()
 
             # Story 4.5.4: capturar clipboard context no início da gravação
+            # Feature 5: Pipeline sempre captura clipboard independente de CLIPBOARD_CONTEXT_ENABLED
             state._clipboard_context = ""
-            if state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", "true").lower() == "true":
+            clip_enabled = state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", "true").lower() == "true"
+            if clip_enabled or mode == "pipeline":
                 try:
                     from voice.clipboard import read_clipboard
-                    max_chars = state._CONFIG.get("CLIPBOARD_CONTEXT_MAX_CHARS", 2000)
+                    if mode == "pipeline":
+                        max_chars = state._CONFIG.get("PIPELINE_CLIPBOARD_MAX_CHARS", 8000)
+                    else:
+                        max_chars = state._CONFIG.get("CLIPBOARD_CONTEXT_MAX_CHARS", 2000)
                     raw_clip = read_clipboard(max_chars=max_chars)
                     if raw_clip and max_chars > 0 and len(raw_clip) == max_chars:
                         print(f"[INFO] Clipboard truncado para {max_chars} chars")
                     state._clipboard_context = raw_clip or ""
+                    if mode == "pipeline":
+                        if not state._clipboard_context:
+                            print("[WARN] Pipeline: clipboard vazio — coloque texto no clipboard antes de gravar")
+                        else:
+                            print(f"[INFO] Pipeline: {len(state._clipboard_context)} chars carregados do clipboard")
                 except Exception as _e:
                     print(f"[WARN] Falha ao ler clipboard: {_e}")
+
+            # Feature 2: Active Window Context
+            state._window_context = ""
+            if state._CONFIG.get("WINDOW_CONTEXT_ENABLED", "false").lower() == "true":
+                try:
+                    from voice.window_context import get_foreground_window_info
+                    state._window_context = get_foreground_window_info()
+                    if state._window_context:
+                        print(f"[INFO] Window context: {state._window_context[:80]}")
+                except Exception as _e:
+                    print(f"[WARN] Falha ao capturar window context: {_e}")
+
+            # Feature 3: Screenshot para modo visual
+            state._screenshot_bytes = None
+            if mode == "visual":
+                try:
+                    from voice.screenshot import capture_screen
+                    max_w = state._CONFIG.get("SCREENSHOT_MAX_WIDTH", 1280)
+                    state._screenshot_bytes = capture_screen(max_width=max_w)
+                    if state._screenshot_bytes:
+                        print(f"[INFO] Screenshot capturado ({len(state._screenshot_bytes)//1024}KB)")
+                    else:
+                        print("[WARN] Screenshot retornou None")
+                except Exception as _e:
+                    print(f"[WARN] Falha ao capturar screenshot: {_e}")
 
             _update_tray_state("recording", mode)
 
@@ -469,7 +508,19 @@ def toggle_recording(mode: str = "transcribe") -> None:
             try:
                 from voice import overlay as _overlay
                 clip_chars = len(state._clipboard_context) if hasattr(state, "_clipboard_context") else 0
-                _overlay.show_recording(clipboard_chars=clip_chars)
+                window_hint = ""
+                if state._CONFIG.get("WINDOW_CONTEXT_ENABLED", "false").lower() == "true":
+                    wctx = getattr(state, "_window_context", "")
+                    # Extrair só nome do processo para o hint curto
+                    if wctx:
+                        first_line = wctx.split("\n")[0]
+                        window_hint = first_line.replace("Processo: ", "")
+                screenshot_taken = getattr(state, "_screenshot_bytes", None) is not None
+                _overlay.show_recording(
+                    clipboard_chars=clip_chars,
+                    window_hint=window_hint,
+                    screenshot_taken=screenshot_taken,
+                )
             except Exception as _ov_e:
                 pass  # overlay nunca deve crashar o recording
 

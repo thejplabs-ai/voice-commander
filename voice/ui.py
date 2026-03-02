@@ -66,6 +66,8 @@ class OnboardingWindow:
         ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos",    "•"),
         ("email",      "Email Draft",    "Voz → email profissional",      "✉"),
         ("translate",  "Traduzir",       "Traduz para EN/PT",             "⇄"),
+        ("visual",     "Visual Query",   "Screenshot + voz → Gemini",    "👁"),
+        ("pipeline",   "Pipeline",       "Clipboard + instrução de voz",  "⛓"),
     ]
 
     def __init__(self, done_callback=None):
@@ -547,6 +549,8 @@ class SettingsWindow:
         ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos",    "•"),
         ("email",      "Email Draft",    "Voz → email profissional",      "✉"),
         ("translate",  "Traduzir",       "Traduz para EN/PT",             "⇄"),
+        ("visual",     "Visual Query",   "Screenshot + voz → Gemini",    "👁"),
+        ("pipeline",   "Pipeline",       "Clipboard + instrução de voz",  "⛓"),
     ]
 
     def __init__(self):
@@ -664,6 +668,7 @@ class SettingsWindow:
         self._build_section_ai()
         self._build_section_license()
         self._build_section_advanced()
+        self._build_section_profile()
         self._build_section_about()
 
         # Footer
@@ -694,6 +699,7 @@ class SettingsWindow:
             ("ai",        "🤖 Provedor IA"),
             ("license",   "🔑 Licença"),
             ("advanced",  "⚒ Avançado"),
+            ("profile",   "👤 Perfil"),
             ("about",     "ℹ Sobre"),
         ]
         for section_id, label in nav_items:
@@ -1182,6 +1188,111 @@ class SettingsWindow:
         self._build_section_ai()
         self._build_section_license()
         self._build_section_advanced()
+
+    def _build_section_profile(self):
+        """Feature 1: User Profile — lista de fatos injetados em todas as chamadas Gemini."""
+        f = ctk.CTkScrollableFrame(
+            self._content_area, fg_color="transparent",
+            scrollbar_button_color=theme.BORDER_HOVER,
+            scrollbar_button_hover_color=theme.BORDER_ACTIVE)
+        self._section_frames["profile"] = f
+
+        # Header
+        hdr = ctk.CTkFrame(f, fg_color="transparent")
+        hdr.pack(fill="x", padx=20, pady=(16, 4))
+        ctk.CTkLabel(hdr, text="PERFIL DO USUÁRIO",
+                     font=theme.FONT_OVERLINE(), text_color=theme.TEXT_DISABLED).pack(anchor="w")
+        ctk.CTkLabel(hdr,
+                     text='Fatos injetados em todas as chamadas Gemini · Voz: "adiciona ao meu perfil: ..."',
+                     font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED).pack(anchor="w")
+
+        # Facts list frame (refreshable)
+        self._profile_facts_frame = ctk.CTkFrame(f, fg_color="transparent")
+        self._profile_facts_frame.pack(fill="x", padx=20, pady=(8, 0))
+
+        # Add fact row
+        add_row = ctk.CTkFrame(f, fg_color="transparent")
+        add_row.pack(fill="x", padx=20, pady=(12, 4))
+        self._profile_new_fact_entry = ctk.CTkEntry(
+            add_row, placeholder_text="Novo fato (ex: Prefere respostas em inglês)",
+            font=theme.FONT_BODY(), height=theme.BTN_HEIGHT,
+            fg_color=theme.BG_DEEP, border_color=theme.BORDER_DEFAULT,
+            text_color=theme.TEXT_PRIMARY,
+        )
+        self._profile_new_fact_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        ctk.CTkButton(
+            add_row, text="Adicionar", width=90, height=theme.BTN_HEIGHT,
+            corner_radius=theme.CORNER_MD, fg_color=theme.PURPLE,
+            hover_color=theme.PURPLE_HOVER, font=theme.FONT_BODY_BOLD(),
+            command=self._profile_add_fact,
+        ).pack(side="left")
+
+        self._profile_refresh_facts()
+
+    def _profile_refresh_facts(self):
+        """Limpa e reconstrói a lista de fatos do perfil."""
+        for widget in self._profile_facts_frame.winfo_children():
+            widget.destroy()
+
+        try:
+            from voice.user_profile import load_profile
+            profile = load_profile()
+            state._user_profile = profile
+        except Exception:
+            profile = {"facts": []}
+
+        facts = profile.get("facts", [])
+        if not facts:
+            ctk.CTkLabel(
+                self._profile_facts_frame,
+                text="Nenhum fato cadastrado.",
+                font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED,
+                anchor="w",
+            ).pack(anchor="w", pady=4)
+            return
+
+        for i, fact in enumerate(facts):
+            row = ctk.CTkFrame(
+                self._profile_facts_frame, fg_color=theme.BG_DEEP,
+                corner_radius=theme.CORNER_MD, border_width=1,
+                border_color=theme.BORDER_DEFAULT)
+            row.pack(fill="x", pady=(0, 4))
+            ctk.CTkLabel(
+                row, text=f"• {fact}",
+                font=theme.FONT_BODY(), text_color=theme.TEXT_PRIMARY,
+                anchor="w", justify="left", wraplength=400,
+            ).pack(side="left", padx=12, pady=8, fill="x", expand=True)
+            idx = i  # capture for closure
+
+            def _make_delete(index):
+                def _delete():
+                    try:
+                        from voice.user_profile import remove_fact
+                        remove_fact(index)
+                        self._profile_refresh_facts()
+                    except Exception as e:
+                        print(f"[WARN] Falha ao remover fato: {e}")
+                return _delete
+
+            ctk.CTkButton(
+                row, text="✕", width=28, height=28,
+                corner_radius=theme.CORNER_MD,
+                fg_color="transparent", hover_color=theme.BG_ELEVATED,
+                font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED,
+                command=_make_delete(idx),
+            ).pack(side="right", padx=8)
+
+    def _profile_add_fact(self):
+        fact = self._profile_new_fact_entry.get().strip()
+        if not fact:
+            return
+        try:
+            from voice.user_profile import add_fact
+            add_fact(fact)
+        except Exception as e:
+            print(f"[WARN] Falha ao adicionar fato: {e}")
+        self._profile_new_fact_entry.delete(0, "end")
+        self._profile_refresh_facts()
 
     def _build_section_about(self):
         f = ctk.CTkFrame(self._content_area, fg_color="transparent", corner_radius=0)

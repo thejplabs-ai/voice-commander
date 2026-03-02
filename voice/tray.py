@@ -104,6 +104,12 @@ _MODES = [
     ("translate",  "Traduzir"),
 ]
 
+# Inclui modos com hotkey dedicado (visual/pipeline) — para status e labels
+_MODES_EXTENDED = _MODES + [
+    ("visual",   "Visual Query"),
+    ("pipeline", "Pipeline"),
+]
+
 
 def _set_mode(mode: str) -> None:
     """Seleciona o modo ativo e persiste no .env."""
@@ -135,6 +141,8 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
         "bullet":     "Bullet Dump",
         "email":      "Email Draft",
         "translate":  "Traduzir",
+        "visual":     "Visual Query",
+        "pipeline":   "Pipeline",
         "—":          "—",
     }
     gemini_status = "Ativo" if state._GEMINI_API_KEY else "Desativado"
