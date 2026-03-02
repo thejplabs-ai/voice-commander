@@ -1,154 +1,59 @@
 # Voice Commander — Roadmap
 
-**Versão:** 1.0.14
-**Data:** 2026-02-26
-**Status:** Epic 4 concluido | Epic 4.5 planejado | Epic 5 revisado
-**Branch atual:** feature/SM-3-gemini-model
+**Versao:** 1.0.14
+**Data:** 2026-03-02
+**Status:** Epic 4 concluido | Epic 4.5 DONE (6/7) | Epic 4.6 EM EXECUCAO | Epic 5 BLOQUEADO
+**Branch atual:** feature/epic-4.6-polish
 
 ---
 
-## Estado Real do Projeto (2026-02-26)
+## Estado Real do Projeto (2026-03-02)
 
-Epic 4 foi entregue e **superado**. O codebase evoluiu muito além do planejado:
+Epic 4 foi entregue e superado. Epic 4.5 concluido (6/7 stories). Branch `feature/SM-3-gemini-model` mergeado em `master` (2026-03-02). Epic 4.6 em execucao.
 
 | Entregue | Status |
 |----------|--------|
-| Modularizacao completa (`voice/`) | OK — 19 modulos |
-| CI GitHub Actions | OK — `.github/workflows/ci.yml` |
-| Pytest com cobertura ampla | OK — 14 arquivos de test |
-| Gemini model via `.env` (SM-3) | OK — branch atual |
-| 7 modos de operacao (antes: 4) | OK — expandido |
-| OpenAI como AI provider alternativo | OK — `voice/ai_provider.py` |
-| Wake word | OK — `voice/wakeword.py` |
-| GPU/CUDA fallback automatico | OK |
-| Single hotkey (ciclo de modos) | OK |
-
-**Gaps identificados pelo ATLAS ainda abertos:**
-
-| Gap | Modulo afetado |
-|-----|---------------|
-| `audio.py`, `ai_provider.py` sem cobertura pytest | `tests/` |
-| `openai` sem versao pinada em `requirements.txt` | `openai>=1.0.0` (sem pin) |
-| Cooldown 2s em modo query — bug ativo | `voice/app.py` |
-| Wake word: requirements.txt incompleto | dependencia ausente |
-
----
-
-## Quick Wins — Fazer antes de qualquer nova feature
-
-**Criterio de entrada:** cada item < 4h. Podem ser agrupados num unico PR "housekeeping".
-**Agente:** @dev (DEX)
-**Prazo sugerido:** 1 dia
-
-### QW-1 — Fix: cooldown silencioso 2s apos modo query
-
-**Problema:** Modo query dispara processamento duas vezes (hotkey stop registrado como novo start).
-**AC:**
-- Cooldown de 2s implementado apos processamento de query — hotkey ignorado nesse intervalo
-- Sem regressao nos demais modos
-- Log: `[SKIP] Cooldown ativo — ignorando hotkey`
-
-**Agente:** @dev
-**Dependencias:** nenhuma
+| Modularizacao completa (`voice/`) | DONE — 26 modulos |
+| CI GitHub Actions | DONE — `.github/workflows/ci.yml` |
+| Pytest 243 testes em 19 arquivos | DONE |
+| Gemini model configuravel (SM-3) | DONE |
+| 7 modos de operacao (antes: 4) | DONE |
+| OpenAI como AI provider alternativo | DONE |
+| Wake word | DONE |
+| GPU/CUDA fallback automatico | DONE |
+| Ciclo de modos (`CYCLE_HOTKEY`) | DONE |
+| Overlay de feedback visual | DONE — `voice/overlay.py` |
+| Busca no historico | DONE — `voice/history_search.py` |
+| Screenshot + Voice | DONE — `voice/screenshot.py` |
+| User Profile | DONE — `voice/user_profile.py` |
+| Window Context | DONE — `voice/window_context.py` |
+| Briefing Matinal | DONE — `voice/briefing.py` |
+| Pipeline Composto | DONE — via `PIPELINE_HOTKEY` |
+| Quick Wins QW-1 a QW-8 | DONE — commit `eee3857` |
 
 ---
 
-### QW-2 — Fix: pin de versao do openai em requirements.txt
+## Quick Wins QW-1 a QW-8 [DONE — commit eee3857]
 
-**Problema:** `openai>=1.0.0` sem pin exato — viola a politica de versoes pinadas do projeto.
-**AC:**
-- `pip show openai` no ambiente atual → extrair versao exata
-- `requirements.txt` atualizado com versao pinada (`openai==X.Y.Z`)
-- Comentario de data do pin adicionado
+Todos os quick wins foram entregues. Referencia: `eee3857 feat(ux): Quick Wins QW-1 a QW-8 + Epic 4.5 UX features`.
 
-**Agente:** @dev
-**Dependencias:** nenhuma
-
----
-
-### QW-3 — Fix: wake word — dependencia ausente em requirements.txt
-
-**Problema:** `voice/wakeword.py` usa biblioteca que nao esta em `requirements.txt`.
-**AC:**
-- Identificar import(s) faltantes em `wakeword.py`
-- Adicionar com versao pinada em `requirements.txt`
-- `python -m py_compile voice/wakeword.py` sem erros em ambiente limpo
-
-**Agente:** @dev
-**Dependencias:** nenhuma
+| QW | Descricao | Status |
+|----|-----------|--------|
+| QW-1 | Fix cooldown 2s apos modo query | DONE |
+| QW-2 | Pin de versao openai em requirements.txt | DONE |
+| QW-3 | Wake word — dependencia ausente em requirements.txt | DONE |
+| QW-4 | `beam_size` e `PASTE_DELAY_MS` configuravel | DONE |
+| QW-5 | OpenAI startup check com fallback | DONE |
+| QW-6 | Tray: duracao de gravacao no tooltip | DONE |
+| QW-7 | Housekeeping: temp file cleanup no startup | DONE |
+| QW-8 | ui.py — winfo_exists() check antes de interagir com Settings | DONE |
 
 ---
 
-### QW-4 — Config: `beam_size` e `PASTE_DELAY_MS` configuravel
-
-**Problema:** `beam_size` do Whisper e delay de paste estao hardcoded.
-**AC:**
-- `WHISPER_BEAM_SIZE` no `.env.example` (default: `5`, aceita `1`-`10`)
-- `PASTE_DELAY_MS` no `.env.example` (default: `50`, em ms)
-- `load_config()` carrega e valida ambos com fallback seguro
-- Log de startup exibe valores ativos
-
-**Agente:** @dev
-**Dependencias:** nenhuma
-
----
-
-### QW-5 — Config: OpenAI startup check
-
-**Problema:** Se `OPENAI_API_KEY` configurada mas openai nao instalado, erro ocorre em runtime.
-**AC:**
-- No startup, se `AI_PROVIDER=openai`: verificar se pacote `openai` importavel
-- Falha: `[WARN] openai nao instalado — fallback para Gemini`
-- Sem crash no startup
-
-**Agente:** @dev
-**Dependencias:** QW-2 (pin primeiro)
-
----
-
-### QW-6 — Tray: duracao de gravacao no tooltip
-
-**Problema:** Tooltip nao exibe quanto tempo o usuario esta gravando.
-**AC:**
-- Durante gravacao: tooltip atualiza a cada 1s com tempo decorrido (`Gravando: 0:12`)
-- Estado Idle: tooltip volta ao padrao (nome do app + modo ativo)
-- Testado com `pythonw.exe`
-
-**Agente:** @dev
-**Dependencias:** nenhuma
-
----
-
-### QW-7 — Housekeeping: temp file cleanup no startup
-
-**Problema:** Arquivos `.wav` temporarios podem acumular se processo encerrado abruptamente.
-**AC:**
-- No startup: limpar arquivos `*.wav` temporarios em `_BASE_DIR`
-- Log: `[INFO] X arquivo(s) temporario(s) removidos` (so se X > 0)
-- Nao remover arquivos com mais de 24h (paranoia — poderiam ser de outro processo)
-
-**Agente:** @dev
-**Dependencias:** nenhuma
-
----
-
-### QW-8 — Fix: ui.py — winfo_exists() check antes de interagir com Settings Window
-
-**Problema:** Crash se Settings Window destruida antes do callback ser chamado.
-**AC:**
-- Todos os callbacks de `ui.py` que interagem com a janela verificam `window.winfo_exists()` antes
-- Zero crashes ao fechar Settings rapidamente
-
-**Agente:** @dev
-**Dependencias:** nenhuma
-
----
-
-## Epic 4.5 — UX & Qualidade
+## Epic 4.5 — UX & Qualidade [6/7 DONE]
 
 **Objetivo:** Fechar gaps de UX criticos e elevar cobertura de testes antes de distribuir comercialmente.
-**Premissa do ATLAS (endossada):** Sem feedback visual claro, Epic 5 distribui um produto que o usuario percebe como "lento e opaco". UX primeiro.
-**Prerequisito:** Quick Wins concluidos (especialmente QW-1).
+**Status:** 6/7 stories DONE. Story 4.5.6 em backlog P3 (nao bloqueante).
 **Estimativa total:** 8-10 dias de desenvolvimento
 **Agente principal:** @dev (DEX), @qa (QUINN) para validacao
 
@@ -311,12 +216,141 @@ Epic 4 foi entregue e **superado**. O codebase evoluiu muito além do planejado:
 
 ---
 
-## Epic 5 — Comercializacao (Revisado)
+## Epic 4.6 — Polish & Estabilidade [EM EXECUCAO]
 
-**Objetivo original:** Licenciamento server-side + distribuicao.
-**Revisao ATLAS:** Adicionar auto-update simplificado e prep de UX antes de distribuir.
+**Objetivo:** Transformar o Voice Commander de "funciona mas incomoda" para "ferramenta que confio e gosto de usar."
+**Branch:** `feature/epic-4.6-polish`
+**Iniciado:** 2026-03-02
+**Agentes:** DEX (todas as stories), NEXUS (spec 4.6.3), QUINN (smoke test 4.6.7)
 
-**Prerequisito inegociavel:** Epic 4.5 concluido (especialmente 4.5.1 — overlay).
+### Decisoes Editoriais
+
+| Decisao | Motivo |
+|---------|--------|
+| `BRIEFING_ENABLED=false` por padrao | Usuario confirmou: ruido na experiencia |
+| `USER_PROFILE_ENABLED=false` por padrao | Feature de nicho — ativar conscientemente |
+| `VISUAL_HOTKEY` vazio por padrao | Modo especializado — nao descoberto organicamente |
+| `PIPELINE_HOTKEY` vazio por padrao | Idem |
+| Ciclo: 7 → 5 modos | transcribe, email, simple, prompt, query |
+
+### Stories
+
+| Story | Descricao | Prioridade | Agente | Estimativa | Status |
+|-------|-----------|------------|--------|------------|--------|
+| 4.6.1 | Whisper tiny + beam_size=1 por padrao — latencia <5s | P1 | DEX | 0.5d | PENDENTE |
+| 4.6.2 | Indicador de modo ativo no tray + overlay ao ciclar | P1 | DEX | 0.5d | PENDENTE |
+| 4.6.3 | Redesign da janela Settings (NEXUS spec + DEX implementa) | P1 | NEXUS+DEX | 4-5d | PENDENTE |
+| 4.6.4 | Ciclo reduzido para 5 modos (CYCLE_MODES configuravel) | P1 | DEX | 0.5d | PENDENTE |
+| 4.6.5 | Defaults limpos — desativar features de nicho | P2 | DEX | 0.5d | PENDENTE |
+| 4.6.6 | Log de timing por fase [PERF] | P2 | DEX | 0.5d | PENDENTE |
+| 4.6.7 | Smoke test 5 modos + corrigir bugs recorrentes | P2 | QUINN+DEX | 1-2d | PENDENTE |
+
+**Estimativa total:** 7-10 dias
+
+### Story 4.6.1 — Whisper tiny + beam_size=1 por padrao [PENDENTE]
+
+**Prioridade:** P1
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+
+**AC:**
+- `WHISPER_MODEL=tiny` no `.env.example` (era `small`)
+- `WHISPER_BEAM_SIZE=1` no `.env.example` (era `5`)
+- Startup log: `[INFO] Whisper: {model} | beam_size={beam_size}`
+- Transcricao <3s em CPU em fala de 10s (validado com 4.6.6)
+
+---
+
+### Story 4.6.2 — Indicador de modo ativo no tray + overlay ao ciclar [PENDENTE]
+
+**Prioridade:** P1
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+
+**AC:**
+- Tooltip do tray: `Voice Commander | Modo: Transcricao`
+- Ao ciclar (`CYCLE_HOTKEY`): overlay exibe modo novo por 2s (`voice/overlay.py` existente)
+- Menu tray: item "Modo: {nome}" no topo (informativo, nao clicavel)
+
+---
+
+### Story 4.6.3 — Redesign da janela Settings [PENDENTE]
+
+**Prioridade:** P1
+**Estimativa:** 4-5 dias
+**Agentes:** NEXUS (spec) + DEX (implementacao)
+**Dependencias:** spec NEXUS aprovado antes da implementacao DEX
+
+**AC:**
+- Spec NEXUS entregue: wireframe com abas ou grupos
+- Abas sugeridas: Geral | Modos | Avancado | Perfil
+- `CTkTabview` do customtkinter
+- Salvar com feedback visual ("Salvo!" por 2s)
+- Zero regressao nos testes
+
+---
+
+### Story 4.6.4 — Ciclo reduzido para 5 modos [PENDENTE]
+
+**Prioridade:** P1
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+
+**AC:**
+- Ciclo default: `transcribe → email → simple → prompt → query`
+- `CYCLE_MODES` no `.env.example` — lista separada por virgula
+- Modos `visual` e `pipeline` excluidos do ciclo (hotkey dedicado ainda funciona)
+- Startup log: `[INFO] Ciclo de modos: {lista dos modos ativos}`
+
+---
+
+### Story 4.6.5 — Defaults limpos [PENDENTE]
+
+**Prioridade:** P2
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+
+**AC:**
+- `.env.example` atualizado: `BRIEFING_ENABLED=false`, `USER_PROFILE_ENABLED=false`, `VISUAL_HOTKEY=` vazio, `PIPELINE_HOTKEY=` vazio
+- `load_config()` trata vazio como "desabilitado"
+
+---
+
+### Story 4.6.6 — Log de timing por fase [PERF] [PENDENTE]
+
+**Prioridade:** P2
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+
+**AC:**
+- Novo prefixo: `[PERF]`
+- Fases: `gravacao`, `transcricao`, `gemini`, `paste`, `total`
+- Formato: `[PERF] transcricao: 2.34s | gemini: 1.12s | total: 4.01s`
+- Ativo apenas se `DEBUG_PERF=true` no `.env` (silencioso por padrao)
+
+---
+
+### Story 4.6.7 — Smoke test 5 modos + bugs recorrentes [PENDENTE]
+
+**Prioridade:** P2
+**Estimativa:** 1-2 dias
+**Agentes:** QUINN (validacao) + DEX (correcao)
+**Dependencias:** 4.6.1 e 4.6.4 concluidas
+
+**Criterio de conclusao do Epic 4.6:**
+- Latencia media modos rapidos < 5s (evidencia via `[PERF]`)
+- Zero crashes em 20 execucoes por modo (relatorio QUINN)
+- Janela Settings redesenhada
+- Tooltip exibe modo ativo sem abrir nenhuma janela
+- Features de nicho desativadas por padrao
+- CI verde em master
+
+---
+
+## Epic 5 — Comercializacao [BLOQUEADO — aguardando Epic 4.6]
+
+**Prerequisito inegociavel:** Epic 4.6 concluido e mergeado em master.
+**Justificativa:** Distribuir antes do Epic 4.6 = produto com latencia ~30s e UX degradada para usuarios pagantes.
 **Estimativa total:** 12-16 dias
 **Agentes:** @dev (DEX), @architect (design de API), @devops (GAGE para infra)
 
@@ -365,13 +399,13 @@ Epic 4 foi entregue e **superado**. O codebase evoluiu muito além do planejado:
 **Prioridade:** P1 — prerequisito para distribuicao
 **Estimativa:** 1 dia
 **Agentes:** @dev + @devops
-**Dependencias:** todas as features de Epic 4.5 mergeadas em master
+**Dependencias:** Epic 4.6 concluido e mergeado em master
 
 **AC:**
 - `AppVersion` em `build/installer.iss` sincronizado com `__version__` (processo documentado — nao e automatico)
-- Build PyInstaller inclui pacote `voice/` completo (todos os 19 modulos)
+- Build PyInstaller inclui pacote `voice/` completo (~26 modulos)
 - Instalador testado em Windows 10 e Windows 11 limpo (sem Python instalado)
-- `VoiceCommanderSetup.exe` gerado e testado end-to-end com todos os 7 modos
+- `VoiceCommanderSetup.exe` gerado e testado end-to-end com os 5 modos canonicos do Epic 4.6
 
 ---
 
@@ -380,7 +414,7 @@ Epic 4 foi entregue e **superado**. O codebase evoluiu muito além do planejado:
 **Prioridade:** P2 — qualidade de codigo, facilita manutencao futura
 **Estimativa:** 1 dia
 **Agente:** @dev
-**Dependencias:** Epic 4.5 concluido (base estavel)
+**Dependencias:** Epic 4.6 concluido (base estavel — Settings redesenhada)
 
 **AC:**
 - `voice/ui.py` refatorado em:
@@ -411,24 +445,33 @@ Itens sem sprint definida. Revisao apos Epic 5 concluido.
 ## Sequencia de Execucao
 
 ```
-[AGORA] Quick Wins (QW-1 a QW-8)
-  — 1 dia — @dev — PR unico "housekeeping"
+[DONE] Quick Wins QW-1 a QW-8
+  commit eee3857
 
-[PROXIMO] Epic 4.5
-  4.5.2 (testes audio/gemini/ai_provider)   ← iniciar junto com 4.5.1
-  4.5.1 (overlay)                           ← P1, iniciar imediatamente
-  4.5.3 (ciclo de modo — verificar se ja feito)
-    ↓
-  4.5.4 (clipboard context)   ← depende de 4.5.1
-  4.5.5 (busca historico)     ← independente
-  4.5.6 (GEMINI_MODEL_QUALITY)← independente, quickest
-    ↓
-  4.5.7 (screenshot + voice)  ← depende de 4.5.1
+[DONE] Epic 4.5 (6/7 stories)
+  4.5.1 overlay        DONE
+  4.5.2 testes         DONE
+  4.5.3 ciclo          DONE
+  4.5.4 clipboard ctx  DONE
+  4.5.5 historico      DONE
+  4.5.6 model quality  BACKLOG P3
+  4.5.7 screenshot     DONE
 
-[DEPOIS] Epic 5
+[AGORA] Epic 4.6 — branch feature/epic-4.6-polish
+  4.6.1 (whisper tiny + beam_size=1)    ← P1, iniciar imediatamente
+  4.6.2 (modo no tray + overlay ciclar) ← P1, paralelo com 4.6.1
+  4.6.4 (ciclo 5 modos)                 ← P1, paralelo
+  4.6.5 (defaults limpos)               ← P2, rapido
+  4.6.6 (log [PERF])                    ← P2, paralelo — suporte para 4.6.7
+    ↓
+  4.6.3 (Settings redesign)             ← P1 — NEXUS spec primeiro, DEX implementa
+    ↓
+  4.6.7 (smoke test QUINN)              ← depende de 4.6.1 + 4.6.4
+
+[DEPOIS] Epic 5 — aguarda Epic 4.6 mergeado em master
   5.1 (server-side license)   ← design de API com @architect primeiro
   5.2 (auto-update)           ← depende de 5.1 (reusa endpoint)
-  5.3 (instalador atualizado) ← depende de 4.5 mergeado
+  5.3 (instalador atualizado) ← depende de Epic 4.6 mergeado
   5.4 (separar ui.py)         ← pode ser paralelo a 5.1/5.2
 ```
 
@@ -438,15 +481,15 @@ Itens sem sprint definida. Revisao apos Epic 5 concluido.
 
 - [ ] Codigo commitado no branch `feature/{story-id}` e mergeado em `master`
 - [ ] `python -m py_compile voice/*.py` sem erros
-- [ ] 7 modos existentes sem regressao (testado manualmente)
+- [ ] 5 modos canonicos sem regressao (testado manualmente — Epic 4.6+)
 - [ ] Testado com `pythonw.exe` (sem console — stdout/stderr sao None)
 - [ ] `.env.example` atualizado se nova variavel adicionada
 - [ ] `README.md` atualizado se feature visivel ao usuario
 - [ ] `python -m pytest tests/ -v` passa com zero falhas
 - [ ] CI verde no PR antes do merge
-- [ ] Prefixos de log respeitados: `[OK]`, `[...]`, `[WARN]`, `[ERRO]`, `[REC]`, `[STOP]`, `[SKIP]`, `[INFO]`
+- [ ] Prefixos de log respeitados: `[OK]`, `[...]`, `[WARN]`, `[ERRO]`, `[REC]`, `[STOP]`, `[SKIP]`, `[INFO]`, `[PERF]` (a partir do Epic 4.6)
 
 ---
 
 *Voice Commander — JP Labs*
-*Analise: ATLAS | Roadmap: MORGAN | Data: 2026-02-26*
+*Analise: ATLAS | Roadmap: MORGAN | Data: 2026-03-02*

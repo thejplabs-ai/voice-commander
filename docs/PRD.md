@@ -27,19 +27,24 @@
 
 O produto resolve um fluxo real de trabalho do JP: ditar comandos, prompts e texto corrido em qualquer aplicativo do Windows com latencia minima e sem depender de servicos cloud para a transcricao.
 
-### Modos de Operacao (atual — 7 modos)
+### Modos de Operacao (Epic 4.6 alvo — 5 modos canonicos)
 
 | Hotkey | Modo | Comportamento |
 |--------|------|---------------|
 | `Ctrl+Shift+Space` | Transcricao pura | Transcreve e corrige erros de pronuncia via Gemini |
-| `Ctrl+Alt+Space` | Prompt simples | Transcreve e organiza em bullet points |
-| `Ctrl+CapsLock+Space` | Prompt estruturado | Formata em SYSTEM + USER com XML tags (framework COSTAR) |
-| `Ctrl+Shift+Alt+Space` | Query direta Gemini | Transcreve e envia ao Gemini — cola a resposta direto |
-| *(via CYCLE_HOTKEY)* | Clipboard Context | Captura clipboard atual como contexto para instrucao de voz |
-| `VISUAL_HOTKEY` | Screenshot + Voice | Captura screenshot + voz — Gemini processa imagem e instrucao |
-| `PIPELINE_HOTKEY` | Pipeline Composto | Clipboard como fonte + voz como instrucao — Gemini executa transformacao |
+| `Ctrl+Alt+Space` | Email | Transcreve e formata como email profissional |
+| `Ctrl+CapsLock+Space` | Prompt simples | Transcreve e organiza em bullet points |
+| `Ctrl+Shift+Alt+Space` | Prompt estruturado (COSTAR) | Formata em SYSTEM + USER com XML tags |
+| *(via CYCLE_HOTKEY)* | Query direta Gemini | Transcreve e envia ao Gemini — cola a resposta direto |
 
-Hotkeys de modo 4, visual e pipeline sao configuráveis via `.env` (`QUERY_HOTKEY`, `VISUAL_HOTKEY`, `PIPELINE_HOTKEY`).
+Ciclo reduzido de 7 para 5 modos a partir do Epic 4.6. Modos de nicho (Visual, Pipeline) desativados por padrao — ativados via `VISUAL_HOTKEY` e `PIPELINE_HOTKEY` no `.env` (vazios por padrao). `CYCLE_MODES` configuravel para customizar quais modos entram no ciclo.
+
+**Modos de nicho (desativados por padrao):**
+
+| Config | Modo | Comportamento |
+|--------|------|---------------|
+| `VISUAL_HOTKEY` *(vazio)* | Screenshot + Voice | Captura screenshot + voz — Gemini multimodal |
+| `PIPELINE_HOTKEY` *(vazio)* | Pipeline Composto | Clipboard como fonte + voz como instrucao |
 
 ---
 
@@ -268,9 +273,185 @@ Commit de referencia: `eee3857 feat(ux): Quick Wins QW-1 a QW-8 + Epic 4.5 UX fe
 
 ---
 
-## 5. Features Bonus (alem do roadmap original)
+## 5. Epic 4.6 — Polish & Estabilidade [EM EXECUCAO]
 
-Quatro features implementadas no branch `feature/SM-3-gemini-model` alem do escopo planejado. Todas funcionais, testes escritos, config documentada. Status: aguardando merge em `master`.
+**Objetivo:** Transformar o Voice Commander de "funciona mas incomoda" para "ferramenta que confio e gosto de usar."
+**Branch alvo:** `feature/epic-4.6-polish`
+**Status:** Em execucao
+**Iniciado em:** 2026-03-02
+
+### Contexto — Dores que motivaram o Epic
+
+| Dor | Impacto |
+|-----|---------|
+| Latencia ~30s de resposta | Inaceitavel para uso diario — meta: <5s nos modos rapidos |
+| Janela Settings visualmente datada | Percepcao de produto inacabado |
+| Modo ativo invisivel sem abrir o app | Fricao constante de orientacao |
+| Features complexas (Pipeline, Briefing) sem descoberta intuitiva | Confusao no onboarding |
+| Erros esporadicos de instabilidade | Perda de confiance no produto |
+
+### Decisoes Editoriais (tomadas em 2026-03-02)
+
+| Decisao | Motivo |
+|---------|--------|
+| `BRIEFING_ENABLED=false` por padrao | Confirmado pelo usuario: ruido na experiencia |
+| `USER_PROFILE_ENABLED=false` por padrao | Feature de nicho — ativar conscientemente |
+| `VISUAL_HOTKEY` vazio por padrao | Modo especializado, nao descoberto organicamente |
+| `PIPELINE_HOTKEY` vazio por padrao | Idem — ativar so quem vai usar |
+| Ciclo reduzido: 7 → 5 modos | Modos email, simple, prompt, transcribe, query. Menos carga cognitiva |
+
+### Stories
+
+| Story | Descricao | Prioridade | Agente | Estimativa | Status |
+|-------|-----------|------------|--------|------------|--------|
+| 4.6.1 | Whisper tiny + beam_size=1 por padrao — latencia <5s | P1 | DEX | 0.5d | PENDENTE |
+| 4.6.2 | Indicador de modo ativo no tray + overlay ao ciclar | P1 | DEX | 0.5d | PENDENTE |
+| 4.6.3 | Redesign da janela Settings | P1 | NEXUS+DEX | 4-5d | PENDENTE |
+| 4.6.4 | Ciclo reduzido para 5 modos (CYCLE_MODES configuravel) | P1 | DEX | 0.5d | PENDENTE |
+| 4.6.5 | Defaults limpos — desativar features de nicho | P2 | DEX | 0.5d | PENDENTE |
+| 4.6.6 | Log de timing por fase [PERF] | P2 | DEX | 0.5d | PENDENTE |
+| 4.6.7 | Smoke test 5 modos + corrigir bugs recorrentes | P2 | QUINN+DEX | 1-2d | PENDENTE |
+
+---
+
+### Story 4.6.1 — Whisper tiny + beam_size=1 por padrao [PENDENTE]
+
+**Prioridade:** P1
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+**Dependencias:** nenhuma
+
+**Contexto:** Whisper `small` com `beam_size=5` (default) gera latencia de ~15-25s so na transcricao em CPU. Mudar para `tiny` + `beam_size=1` reduz drasticamente sem impacto significativo na qualidade para PT/EN coloquial.
+
+**AC:**
+- `WHISPER_MODEL=tiny` no `.env.example` (era `small`)
+- `WHISPER_BEAM_SIZE=1` no `.env.example` (era `5`)
+- Startup log: `[INFO] Whisper: {model} | beam_size={beam_size}`
+- Medido com `[PERF]` (4.6.6 em paralelo): transcricao <3s em CPU em fala de 10s
+- Zero regressao nos 5 modos canonicos
+
+---
+
+### Story 4.6.2 — Indicador de modo ativo no tray + overlay ao ciclar [PENDENTE]
+
+**Prioridade:** P1
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+**Dependencias:** nenhuma
+
+**Contexto:** Usuario nao sabe em qual modo esta sem abrir o app. Meta: identificar modo ativo sem nenhuma janela aberta.
+
+**AC:**
+- Tooltip do tray sempre exibe modo ativo: `Voice Commander | Modo: Transcricao`
+- Ao pressionar `CYCLE_HOTKEY`: overlay exibe modo novo por 2s (usa `voice/overlay.py` existente)
+- Menu tray: item "Modo: {nome}" no topo (nao clicavel, so informativo)
+- Nao requer redesign do tray icon — apenas texto
+
+---
+
+### Story 4.6.3 — Redesign da janela Settings [PENDENTE]
+
+**Prioridade:** P1
+**Estimativa:** 4-5 dias
+**Agentes:** NEXUS (spec) + DEX (implementacao)
+**Dependencias:** spec NEXUS aprovado antes da implementacao DEX
+
+**Contexto:** A janela Settings atual (`voice/ui.py`) usa layout de formulario plano sem hierarquia visual clara — parece "app dos anos 2000". Com as features adicionadas (Profile, Briefing, Pipeline, etc.), o numero de opcoes cresceu sem organizacao.
+
+**AC:**
+- NEXUS entrega spec: wireframe com abas ou grupos de configuracoes
+- Abas sugeridas: Geral | Modos | Avancado | Perfil
+- customtkinter: usar `CTkTabview` para abas
+- Cada aba contem apenas os campos relevantes (sem scroll infinito de opcoes)
+- Salvar com feedback visual (botao muda para "Salvo!" por 2s)
+- `python -m pytest tests/ -v` sem regressao apos implementacao
+
+---
+
+### Story 4.6.4 — Ciclo reduzido para 5 modos [PENDENTE]
+
+**Prioridade:** P1
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+**Dependencias:** nenhuma
+
+**Contexto:** Ciclo atual inclui 7 modos — muitos para quem usa apenas 2-3. Reduzir para 5 canonicos e tornar o ciclo configuravel.
+
+**AC:**
+- Ciclo default: `transcribe → email → simple → prompt → query` (5 modos)
+- `CYCLE_MODES` no `.env.example` — lista separada por virgula dos modos no ciclo
+  - Ex: `CYCLE_MODES=transcribe,simple,query`
+- Modos `visual` e `pipeline` excluidos do ciclo (mas funcionam via hotkey dedicado)
+- Startup log: `[INFO] Ciclo de modos: {lista dos modos ativos}`
+
+---
+
+### Story 4.6.5 — Defaults limpos [PENDENTE]
+
+**Prioridade:** P2
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+**Dependencias:** nenhuma
+
+**Contexto:** Features de nicho ativas por padrao criam ruido na experiencia de primeiro uso. Simples mudanca de defaults.
+
+**AC:**
+- `.env.example` atualizado:
+  - `BRIEFING_ENABLED=false` (era `true`)
+  - `USER_PROFILE_ENABLED=false` (era `true`)
+  - `VISUAL_HOTKEY=` vazio (era `ctrl+alt+shift+v`)
+  - `PIPELINE_HOTKEY=` vazio (era `ctrl+alt+shift+p`)
+- `load_config()` trata vazio como "desabilitado" (sem registro de hotkey)
+- Comportamento com config vazia documentado no `.env.example` como comentario
+
+---
+
+### Story 4.6.6 — Log de timing por fase [PERF] [PENDENTE]
+
+**Prioridade:** P2
+**Estimativa:** 0.5 dia
+**Agente:** @dev
+**Dependencias:** nenhuma
+
+**Contexto:** Sem medicao objetiva, nao ha como saber se as otimizacoes de latencia (4.6.1) realmente funcionaram.
+
+**AC:**
+- Novo prefixo de log: `[PERF]`
+- Fases medidas: `gravacao`, `transcricao`, `gemini`, `paste`, `total`
+- Formato: `[PERF] transcricao: 2.34s | gemini: 1.12s | total: 4.01s`
+- Ativo apenas se `DEBUG_PERF=true` no `.env` (silencioso por padrao)
+- `.env.example` atualizado com `DEBUG_PERF=false`
+
+---
+
+### Story 4.6.7 — Smoke test 5 modos + bugs recorrentes [PENDENTE]
+
+**Prioridade:** P2
+**Estimativa:** 1-2 dias
+**Agentes:** QUINN (validacao) + DEX (correcao)
+**Dependencias:** 4.6.1, 4.6.4 concluidas (ciclo e modelo corretos antes de testar)
+
+**Contexto:** Validacao sistematica antes de considerar o Epic concluido.
+
+**AC (QUINN):**
+- Smoke test executado nos 5 modos canonicos: 20 execucoes por modo
+- Zero crashes documentados
+- Latencia media modos rapidos (transcricao, simple) < 5s registrada via `[PERF]`
+- Bugs encontrados priorizados e corrigidos pelo DEX antes do merge
+
+**Criterio de conclusao do Epic 4.6:**
+- Latencia media modos rapidos < 5s (evidencia via logs `[PERF]`)
+- Zero crashes em 20 execucoes por modo (evidencia: relatorio QUINN)
+- Janela Settings redesenhada (spec NEXUS implementado)
+- Tooltip do tray exibe modo ativo sem abrir nenhuma janela
+- Features de nicho desativadas por padrao (`.env.example` atualizado)
+- CI verde em master
+
+---
+
+## 6. Features Bonus (alem do roadmap original)
+
+Quatro features implementadas no branch `feature/SM-3-gemini-model` alem do escopo planejado. Todas funcionais, testes escritos, config documentada. Status: mergeadas em `master` (2026-03-02). Defaults revisados no Epic 4.6.
 
 ### Feature 1 — User Profile
 
@@ -296,27 +477,27 @@ Quatro features implementadas no branch `feature/SM-3-gemini-model` alem do esco
 ### Feature 3 — Briefing Matinal
 
 **Modulo:** `voice/briefing.py`
-**Config:** `BRIEFING_ENABLED=true`, `BRIEFING_MIN_ENTRIES=3`
+**Config:** `BRIEFING_ENABLED=false` (desativado por padrao a partir do Epic 4.6 — era `true`), `BRIEFING_MIN_ENTRIES=3`
 **Funcionalidade:** Thread daemon lancada 3s apos startup. Time gate: 8h (dispara apenas no periodo da manha). Gera resumo diario das transcricoes via `generate_daily_briefing(entries)`. UI: `BriefingWindow` customtkinter.
 
 ---
 
 ### Feature 4 — Pipeline Composto
 
-**Hotkey:** `PIPELINE_HOTKEY` (default: `ctrl+alt+shift+p`)
+**Hotkey:** `PIPELINE_HOTKEY` (vazio por padrao a partir do Epic 4.6 — era `ctrl+alt+shift+p`)
 **Config:** `PIPELINE_CLIPBOARD_MAX_CHARS=8000`
 **Modo:** `"pipeline"`
 **Funcionalidade:** Captura clipboard como fonte de dados + instrucao de voz → Gemini executa a transformacao via `execute_pipeline(instruction, source_text)`. Clipboard capturado sempre (ignora `CLIPBOARD_CONTEXT_ENABLED`).
 
 ---
 
-## 6. Arquitetura Atual (2026-03-02)
+## 7. Arquitetura Atual (2026-03-02)
 
 | Atributo | Valor |
 |----------|-------|
 | **Versao** | 1.0.14 |
-| **Branch ativo** | `feature/SM-3-gemini-model` |
-| **Pacote principal** | `voice/` (~26 modulos) |
+| **Branch ativo** | `master` |
+| **Pacote principal** | `voice/` (25 modulos) |
 | **Testes** | 243 testes em `tests/` (19 arquivos) |
 | **CI** | `.github/workflows/ci.yml` (GitHub Actions) |
 | **Modos de operacao** | 7 (transcription, prompt, costar, query, clipboard_context, visual, pipeline) |
@@ -332,6 +513,8 @@ Quatro features implementadas no branch `feature/SM-3-gemini-model` alem do esco
 | `audio.py` | Gravacao sounddevice, timeout, bips |
 | `gemini.py` | Cliente Gemini, `_build_context_prefix()`, 7 modos |
 | `ai_provider.py` | Abstraction layer Gemini/OpenAI |
+| `ai_utils.py` | Utilitarios compartilhados entre providers |
+| `openai_.py` | Implementacao OpenAI (provider alternativo) |
 | `overlay.py` | Toast/feedback visual |
 | `tray.py` | System tray, 3 estados visuais, menu |
 | `ui.py` | Settings dialog (customtkinter) |
@@ -342,7 +525,9 @@ Quatro features implementadas no branch `feature/SM-3-gemini-model` alem do esco
 | `briefing.py` | Briefing matinal (thread daemon, BriefingWindow) |
 | `clipboard.py` | Leitura de clipboard |
 | `license.py` | Validacao HMAC local |
-| `transcribe.py` | faster-whisper, append history |
+| `paths.py` | Resolucao de paths (`_BASE_DIR`) |
+| `mutex.py` | Named Mutex Win32 (instancia unica) |
+| `logging_.py` | Setup de log e rotacao de sessao |
 | `shutdown.py` | graceful_shutdown, release mutex |
 | `wakeword.py` | Wake word detection |
 | `theme.py` | Temas visuais |
@@ -375,14 +560,17 @@ Criterios aplicaveis a todas as stories do Epic 4.5 em diante:
 
 ---
 
-## 8. Epic 5 — Comercializacao [BLOQUEADO — nao iniciado]
+## 8. Epic 5 — Comercializacao [BLOQUEADO — aguardando Epic 4.6]
 
-**Status:** Planejado — nao iniciar antes do merge de `feature/SM-3-gemini-model` em `master`.
+**Status:** Bloqueado — nao iniciar antes da conclusao do Epic 4.6.
 
 **Prerequisito inegociavel:**
-1. Branch `feature/SM-3-gemini-model` mergeado em `master` (PR pendente)
-2. Epic 4.5 majoritariamente concluido (6/7 stories DONE — Story 4.5.6 em backlog, nao bloqueante)
-3. CI verde em `master`
+1. Branch `feature/SM-3-gemini-model` mergeado em `master` — DONE (2026-03-02)
+2. Epic 4.5 majoritariamente concluido (6/7 stories DONE — Story 4.5.6 em backlog, nao bloqueante) — DONE
+3. Epic 4.6 concluido (polish e estabilidade) — BLOQUEANTE
+4. CI verde em `master`
+
+**Justificativa do bloqueio:** Distribuir o produto antes do Epic 4.6 significaria entregar a usuarios pagantes um produto com latencia ~30s e UX degradada. O Epic 4.6 e pre-requisito comercial, nao apenas tecnico.
 
 **Objetivo:** Transformar a ferramenta pessoal em produto vendavel com licenciamento server-side e distribuicao via instalador.
 **Estimativa total:** 12-16 dias
@@ -433,13 +621,13 @@ Criterios aplicaveis a todas as stories do Epic 4.5 em diante:
 **Prioridade:** P1 — prerequisito para distribuicao
 **Estimativa:** 1 dia
 **Agentes:** @dev + @devops
-**Dependencias:** todas as features de Epic 4.5 mergeadas em master
+**Dependencias:** Epic 4.6 concluido e mergeado em master (ciclo de modos e defaults finais)
 
 **AC:**
 - `AppVersion` em `build/installer.iss` sincronizado com `__version__` (processo documentado — nao e automatico)
 - Build PyInstaller inclui pacote `voice/` completo (~26 modulos)
 - Instalador testado em Windows 10 e Windows 11 limpo (sem Python instalado)
-- `VoiceCommanderSetup.exe` gerado e testado end-to-end com todos os 7 modos
+- `VoiceCommanderSetup.exe` gerado e testado end-to-end com os 5 modos canonicos do Epic 4.6
 
 ---
 
@@ -463,12 +651,12 @@ Criterios aplicaveis a todas as stories do Epic 4.5 em diante:
 ### Sequencia de Execucao — Epic 5
 
 ```
-[PRE-REQUISITO] Merge de feature/SM-3-gemini-model em master
+[PRE-REQUISITO] Epic 4.6 concluido — BLOQUEANTE
   ↓
 5.1 (server-side license)   ← design de API com @architect primeiro
   ↓
 5.2 (auto-update)           ← depende de 5.1 (reusa endpoint)
-5.3 (instalador atualizado) ← depende de branch mergeado (paralelo com 5.2)
+5.3 (instalador atualizado) ← depende de Epic 4.6 mergeado em master
 5.4 (separar ui.py)         ← pode ser paralelo a 5.1/5.2
 ```
 
@@ -506,7 +694,15 @@ Itens identificados mas sem sprint definida. Revisao a cada Epic concluido.
 - Clipboard context, busca no historico, screenshot+voice (4.5.4, 4.5.5, 4.5.7) — todos operacionais
 - Story 4.5.6 em backlog P3 — nao bloqueante para Epic 5
 
-### Epic 5 (quando executado)
+### Epic 4.6 (alvo — branch `feature/epic-4.6-polish`)
+- Latencia media modos rapidos (transcricao, simple) < 5s — medida com `[PERF]`
+- Zero crashes em 20 execucoes por modo — validado por QUINN
+- Janela Settings redesenhada com abas (spec NEXUS)
+- Tooltip do tray exibe modo ativo sem abrir nenhuma janela
+- Features de nicho (Briefing, Profile, Visual, Pipeline) desativadas por padrao
+- CI verde em master
+
+### Epic 5 (quando executado — apos Epic 4.6)
 - Licenca server-side — 100% das ativacoes validadas online (fallback offline acionado apenas em falhas de rede documentadas)
 - Auto-update — notificacao exibida em menos de 3s apos startup quando nova versao disponivel
 - Zero dados pessoais no payload de validacao de licenca
@@ -514,5 +710,5 @@ Itens identificados mas sem sprint definida. Revisao a cada Epic concluido.
 
 ---
 
-*JP Labs Creative Studio — Voice Commander PRD v1.1*
+*JP Labs Creative Studio — Voice Commander PRD v1.2*
 *Owner: JP | Criado: 2026-02-24 | Atualizado: 2026-03-02 | Versao do produto: 1.0.14*
