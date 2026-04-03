@@ -3,6 +3,7 @@
 import threading
 
 from voice import state
+from voice.ai_provider import retry_api_call
 
 _openai_lock = threading.Lock()
 
@@ -30,6 +31,13 @@ def _get_openai_client():
 
 
 def _is_rate_limit(e: Exception) -> bool:
+    """Detecta rate limit OpenAI (type-safe + string fallback)."""
+    try:
+        import openai
+        if hasattr(openai, "RateLimitError") and isinstance(e, openai.RateLimitError):
+            return True
+    except (ImportError, TypeError):
+        pass
     msg = str(e).lower()
     return "429" in msg or "rate_limit" in msg or "ratelimit" in msg
 
@@ -51,15 +59,22 @@ def _missing_package_msg() -> str:
 def _call(system: str, user: str, temperature: float = 0.2) -> str | None:
     client = _get_openai_client()
     model = state._CONFIG.get("OPENAI_MODEL", "gpt-4o-mini")
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        temperature=temperature,
-    )
-    return response.choices[0].message.content.strip()
+
+    def _api_call():
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+        )
+        choices = response.choices or []
+        if not choices or not choices[0].message.content:
+            return None
+        return choices[0].message.content.strip()
+
+    return retry_api_call(_api_call, _is_rate_limit)
 
 
 def correct_with_openai(text: str) -> str:

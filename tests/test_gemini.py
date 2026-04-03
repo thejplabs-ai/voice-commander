@@ -24,7 +24,7 @@ def reset_gemini_singleton(monkeypatch):
     monkeypatch.setattr(state, "_GEMINI_API_KEY", "test-api-key")
     monkeypatch.setattr(state, "_CONFIG", {
         "GEMINI_MODEL": "gemini-2.5-flash",
-        "GEMINI_CORRECT": "true",
+        "GEMINI_CORRECT": True,
         "QUERY_SYSTEM_PROMPT": "",
         "TRANSLATE_TARGET_LANG": "en",
     })
@@ -120,7 +120,7 @@ class TestCorrectWithGemini:
         """correct_with_gemini() bypasses API when GEMINI_CORRECT=false."""
         monkeypatch.setattr(state, "_CONFIG", {
             **state._CONFIG,
-            "GEMINI_CORRECT": "false",
+            "GEMINI_CORRECT": False,
         })
         mock_client = MagicMock()
         monkeypatch.setattr(state, "_gemini_client", mock_client)

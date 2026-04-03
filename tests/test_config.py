@@ -24,10 +24,9 @@ def test_defaults_sem_env(tmp_path, monkeypatch):
     assert cfg["GEMINI_API_KEY"] is None
     assert cfg["LICENSE_KEY"] is None
     assert cfg["WHISPER_MODEL"] == "tiny"  # 4.6.1: default mudou para tiny
-    assert cfg["WHISPER_LANGUAGE"] == "pt"
+    assert cfg["WHISPER_LANGUAGE"] == ""  # vazio = auto-detect PT+EN
     assert cfg["MAX_RECORD_SECONDS"] == 120
     assert cfg["AUDIO_DEVICE_INDEX"] is None
-    assert cfg["QUERY_HOTKEY"] == "ctrl+shift+alt+space"
     assert cfg["QUERY_SYSTEM_PROMPT"] == ""
     assert cfg["HISTORY_MAX_ENTRIES"] == 500
     assert cfg["LOG_KEEP_SESSIONS"] == 5
@@ -81,13 +80,13 @@ def test_aspas_removidas(tmp_path, monkeypatch):
     monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
     _write_env(tmp_path, (
         'WHISPER_MODEL="base"\n'
-        'QUERY_HOTKEY=\'ctrl+alt+space\'\n'
+        'GEMINI_MODEL=\'gemini-2.5-flash\'\n'
     ))
 
     cfg = voice.load_config()
 
     assert cfg["WHISPER_MODEL"] == "base"
-    assert cfg["QUERY_HOTKEY"] == "ctrl+alt+space"
+    assert cfg["GEMINI_MODEL"] == "gemini-2.5-flash"
 
 
 def test_chave_vazia_ignorada(tmp_path, monkeypatch):
@@ -124,10 +123,10 @@ def test_novas_variaveis_stories_defaults(tmp_path, monkeypatch):
     cfg = voice.load_config()
 
     assert cfg["CYCLE_HOTKEY"] == "ctrl+shift+tab"
-    assert cfg["CLIPBOARD_CONTEXT_ENABLED"] == "true"
+    assert cfg["CLIPBOARD_CONTEXT_ENABLED"] is True
     assert cfg["CLIPBOARD_CONTEXT_MAX_CHARS"] == 2000
     assert cfg["HISTORY_HOTKEY"] == "ctrl+shift+h"
-    assert cfg["OVERLAY_ENABLED"] == "true"
+    assert cfg["OVERLAY_ENABLED"] is True
 
 
 def test_whisper_beam_size_parseable(tmp_path, monkeypatch):

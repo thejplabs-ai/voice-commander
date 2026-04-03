@@ -6,17 +6,14 @@
 # Nomes em português claro para tooltip/tray/overlay (ciclo de modo)
 # Fonte original: voice/tray.py e voice/overlay.py (_MODE_NAMES_PT)
 MODE_NAMES_PT: dict[str, str] = {
-    "transcribe":        "Transcrever",
-    "email":             "Email",
-    "simple":            "Prompt Simples",
-    "prompt":            "Prompt COSTAR",
-    "query":             "Perguntar ao Gemini",
-    "visual":            "Screenshot + Voz",
-    "pipeline":          "Pipeline",
-    "clipboard_context": "Contexto do Clipboard",
-    "bullet":            "Bullet Dump",
-    "translate":         "Traduzir",
-    "—":                 "—",
+    "transcribe": "Transcrever",
+    "email":      "Email",
+    "simple":     "Prompt Simples",
+    "prompt":     "Prompt COSTAR",
+    "query":      "Perguntar ao Gemini",
+    "bullet":     "Bullet Dump",
+    "translate":  "Traduzir",
+    "—":          "—",
 }
 
 # Labels de ação curtos para o overlay durante processamento
@@ -29,8 +26,6 @@ MODE_LABELS: dict[str, str] = {
     "bullet":     "Bullet Dump",
     "email":      "Email Draft",
     "translate":  "Traduzindo",
-    "visual":     "Visual Query",
-    "pipeline":   "Pipeline",
 }
 
 # Labels de ação para log de terminal (mais descritivos)
@@ -43,8 +38,6 @@ MODE_ACTIONS: dict[str, str] = {
     "bullet":     "Gerando bullets",
     "email":      "Rascunhando email",
     "translate":  "Traduzindo",
-    "visual":     "Visual Query (Gemini)",
-    "pipeline":   "Executando pipeline",
 }
 
 

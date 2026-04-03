@@ -11,6 +11,7 @@ from voice import ai_provider
 from voice.tray import _update_tray_state
 from voice.logging_ import _append_history
 from voice.clipboard import copy_to_clipboard, paste_via_sendinput
+from voice.modes import MODE_ACTIONS as _MODE_ACTIONS
 
 SAMPLE_RATE = 16000
 CHANNELS    = 1
@@ -145,7 +146,8 @@ def record() -> None:
         with sd.InputStream(**stream_kwargs) as stream:
             while not state.stop_event.is_set():
                 data, _ = stream.read(1024)
-                state.frames_buf.append(data.copy())
+                with state._toggle_lock:
+                    state.frames_buf.append(data.copy())
                 frame_count += 1
 
                 if frame_count == warn_frames:
@@ -162,18 +164,6 @@ def record() -> None:
 
 
 # ── Transcription ─────────────────────────────────────────────────────────────
-
-_MODE_ACTIONS = {
-    "transcribe": "Corrigindo",
-    "simple":     "Simplificando prompt",
-    "prompt":     "Estruturando prompt (COSTAR)",
-    "query":      "Consultando AI (query direta)",
-    "bullet":     "Gerando bullets",
-    "email":      "Rascunhando email",
-    "translate":  "Traduzindo",
-    "visual":     "Visual Query (Gemini)",
-    "pipeline":   "Executando pipeline",
-}
 
 
 def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
@@ -211,7 +201,7 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
     _transcribe_sig = _inspect.signature(model.transcribe)
     _supports_hotwords = "hotwords" in _transcribe_sig.parameters
 
-    beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 5)
+    beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)
 
     _transcribe_kwargs: dict = dict(
         language=lang_hint,
@@ -415,14 +405,15 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
         if paste_ms > 0:
             timing["paste"] = paste_ms
 
-        # Story 4.6.6: log de performance
-        parts = [f"Gravação: {recording_ms/1000:.1f}s", f"Whisper: {whisper_ms/1000:.1f}s"]
-        if gemini_ms > 0:
-            parts.append(f"Gemini: {gemini_ms/1000:.1f}s")
-        if paste_ms > 0:
-            parts.append(f"Paste: {paste_ms/1000:.1f}s")
-        parts.append(f"Total: {total_ms/1000:.1f}s")
-        print(f"[PERF] {' | '.join(parts)}")
+        # Story 4.6.6: log de performance (controlado por DEBUG_PERF)
+        if state._CONFIG.get("DEBUG_PERF", False) is True:
+            parts = [f"Gravação: {recording_ms/1000:.1f}s", f"Whisper: {whisper_ms/1000:.1f}s"]
+            if gemini_ms > 0:
+                parts.append(f"Gemini: {gemini_ms/1000:.1f}s")
+            if paste_ms > 0:
+                parts.append(f"Paste: {paste_ms/1000:.1f}s")
+            parts.append(f"Total: {total_ms/1000:.1f}s")
+            print(f"[PERF] {' | '.join(parts)}")
 
         _append_history(mode, raw_text, text, duration, timing_ms=timing)
 
@@ -434,6 +425,8 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
         _append_history(mode, "", None, duration, error=True)
     finally:
         state.is_transcribing = False
+        # Limpar dados de sessão para evitar memory leak
+        state._clipboard_context = ""
         if temp_path:
             try:
                 os.unlink(temp_path)
@@ -451,7 +444,7 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
 
 # ── Toggle / hotkey ───────────────────────────────────────────────────────────
 
-_MODE_LABELS = {
+_MODE_LOG_LABELS = {
     "transcribe": "TRANSCRIÇÃO",
     "simple":     "PROMPT SIMPLES",
     "prompt":     "PROMPT COSTAR",
@@ -459,8 +452,6 @@ _MODE_LABELS = {
     "bullet":     "BULLET DUMP",
     "email":      "EMAIL DRAFT",
     "translate":  "TRADUZIR",
-    "visual":     "VISUAL QUERY",
-    "pipeline":   "PIPELINE",
 }
 
 
@@ -492,56 +483,21 @@ def toggle_recording(mode: str = "transcribe") -> None:
             state.record_start_time = time.time()
 
             # Story 4.5.4: capturar clipboard context no início da gravação
-            # Feature 5: Pipeline sempre captura clipboard independente de CLIPBOARD_CONTEXT_ENABLED
             state._clipboard_context = ""
-            clip_enabled = state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", "true").lower() == "true"
-            if clip_enabled or mode == "pipeline":
+            if state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", True) is True:
                 try:
                     from voice.clipboard import read_clipboard
-                    if mode == "pipeline":
-                        max_chars = state._CONFIG.get("PIPELINE_CLIPBOARD_MAX_CHARS", 8000)
-                    else:
-                        max_chars = state._CONFIG.get("CLIPBOARD_CONTEXT_MAX_CHARS", 2000)
+                    max_chars = state._CONFIG.get("CLIPBOARD_CONTEXT_MAX_CHARS", 2000)
                     raw_clip = read_clipboard(max_chars=max_chars)
                     if raw_clip and max_chars > 0 and len(raw_clip) == max_chars:
                         print(f"[INFO] Clipboard truncado para {max_chars} chars")
                     state._clipboard_context = raw_clip or ""
-                    if mode == "pipeline":
-                        if not state._clipboard_context:
-                            print("[WARN] Pipeline: clipboard vazio — coloque texto no clipboard antes de gravar")
-                        else:
-                            print(f"[INFO] Pipeline: {len(state._clipboard_context)} chars carregados do clipboard")
                 except Exception as _e:
                     print(f"[WARN] Falha ao ler clipboard: {_e}")
 
-            # Feature 2: Active Window Context
-            state._window_context = ""
-            if state._CONFIG.get("WINDOW_CONTEXT_ENABLED", "false").lower() == "true":
-                try:
-                    from voice.window_context import get_foreground_window_info
-                    state._window_context = get_foreground_window_info()
-                    if state._window_context:
-                        print(f"[INFO] Window context: {state._window_context[:80]}")
-                except Exception as _e:
-                    print(f"[WARN] Falha ao capturar window context: {_e}")
-
-            # Feature 3: Screenshot para modo visual
-            state._screenshot_bytes = None
-            if mode == "visual":
-                try:
-                    from voice.screenshot import capture_screen
-                    max_w = state._CONFIG.get("SCREENSHOT_MAX_WIDTH", 1280)
-                    state._screenshot_bytes = capture_screen(max_width=max_w)
-                    if state._screenshot_bytes:
-                        print(f"[INFO] Screenshot capturado ({len(state._screenshot_bytes)//1024}KB)")
-                    else:
-                        print("[WARN] Screenshot retornou None")
-                except Exception as _e:
-                    print(f"[WARN] Falha ao capturar screenshot: {_e}")
-
             _update_tray_state("recording", mode)
 
-            label = _MODE_LABELS.get(mode, mode.upper())
+            label = _MODE_LOG_LABELS.get(mode, mode.upper())
             play_sound("start")
             print(f"[REC]  Gravando para {label}... (mesmo hotkey para parar)\n")
 
@@ -549,19 +505,7 @@ def toggle_recording(mode: str = "transcribe") -> None:
             try:
                 from voice import overlay as _overlay
                 clip_chars = len(state._clipboard_context) if hasattr(state, "_clipboard_context") else 0
-                window_hint = ""
-                if state._CONFIG.get("WINDOW_CONTEXT_ENABLED", "false").lower() == "true":
-                    wctx = getattr(state, "_window_context", "")
-                    # Extrair só nome do processo para o hint curto
-                    if wctx:
-                        first_line = wctx.split("\n")[0]
-                        window_hint = first_line.replace("Processo: ", "")
-                screenshot_taken = getattr(state, "_screenshot_bytes", None) is not None
-                _overlay.show_recording(
-                    clipboard_chars=clip_chars,
-                    window_hint=window_hint,
-                    screenshot_taken=screenshot_taken,
-                )
+                _overlay.show_recording(clipboard_chars=clip_chars)
             except Exception as _ov_e:
                 pass  # overlay nunca deve crashar o recording
 

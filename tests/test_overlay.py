@@ -24,7 +24,7 @@ sys.modules.setdefault("tkinter", _tk_stub)
 import voice.state as state  # noqa: E402
 
 # Provide a minimal _CONFIG so overlay._get_thread() can read OVERLAY_ENABLED
-state._CONFIG = {"OVERLAY_ENABLED": "true"}
+state._CONFIG = {"OVERLAY_ENABLED": True}
 
 from voice.overlay import (  # noqa: E402
     _OverlayThread,

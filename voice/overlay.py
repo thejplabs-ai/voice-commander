@@ -4,8 +4,10 @@
 # Usa wm_overrideredirect + wm_attributes("-topmost") para não roubar foco.
 # Thread-safe: toda comunicação via queue.Queue.
 
+import math
 import queue
 import threading
+import time
 import tkinter as tk
 
 from voice import state
@@ -23,15 +25,15 @@ _MODE_CHANGE_DISMISS_MS = 1500
 
 # Cores inline (sem importar theme para evitar dep de CTk)
 _COLORS = {
-    "bg":          "#01010D",   # theme.BG_ABYSS
-    "bg_card":     "#0D0C25",   # theme.BG_DEEP
-    "border":      "#1C1C32",   # theme.BORDER_DEFAULT
-    "recording":   "#FF3366",   # theme.ERROR (TRAY_RECORDING)
-    "processing":  "#1E38F7",   # theme.BLUE_NEO (TRAY_PROCESSING)
-    "done":        "#00FF88",   # theme.SUCCESS
-    "text":        "#FFFFFF",   # theme.TEXT_PRIMARY
-    "muted":       "#808099",   # theme.TEXT_MUTED
-    "purple":      "#6B2FF8",   # theme.PURPLE
+    "bg":          "#0F0F0F",   # theme.BG_ABYSS
+    "bg_card":     "#1A1A1E",   # theme.BG_DEEP
+    "border":      "#2A2A2E",   # theme.BORDER_DEFAULT
+    "recording":   "#D4626E",   # theme.TRAY_RECORDING (muted rose)
+    "processing":  "#6B8EBF",   # theme.TRAY_PROCESSING (steel blue)
+    "done":        "#7EC89B",   # theme.SUCCESS (sage green)
+    "text":        "#F5F5F0",   # theme.TEXT_PRIMARY (cream-white)
+    "muted":       "#807E7A",   # theme.TEXT_MUTED
+    "purple":      "#C4956A",   # theme.PURPLE (warm amber)
 }
 
 
@@ -48,7 +50,7 @@ def _resolve_fonts(root) -> tuple:
     try:
         import tkinter.font as tkfont
         available = tkfont.families(root)
-        head = "Poppins" if "Poppins" in available else "Segoe UI"
+        head = "Figtree" if "Figtree" in available else "Segoe UI"
         body = "Inter" if "Inter" in available else "Segoe UI"
     except Exception:
         head = body = "Segoe UI"
@@ -70,6 +72,11 @@ class _OverlayThread(threading.Thread):
         self._dismiss_id = None
         self._current_state: str = STATE_HIDE
         self._ready = threading.Event()
+        # Animation state
+        self._show_anim_id = None
+        self._hide_anim_id = None
+        self._pulse_start: float = 0.0
+        self._target_y: int = 0
 
     def run(self) -> None:
         try:
@@ -177,15 +184,14 @@ class _OverlayThread(threading.Thread):
     def _show(self, overlay_state: str, text: str) -> None:
         self._current_state = overlay_state
 
-        # Cancelar auto-dismiss pendente
-        if self._dismiss_id is not None:
-            self._root.after_cancel(self._dismiss_id)
-            self._dismiss_id = None
-
-        # Parar animação anterior
-        if self._dot_anim_id is not None:
-            self._root.after_cancel(self._dot_anim_id)
-            self._dot_anim_id = None
+        # Cancelar animacoes/dismiss pendentes
+        for aid in (self._dismiss_id, self._dot_anim_id, self._show_anim_id, self._hide_anim_id):
+            if aid is not None:
+                try:
+                    self._root.after_cancel(aid)
+                except Exception:
+                    pass
+        self._dismiss_id = self._dot_anim_id = self._show_anim_id = self._hide_anim_id = None
 
         # Atualizar conteúdo
         if overlay_state == STATE_RECORDING:
@@ -201,14 +207,12 @@ class _OverlayThread(threading.Thread):
             color = _COLORS["done"]
             label = "Pronto!"
             info = text[:60] + ("..." if len(text) > 60 else "") if text else ""
-            # Auto-dismiss após 2s
-            self._dismiss_id = self._root.after(_DONE_DISMISS_MS, self._hide)
+            self._dismiss_id = self._root.after(_DONE_DISMISS_MS, self._animate_hide)
         elif overlay_state == STATE_MODE_CHANGE:
-            # Story 4.6.2: fundo escuro, seta + nome do modo em destaque, 1.5s
             color = _COLORS["purple"]
-            label = f"→ {text}" if text else "→ Modo"
+            label = f"  {text}" if text else "  Modo"
             info = ""
-            self._dismiss_id = self._root.after(_MODE_CHANGE_DISMISS_MS, self._hide)
+            self._dismiss_id = self._root.after(_MODE_CHANGE_DISMISS_MS, self._animate_hide)
         else:
             self._hide()
             return
@@ -219,44 +223,127 @@ class _OverlayThread(threading.Thread):
         self._state_label.config(text=label, fg=color if overlay_state == STATE_DONE else _COLORS["text"])
         self._text_label.config(text=info)
 
-        # Atualizar posição (resolução pode ter mudado)
+        # Calcular posicao final
         sw = self._root.winfo_screenwidth()
         sh = self._root.winfo_screenheight()
         x = sw - _OVERLAY_W - _MARGIN_RIGHT
-        y = sh - _OVERLAY_H - _MARGIN_BOTTOM
-        self._root.geometry(f"{_OVERLAY_W}x{_OVERLAY_H}+{x}+{y}")
+        self._target_y = sh - _OVERLAY_H - _MARGIN_BOTTOM
 
+        # Slide up + fade in (250ms, ease-out-cubic)
+        start_y = self._target_y + 20
+        self._root.geometry(f"{_OVERLAY_W}x{_OVERLAY_H}+{x}+{start_y}")
+        try:
+            self._root.wm_attributes("-alpha", 0.0)
+        except Exception:
+            pass
         self._root.deiconify()
         self._root.update_idletasks()
 
+        # Animate: 8 frames over ~250ms (30fps)
+        self._show_frame = 0
+        self._show_x = x
+
+        def _anim_show():
+            self._show_frame += 1
+            t = min(1.0, self._show_frame / 8.0)
+            # ease-out-cubic
+            t_eased = 1 - (1 - t) ** 3
+            y = int(start_y + (self._target_y - start_y) * t_eased)
+            alpha = t_eased
+            try:
+                self._root.geometry(f"{_OVERLAY_W}x{_OVERLAY_H}+{self._show_x}+{y}")
+                self._root.wm_attributes("-alpha", alpha)
+            except Exception:
+                return
+            if t < 1.0:
+                self._show_anim_id = self._root.after(33, _anim_show)
+            else:
+                self._show_anim_id = None
+
+        self._show_anim_id = self._root.after(33, _anim_show)
+
     def _hide(self) -> None:
+        """Esconde imediatamente (sem animacao)."""
         self._current_state = STATE_HIDE
         if not self._root:
             return
-        if self._dot_anim_id is not None:
-            self._root.after_cancel(self._dot_anim_id)
-            self._dot_anim_id = None
-        if self._dismiss_id is not None:
-            self._root.after_cancel(self._dismiss_id)
-            self._dismiss_id = None
+        for aid in (self._dot_anim_id, self._dismiss_id, self._show_anim_id, self._hide_anim_id):
+            if aid is not None:
+                try:
+                    self._root.after_cancel(aid)
+                except Exception:
+                    pass
+        self._dot_anim_id = self._dismiss_id = self._show_anim_id = self._hide_anim_id = None
         self._root.withdraw()
 
-    def _start_dot_anim(self) -> None:
-        """Pulse suave de 3 frames durante processamento."""
-        colors = [_COLORS["processing"], "#4B5EF9", _COLORS["muted"]]
-        self._dot_frame = 0
+    def _animate_hide(self) -> None:
+        """Fade out em 200ms (6 frames), depois withdraw."""
+        if not self._root or self._current_state == STATE_HIDE:
+            return
+        self._current_state = STATE_HIDE
+        # Cancelar animacoes pendentes
+        for aid in (self._dot_anim_id, self._dismiss_id, self._show_anim_id):
+            if aid is not None:
+                try:
+                    self._root.after_cancel(aid)
+                except Exception:
+                    pass
+        self._dot_anim_id = self._dismiss_id = self._show_anim_id = None
 
-        def _anim():
+        self._hide_frame = 0
+
+        def _anim_hide():
+            self._hide_frame += 1
+            t = min(1.0, self._hide_frame / 6.0)
+            alpha = max(0.0, 1.0 - t)
+            try:
+                self._root.wm_attributes("-alpha", alpha)
+            except Exception:
+                self._root.withdraw()
+                return
+            if t < 1.0:
+                self._hide_anim_id = self._root.after(33, _anim_hide)
+            else:
+                self._hide_anim_id = None
+                self._root.withdraw()
+
+        self._hide_anim_id = self._root.after(33, _anim_hide)
+
+    def _start_dot_anim(self) -> None:
+        """Pulse suave contínuo via sine wave a 30fps durante processamento."""
+        self._pulse_start = time.monotonic()
+        base_color = _COLORS["processing"]
+        bg_color = _COLORS["bg_card"]
+
+        def _hex_to_rgb(h: str) -> tuple:
+            h = h.lstrip("#")
+            return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+        def _rgb_to_hex(r: int, g: int, b: int) -> str:
+            return f"#{r:02x}{g:02x}{b:02x}"
+
+        r1, g1, b1 = _hex_to_rgb(base_color)
+        r0, g0, b0 = _hex_to_rgb(bg_color)
+
+        def _pulse():
             if self._current_state != STATE_PROCESSING:
                 return
-            c = colors[self._dot_frame % 3]
-            self._dot_canvas.itemconfig(self._dot_oval, fill=c)
-            if hasattr(self, "_dot_glow"):
-                self._dot_canvas.itemconfig(self._dot_glow, outline=c)
-            self._dot_frame += 1
-            self._dot_anim_id = self._root.after(300, _anim)
+            elapsed = time.monotonic() - self._pulse_start
+            # Sine wave: 0.5-1.0 brightness, 1.5s period
+            brightness = 0.5 + 0.5 * math.sin(2 * math.pi * elapsed / 1.5)
+            r = int(r0 + (r1 - r0) * brightness)
+            g = int(g0 + (g1 - g0) * brightness)
+            b = int(b0 + (b1 - b0) * brightness)
+            c = _rgb_to_hex(r, g, b)
+            try:
+                self._dot_canvas.itemconfig(self._dot_oval, fill=c)
+                if hasattr(self, "_dot_glow"):
+                    self._dot_canvas.itemconfig(self._dot_glow, outline=c)
+            except Exception:
+                return
+            self._dot_anim_id = self._root.after(33, _pulse)  # 30fps
 
-        _anim()
+        _pulse()
 
     def send(self, cmd: str, **data) -> None:
         """Thread-safe: envia comando para a thread do overlay."""
@@ -274,7 +361,7 @@ _thread_lock = threading.Lock()
 def _get_thread() -> _OverlayThread | None:
     """Retorna a thread do overlay, criando-a na primeira chamada se OVERLAY_ENABLED."""
     global _thread
-    if not state._CONFIG.get("OVERLAY_ENABLED", "true").lower() == "true":
+    if state._CONFIG.get("OVERLAY_ENABLED", True) is not True:
         return None
     with _thread_lock:
         if _thread is None or not _thread.is_alive():
@@ -288,24 +375,15 @@ def _get_thread() -> _OverlayThread | None:
     return _thread
 
 
-def show_recording(clipboard_chars: int = 0, window_hint: str = "", screenshot_taken: bool = False) -> None:
+def show_recording(clipboard_chars: int = 0) -> None:
     """Exibe overlay no estado 'Gravando'.
 
-    clipboard_chars > 0 indica contexto carregado.
-    window_hint: nome do processo da janela ativa (Feature 2).
-    screenshot_taken: True se screenshot foi capturado (Feature 3).
+    clipboard_chars > 0 indica contexto do clipboard carregado.
     """
     t = _get_thread()
     if t is None:
         return
-    parts = []
-    if screenshot_taken:
-        parts.append("Screenshot capturado")
-    elif clipboard_chars > 0:
-        parts.append(f"Clipboard carregado ({clipboard_chars} chars)")
-    if window_hint:
-        parts.append(window_hint)
-    info = " · ".join(parts)
+    info = f"Clipboard carregado ({clipboard_chars} chars)" if clipboard_chars > 0 else ""
     t.send("show", state=STATE_RECORDING, text=info)
 
 

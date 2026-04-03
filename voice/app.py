@@ -11,7 +11,7 @@ import time
 
 from voice import state
 from voice.config import load_config
-from voice.license import validate_license_key, _show_license_expired_notification
+from voice.config import validate_license_key, _show_license_expired_notification
 from voice.logging_ import _rotate_log
 from voice.mutex import _acquire_named_mutex
 from voice.tray import _start_tray, _stop_tray
@@ -116,7 +116,6 @@ def _log_startup_info() -> None:
         else "padrão do sistema"
     )
     record_hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space")
-    ai_provider_name = state._CONFIG.get("AI_PROVIDER", "gemini").upper()
     _lic_valid, _lic_msg = validate_license_key(state._CONFIG.get("LICENSE_KEY", "") or "")
 
     print("═" * 54)
@@ -126,8 +125,13 @@ def _log_startup_info() -> None:
     print("  Trocar modo : System Tray > Modo")
     print("  Idiomas     : PT-BR + EN (automático)")
     gemini_model = state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash")
-    if ai_provider_name == "GEMINI":
-        print(f"  AI      : Gemini {'(' + key_display + ')' if gemini_ok else '(sem chave)'} [{gemini_model}]")
+    or_key = state._CONFIG.get("OPENROUTER_API_KEY")
+    if or_key:
+        fast_or = state._CONFIG.get("OPENROUTER_MODEL_FAST", "llama-4-scout")
+        qual_or = state._CONFIG.get("OPENROUTER_MODEL_QUALITY", "gemini-2.5-flash")
+        print(f"  AI      : OpenRouter (fast: {fast_or.split('/')[-1]} | quality: {qual_or.split('/')[-1]})")
+    elif gemini_ok:
+        print(f"  AI      : Gemini ({key_display}) [{gemini_model}]")
     else:
         openai_ok = bool(state._CONFIG.get("OPENAI_API_KEY"))
         openai_model = state._CONFIG.get("OPENAI_MODEL", "gpt-4o-mini")
@@ -146,8 +150,6 @@ def _log_startup_info() -> None:
     print(f"  Timeout : {state._CONFIG['MAX_RECORD_SECONDS']}s")
     print(f"  Paste   : +{paste_delay}ms delay")
     print(f"  Mic     : {device_display}")
-    if state._CONFIG.get("WAKE_WORD_ENABLED", "false").lower() == "true":
-        print(f"  Wake    : {state._CONFIG.get('WAKE_WORD_KEYWORD', 'hey_jarvis')} (ativo)")
     print("  Sair    : Ctrl+C (ou menu System Tray > Encerrar)")
     print("═" * 54 + "\n")
 
@@ -193,8 +195,6 @@ def _hotkey_loop() -> None:
             record_hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space")
             cycle_hotkey = state._CONFIG.get("CYCLE_HOTKEY", "ctrl+shift+tab")
             history_hotkey = state._CONFIG.get("HISTORY_HOTKEY", "ctrl+shift+h")
-            visual_hotkey = state._CONFIG.get("VISUAL_HOTKEY", "").strip()
-            pipeline_hotkey = state._CONFIG.get("PIPELINE_HOTKEY", "").strip()
             keyboard.add_hotkey(record_hotkey, lambda: on_hotkey(), suppress=False)
             try:
                 keyboard.add_hotkey(cycle_hotkey, lambda: _cycle_mode(), suppress=False)
@@ -205,33 +205,11 @@ def _hotkey_loop() -> None:
                 keyboard.add_hotkey(history_hotkey, lambda: open_history_search(), suppress=False)
             except Exception as e:
                 print(f"[WARN] Falha ao registrar HISTORY_HOTKEY ({history_hotkey}): {e}")
-            # Feature 3: Visual Query hotkey — Story 4.6.5: só registra se não vazio
-            if visual_hotkey:
-                try:
-                    from voice.audio import toggle_recording as _tr
-                    keyboard.add_hotkey(visual_hotkey, lambda: _tr("visual"), suppress=False)
-                except Exception as e:
-                    print(f"[WARN] Falha ao registrar VISUAL_HOTKEY ({visual_hotkey}): {e}")
-            else:
-                print("[INFO] Visual Query: desativado (configure VISUAL_HOTKEY para ativar)")
-            # Feature 5: Pipeline hotkey — Story 4.6.5: só registra se não vazio
-            if pipeline_hotkey:
-                try:
-                    from voice.audio import toggle_recording as _tr
-                    keyboard.add_hotkey(pipeline_hotkey, lambda: _tr("pipeline"), suppress=False)
-                except Exception as e:
-                    print(f"[WARN] Falha ao registrar PIPELINE_HOTKEY ({pipeline_hotkey}): {e}")
-            else:
-                print("[INFO] Pipeline: desativado (configure PIPELINE_HOTKEY para ativar)")
 
             if _restart_count == 0:
                 print(f"[OK]   Hotkey registrado: {record_hotkey}. Aguardando...\n")
                 print(f"[INFO] Ciclar modo : {cycle_hotkey}")
                 print(f"[INFO] Histórico   : {history_hotkey}")
-                if visual_hotkey:
-                    print(f"[INFO] Visual Query: {visual_hotkey}")
-                if pipeline_hotkey:
-                    print(f"[INFO] Pipeline    : {pipeline_hotkey}")
                 print(f"[INFO] Modo atual  : {state.selected_mode}")
             else:
                 print(f"[OK]   Hotkey re-registrado (restart #{_restart_count}). Aguardando...\n")
@@ -264,17 +242,6 @@ def main() -> None:
     state._GEMINI_API_KEY = state._CONFIG.get("GEMINI_API_KEY")
     state.selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
 
-    # Feature 1: carregar user profile
-    try:
-        from voice.user_profile import load_profile
-        state._user_profile = load_profile()
-        facts_count = len(state._user_profile.get("facts", []))
-        if facts_count > 0:
-            print(f"[INFO] User profile carregado ({facts_count} fatos)")
-    except Exception as _e:
-        print(f"[WARN] Falha ao carregar user profile: {_e}")
-        state._user_profile = {"facts": [], "version": 1, "last_briefing_at": None}
-
     # Primeira execução — abre wizard de setup se necessário
     if _needs_onboarding():
         _run_onboarding()
@@ -296,23 +263,6 @@ def main() -> None:
 
     _log_startup_info()
 
-    # Feature 4: lançar thread de briefing matinal
-    def _start_briefing():
-        try:
-            from voice.briefing import run_briefing_check
-            run_briefing_check()
-        except Exception as _e:
-            print(f"[WARN] Briefing falhou: {_e}")
-    threading.Thread(target=_start_briefing, daemon=True).start()
-
-    # QW-5: verificar pacote openai se AI_PROVIDER=openai
-    if state._CONFIG.get("AI_PROVIDER", "gemini").lower() == "openai":
-        try:
-            import openai  # noqa: F401
-        except ImportError:
-            print("[WARN] openai não instalado — fallback para Gemini")
-            state._CONFIG["AI_PROVIDER"] = "gemini"
-
     _acquire_named_mutex()
 
     # Pre-load Whisper em background (evita delay na 1ª transcrição)
@@ -326,18 +276,6 @@ def main() -> None:
     validate_microphone()
     _start_tray(quit_callback=graceful_shutdown)
     threading.Thread(target=_license_check_loop, daemon=True).start()
-
-    # Wake word (opcional)
-    if state._CONFIG.get("WAKE_WORD_ENABLED", "false").lower() == "true":
-        try:
-            from voice.wakeword import WakeWordListener
-            _ww = WakeWordListener(
-                keyword=state._CONFIG.get("WAKE_WORD_KEYWORD", "hey_jarvis"),
-                on_detected=lambda: on_hotkey(),
-            )
-            _ww.start()
-        except Exception as e:
-            print(f"[WARN] Wake word falhou ao iniciar: {e}")
 
     _hotkey_loop()
 
