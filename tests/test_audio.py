@@ -41,7 +41,7 @@ def reset_recording_state(monkeypatch):
         "AI_PROVIDER": "gemini",
         "STT_PROVIDER": "whisper",
         "GEMINI_MODEL": "gemini-2.5-flash",
-        "GEMINI_CORRECT": "true",
+        "GEMINI_CORRECT": True,
         "SOUND_START": "",
         "SOUND_SUCCESS": "",
         "SOUND_ERROR": "",
@@ -289,6 +289,7 @@ class TestToggleRecording:
 
         with patch.object(audio, "play_sound"), \
              patch.object(audio, "_update_tray_state"), \
+             patch("voice.clipboard.read_clipboard", return_value=""), \
              patch("voice.audio.threading.Thread") as mock_thread:
             mock_t = MagicMock()
             mock_thread.return_value = mock_t
@@ -356,6 +357,7 @@ class TestToggleRecording:
 
         with patch.object(audio, "play_sound"), \
              patch.object(audio, "_update_tray_state"), \
+             patch("voice.clipboard.read_clipboard", return_value=""), \
              patch("voice.audio.threading.Thread") as mock_thread:
             mock_t = MagicMock()
             mock_thread.return_value = mock_t

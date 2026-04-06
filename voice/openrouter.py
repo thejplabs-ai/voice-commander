@@ -5,7 +5,7 @@
 #
 # Smart routing:
 #   Fast modes (transcribe, email, bullet, translate) → Llama 4 Scout
-#   Quality modes (simple, prompt, query, visual, pipeline) → Gemini 2.5 Flash
+#   Quality modes (simple, prompt, query) → Gemini 2.5 Flash
 
 import threading
 
@@ -21,7 +21,7 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 _MODEL_FAST = "meta-llama/llama-4-scout-17b-16e-instruct"
 _MODEL_QUALITY = "google/gemini-2.5-flash"
 
-# Modos rapidos que usam o modelo fast
+# Modos rápidos que usam o modelo fast
 FAST_MODES = {"transcribe", "email", "bullet", "translate"}
 
 
@@ -99,35 +99,68 @@ def _call(system: str, user: str, model: str, temperature: float = 0.2) -> str |
 
 # ── Mode functions ────────────────────────────────────────────────────────────
 
+_SYSTEM_MINIMAL = (
+    "You are a MINIMALIST voice transcription corrector.\n"
+    "ABSOLUTE RULES:\n"
+    "- Do NOT translate anything. If a word is in English, keep it in English.\n"
+    "- Do NOT change meaning or reorganize sentences.\n"
+    "- Do NOT expand abbreviations or acronyms.\n"
+    "- Preserve code-switching (PT+EN mix) exactly as-is.\n"
+    "- When in doubt, preserve the original text.\n"
+    "- Return ONLY the corrected text, no explanations."
+)
+
+_SYSTEM_SMART = (
+    "You are a smart voice transcription corrector.\n"
+    "RULES:\n"
+    "- Add punctuation automatically (periods, commas, question marks, exclamation marks).\n"
+    "- Capitalize sentence beginnings.\n"
+    "- Format numbers naturally (e.g., 'two hundred fifty' -> '250').\n"
+    "- Fix obvious transcription spelling errors.\n"
+    "- Do NOT translate anything. If a word is in English, keep it in English.\n"
+    "- Do NOT change meaning or reorganize sentences.\n"
+    "- Do NOT expand abbreviations or acronyms.\n"
+    "- Preserve code-switching (PT+EN mix) exactly as-is.\n"
+    "- Return ONLY the corrected text, no explanations."
+)
+
+
 def correct(text: str) -> str:
-    """Correcao ortografica minimalista de transcricao de voz."""
+    """Correção de transcrição de voz. Estilo controlado por CORRECTION_STYLE."""
+    correction_style = state._CONFIG.get("CORRECTION_STYLE", "smart")
+
+    # "off" bypassa completamente — sem chamada à API
+    if correction_style == "off":
+        return text
+
     if state._CONFIG.get("GEMINI_CORRECT", True) is not True:
         return text
     try:
-        system = (
-            "You are a MINIMALIST voice transcription corrector.\n"
-            "ABSOLUTE RULES:\n"
-            "- Do NOT translate anything. If a word is in English, keep it in English.\n"
-            "- Do NOT change meaning or reorganize sentences.\n"
-            "- Do NOT expand abbreviations or acronyms.\n"
-            "- Preserve code-switching (PT+EN mix) exactly as-is.\n"
-            "- When in doubt, preserve the original text.\n"
-            "- Return ONLY the corrected text, no explanations."
-        )
+        system = _SYSTEM_MINIMAL if correction_style == "minimal" else _SYSTEM_SMART
         result = _call(system, text, _model_for_mode("transcribe"), temperature=0.0)
         if result:
             print(f"[OK]   Original : {text}")
             print(f"[OK]   Corrigido: {result}")
+            # Aprendizado de vocabulário por correção
+            try:
+                from voice import vocabulary as _vocab
+                candidates = _vocab.learn_from_correction(text, result)
+                if candidates:
+                    for word in candidates:
+                        _vocab.add_word(word)
+                    print(f"[INFO] Vocabulário: +{len(candidates)} palavras ({', '.join(candidates)})")
+            except Exception:
+                pass  # vocabulário nunca deve crashar a correção
             return result
     except Exception as e:
         if _is_rate_limit(e):
             return _rate_limit_msg()
-        print(f"[WARN] OpenRouter indisponivel ({e}), usando texto original")
+        print(f"[WARN] OpenRouter indisponível ({e}), usando texto original")
     return text
 
 
 def simplify(text: str) -> str:
-    """Organiza transcricao em prompt limpo com bullet points."""
+    """Organiza transcrição em prompt limpo com bullet points."""
     try:
         system = (
             "You are a prompt engineering specialist. "
@@ -144,12 +177,12 @@ def simplify(text: str) -> str:
     except Exception as e:
         if _is_rate_limit(e):
             return _rate_limit_msg()
-        print(f"[WARN] OpenRouter indisponivel ({e}), retornando texto original")
+        print(f"[WARN] OpenRouter indisponível ({e}), retornando texto original")
     return text
 
 
 def structure(text: str) -> str:
-    """Estrutura transcricao em prompt COSTAR com XML tags."""
+    """Estrutura transcrição em prompt COSTAR com XML tags."""
     try:
         system = (
             "You are a prompt engineering specialist for LLMs (Claude, GPT-4, Gemini). "
@@ -165,7 +198,7 @@ def structure(text: str) -> str:
     except Exception as e:
         if _is_rate_limit(e):
             return _rate_limit_msg()
-        print(f"[WARN] OpenRouter indisponivel ({e}), retornando texto original")
+        print(f"[WARN] OpenRouter indisponível ({e}), retornando texto original")
     return text
 
 
@@ -188,7 +221,7 @@ def query(text: str) -> str:
     except Exception as e:
         if _is_rate_limit(e):
             return _rate_limit_msg()
-        print(f"[WARN] OpenRouter indisponivel ({e})")
+        print(f"[WARN] OpenRouter indisponível ({e})")
     return f"[SEM RESPOSTA] {text}"
 
 
@@ -212,12 +245,12 @@ def query_with_clipboard(text: str, clipboard_content: str) -> str:
     except Exception as e:
         if _is_rate_limit(e):
             return _rate_limit_msg()
-        print(f"[WARN] OpenRouter indisponivel ({e})")
+        print(f"[WARN] OpenRouter indisponível ({e})")
     return f"[SEM RESPOSTA] {text}"
 
 
 def bullet_dump(text: str) -> str:
-    """Transforma transcricao em bullets hierarquicos."""
+    """Transforma transcrição em bullets hierárquicos."""
     try:
         system = (
             "Transform the voice transcription into hierarchical bullet points. "
@@ -232,12 +265,12 @@ def bullet_dump(text: str) -> str:
     except Exception as e:
         if _is_rate_limit(e):
             return _rate_limit_msg()
-        print(f"[WARN] OpenRouter indisponivel ({e}), retornando texto original")
+        print(f"[WARN] OpenRouter indisponível ({e}), retornando texto original")
     return text
 
 
 def draft_email(text: str) -> str:
-    """Transforma transcricao em email profissional."""
+    """Transforma transcrição em email profissional."""
     try:
         system = (
             "Transform the voice transcription into a professional email. "
@@ -252,8 +285,29 @@ def draft_email(text: str) -> str:
     except Exception as e:
         if _is_rate_limit(e):
             return _rate_limit_msg()
-        print(f"[WARN] OpenRouter indisponivel ({e}), retornando texto original")
+        print(f"[WARN] OpenRouter indisponível ({e}), retornando texto original")
     return text
+
+
+def command(instruction: str, selected_text: str) -> str:
+    """Epic 5.0: Aplica instrução de voz sobre texto selecionado e retorna o resultado."""
+    try:
+        system = (
+            "You are a text editing assistant. The user has selected text and spoken an instruction. "
+            "Apply the instruction to the selected text. "
+            "Return ONLY the modified text, no explanations, no quotes, no markdown formatting "
+            "unless the instruction specifically asks for it."
+        )
+        user = f"[SELECTED TEXT]\n{selected_text}\n\n[INSTRUCTION]\n{instruction}"
+        result = _call(system, user, _model_for_mode("query"), temperature=0.2)
+        if result:
+            print(f"[OK]   Comando aplicado ({len(result)} chars)")
+            return result
+    except Exception as e:
+        if _is_rate_limit(e):
+            return _rate_limit_msg()
+        print(f"[WARN] OpenRouter indisponível ({e}), retornando texto selecionado")
+    return selected_text
 
 
 def translate(text: str) -> str:
@@ -273,7 +327,7 @@ def translate(text: str) -> str:
     except Exception as e:
         if _is_rate_limit(e):
             return _rate_limit_msg()
-        print(f"[WARN] OpenRouter indisponivel ({e}), retornando texto original")
+        print(f"[WARN] OpenRouter indisponível ({e}), retornando texto original")
     return text
 
 

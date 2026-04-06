@@ -2,8 +2,8 @@
 #
 # Prioridade: OpenRouter (1 key, todos os modelos) > Gemini direto > OpenAI (legacy)
 #
-# Via OpenRouter, smart routing automatico:
-#   Modos rapidos (transcribe, email, bullet, translate) → Llama 4 Scout (402 t/s)
+# Via OpenRouter, smart routing automático:
+#   Modos rápidos (transcribe, email, bullet, translate) → Llama 4 Scout (402 t/s)
 #   Modos complexos (simple, prompt, query) → Gemini 2.5 Flash
 
 import time
@@ -55,7 +55,7 @@ def retry_api_call(
                 print(f"[WARN] Erro transiente — retry {attempt + 1}/{max_retries} em {delay:.1f}s")
                 time.sleep(delay)
             else:
-                raise  # erro nao-transiente: nao retry
+                raise  # erro não-transiente: sem retry
     raise last_exc  # pragma: no cover
 
 
@@ -70,7 +70,7 @@ def call_with_fallback(
 ) -> str:
     """
     Executa fn() com retry + tratamento padronizado:
-    - Rate limit exaurido apos retries → loga rate_limit_log e retorna rate_limit_msg()
+    - Rate limit exaurido após retries → loga rate_limit_log e retorna rate_limit_msg()
     - Outra exceção → loga error_log_prefix + erro e retorna fallback
     - fn() retorna falsy → retorna fallback
     - fn() retorna str → retorna resultado
@@ -123,6 +123,10 @@ def _dispatch_openrouter(mode: str, text: str) -> str:
     """Dispatch via OpenRouter — modelo selecionado automaticamente por modo."""
     from voice import openrouter
 
+    if mode == "command":
+        selected = getattr(state, "_command_selected_text", "")
+        return openrouter.command(text, selected)
+
     if mode == "query":
         clipboard_ctx = state._clipboard_context if hasattr(state, "_clipboard_context") else ""
         if clipboard_ctx and state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", True) is True:
@@ -147,6 +151,10 @@ def _dispatch_gemini(mode: str, text: str) -> str:
     """Dispatch direto para Gemini API (fallback/legacy)."""
     from voice import gemini
 
+    if mode == "command":
+        selected = getattr(state, "_command_selected_text", "")
+        return gemini.command_with_gemini(text, selected)
+
     if mode == "query":
         clipboard_ctx = state._clipboard_context if hasattr(state, "_clipboard_context") else ""
         if clipboard_ctx and state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", True) is True:
@@ -170,6 +178,16 @@ def _dispatch_gemini(mode: str, text: str) -> str:
 def _dispatch_openai(mode: str, text: str) -> str:
     """Dispatch para OpenAI direto (legacy)."""
     from voice import openai_
+    if mode == "command":
+        selected = getattr(state, "_command_selected_text", "")
+        # OpenAI legacy: usar query_with_openai com prompt inline
+        user_prompt = f"[SELECTED TEXT]\n{selected}\n\n[INSTRUCTION]\n{text}"
+        try:
+            result = openai_.query_with_openai(user_prompt)
+            return result if result else selected
+        except Exception:
+            return selected
+
     dispatch = {
         "transcribe": openai_.correct_with_openai,
         "simple":     openai_.simplify_with_openai,

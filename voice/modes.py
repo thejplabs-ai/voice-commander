@@ -13,6 +13,7 @@ MODE_NAMES_PT: dict[str, str] = {
     "query":      "Perguntar ao Gemini",
     "bullet":     "Bullet Dump",
     "translate":  "Traduzir",
+    "command":    "Comando",
     "—":          "—",
 }
 
@@ -26,6 +27,7 @@ MODE_LABELS: dict[str, str] = {
     "bullet":     "Bullet Dump",
     "email":      "Email Draft",
     "translate":  "Traduzindo",
+    "command":    "Comando de Voz",
 }
 
 # Labels de ação para log de terminal (mais descritivos)
@@ -38,6 +40,7 @@ MODE_ACTIONS: dict[str, str] = {
     "bullet":     "Gerando bullets",
     "email":      "Rascunhando email",
     "translate":  "Traduzindo",
+    "command":    "Aplicando comando de voz",
 }
 
 

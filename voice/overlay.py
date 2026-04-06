@@ -18,6 +18,7 @@ STATE_RECORDING    = "recording"
 STATE_PROCESSING   = "processing"
 STATE_DONE         = "done"
 STATE_MODE_CHANGE  = "mode_change"  # Story 4.6.2: ciclo de modo
+STATE_COMMAND      = "command"      # Epic 5.0: Command Mode
 STATE_HIDE         = "hide"
 
 # Story 4.6.2: duração do overlay de ciclo de modo (ms)
@@ -169,13 +170,13 @@ class _OverlayThread(threading.Thread):
         try:
             while True:
                 cmd, data = self._q.get_nowait()
-                self._handle(cmd, data)
+                self._handle_cmd(cmd, data)
         except queue.Empty:
             pass
         if self._root:
             self._root.after(50, self._poll_queue)
 
-    def _handle(self, cmd: str, data: dict) -> None:
+    def _handle_cmd(self, cmd: str, data: dict) -> None:
         if cmd == "show":
             self._show(data.get("state", STATE_RECORDING), data.get("text", ""))
         elif cmd == "hide":
@@ -198,11 +199,12 @@ class _OverlayThread(threading.Thread):
             color = _COLORS["recording"]
             label = "Gravando..."
             info = text or "Pressione o hotkey novamente para parar"
+            self._start_dot_anim(color, STATE_RECORDING)
         elif overlay_state == STATE_PROCESSING:
             color = _COLORS["processing"]
             label = "Processando..."
             info = text or "Aguarde..."
-            self._start_dot_anim()
+            self._start_dot_anim(color, STATE_PROCESSING)
         elif overlay_state == STATE_DONE:
             color = _COLORS["done"]
             label = "Pronto!"
@@ -213,6 +215,11 @@ class _OverlayThread(threading.Thread):
             label = f"  {text}" if text else "  Modo"
             info = ""
             self._dismiss_id = self._root.after(_MODE_CHANGE_DISMISS_MS, self._animate_hide)
+        elif overlay_state == STATE_COMMAND:
+            color = _COLORS["purple"]
+            label = "Comando de Voz"
+            info = text or "Fale sua instrução..."
+            self._start_dot_anim(color, STATE_COMMAND)
         else:
             self._hide()
             return
@@ -309,10 +316,10 @@ class _OverlayThread(threading.Thread):
 
         self._hide_anim_id = self._root.after(33, _anim_hide)
 
-    def _start_dot_anim(self) -> None:
-        """Pulse suave contínuo via sine wave a 30fps durante processamento."""
+    def _start_dot_anim(self, color: str = None, expected_state: str = STATE_PROCESSING) -> None:
+        """Pulse suave contínuo via sine wave a 30fps. Funciona para recording e processing."""
         self._pulse_start = time.monotonic()
-        base_color = _COLORS["processing"]
+        base_color = color or _COLORS["processing"]
         bg_color = _COLORS["bg_card"]
 
         def _hex_to_rgb(h: str) -> tuple:
@@ -326,7 +333,7 @@ class _OverlayThread(threading.Thread):
         r0, g0, b0 = _hex_to_rgb(bg_color)
 
         def _pulse():
-            if self._current_state != STATE_PROCESSING:
+            if self._current_state != expected_state:
                 return
             elapsed = time.monotonic() - self._pulse_start
             # Sine wave: 0.5-1.0 brightness, 1.5s period
@@ -402,6 +409,15 @@ def show_done(output_text: str = "") -> None:
     if t is None:
         return
     t.send("show", state=STATE_DONE, text=output_text)
+
+
+def show_command(selected_chars: int = 0) -> None:
+    """Epic 5.0: Exibe overlay no estado Command Mode com chars capturados."""
+    t = _get_thread()
+    if t is None:
+        return
+    info = f"Seleção capturada ({selected_chars} chars). Fale sua instrução..." if selected_chars > 0 else "Fale sua instrução..."
+    t.send("show", state=STATE_COMMAND, text=info)
 
 
 def show_mode_change(mode: str) -> None:

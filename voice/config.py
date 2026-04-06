@@ -27,7 +27,7 @@ def validate_license_key(key: str) -> tuple[bool, str]:
             return False, "Formato inválido"
         expiry_b64, sig = parts[1], parts[2]
         expiry = base64.urlsafe_b64decode(expiry_b64 + "==").decode()
-        expected_sig = hmac.new(_get_secret().encode(), expiry.encode(), hashlib.sha256).hexdigest()[:12]
+        expected_sig = hmac.HMAC(_get_secret().encode(), expiry.encode(), hashlib.sha256).hexdigest()[:12]
         if not hmac.compare_digest(sig, expected_sig):
             return False, "Chave inválida"
         expiry_date = datetime.date.fromisoformat(expiry)
@@ -80,7 +80,7 @@ def load_config() -> dict:
         "LICENSE_KEY": None,
         "WHISPER_MODEL": "tiny",
         "WHISPER_LANGUAGE": "",
-        "MAX_RECORD_SECONDS": 120,
+        "MAX_RECORD_SECONDS": 600,
         "AUDIO_DEVICE_INDEX": None,
         "QUERY_SYSTEM_PROMPT": "",
         "HISTORY_MAX_ENTRIES": 500,
@@ -100,6 +100,7 @@ def load_config() -> dict:
         "WHISPER_MODEL_FAST": "tiny",
         "WHISPER_MODEL_QUALITY": "small",
         # AI Provider — OpenRouter (gateway unico, recomendado)
+        "AI_PROVIDER": "",
         "OPENROUTER_API_KEY": None,
         "OPENROUTER_MODEL_FAST": "meta-llama/llama-4-scout-17b-16e-instruct",
         "OPENROUTER_MODEL_QUALITY": "google/gemini-2.5-flash",
@@ -131,6 +132,23 @@ def load_config() -> dict:
         "CYCLE_MODES": "transcribe,email,simple,prompt,query",
         # Story 4.6.6: Debug de performance — imprime [PERF] após cada transcrição
         "DEBUG_PERF": "false",
+        # Epic 5.0: Command Mode — edição de texto por voz
+        "COMMAND_HOTKEY": "ctrl+alt+space",
+        # Epic 5.1: Dicionário Pessoal — vocabulário dinâmico para Whisper
+        "VOCABULARY_ENABLED": "true",
+        # Epic 5.2: Snippets — expansão de texto por voz
+        "SNIPPETS_ENABLED": "true",
+        # Epic 5.3: Estilo de correção — "smart" (padrão) | "minimal" | "off"
+        # "smart":   adiciona pontuação, capitalização, formata números (comportamento novo)
+        # "minimal": apenas corrige ortografia — comportamento anterior ao Epic 5.3
+        # "off":     bypass total — retorna transcrição raw sem chamada à API
+        "CORRECTION_STYLE": "smart",
+        # Story 5.4.2: Hands-Free (VAD Auto-Start/Stop)
+        "HANDS_FREE_ENABLED": "false",
+        "HANDS_FREE_SILENCE_MS": 2000,  # ms de silêncio para auto-stop
+        "HANDS_FREE_SPEECH_MS": 500,    # ms de fala para auto-start
+        # Epic 5.5: Window Context — captura processo + categoria da janela ativa
+        "WINDOW_CONTEXT_ENABLED": "false",
     }
     if os.path.exists(env_path):
         _load_env_file(config, env_path)
@@ -142,7 +160,8 @@ def load_config() -> dict:
     # Converter configs booleanas de string para bool nativo
     _BOOL_KEYS = (
         "OVERLAY_ENABLED", "CLIPBOARD_CONTEXT_ENABLED",
-        "GEMINI_CORRECT", "DEBUG_PERF",
+        "GEMINI_CORRECT", "DEBUG_PERF", "VOCABULARY_ENABLED", "SNIPPETS_ENABLED",
+        "HANDS_FREE_ENABLED", "WINDOW_CONTEXT_ENABLED",
     )
     for key in _BOOL_KEYS:
         val = config.get(key)
@@ -165,21 +184,22 @@ def _load_env_file(config: dict, env_path: str) -> None:
             val = val.strip().strip('"').strip("'")
             if key in config and val:
                 if key in ("MAX_RECORD_SECONDS", "HISTORY_MAX_ENTRIES", "LOG_KEEP_SESSIONS",
-                           "WHISPER_BEAM_SIZE", "PASTE_DELAY_MS", "CLIPBOARD_CONTEXT_MAX_CHARS"):
+                           "WHISPER_BEAM_SIZE", "PASTE_DELAY_MS", "CLIPBOARD_CONTEXT_MAX_CHARS",
+                           "HANDS_FREE_SILENCE_MS", "HANDS_FREE_SPEECH_MS"):
                     try:
                         config[key] = int(val)
                     except ValueError:
-                        print(f"[WARN] Config {key}={val} nao e inteiro valido, usando default {config[key]}")
+                        print(f"[WARN] Config {key}={val} não é inteiro válido, usando default {config[key]}")
                 elif key == "VAD_THRESHOLD":
                     try:
                         config[key] = float(val)
                     except ValueError:
-                        print(f"[WARN] Config {key}={val} nao e float valido, usando default {config[key]}")
+                        print(f"[WARN] Config {key}={val} não é float válido, usando default {config[key]}")
                 elif key == "AUDIO_DEVICE_INDEX":
                     try:
                         config[key] = int(val)
                     except ValueError:
-                        print(f"[WARN] Config {key}={val} nao e inteiro valido, ignorando")
+                        print(f"[WARN] Config {key}={val} não é inteiro válido, ignorando")
                 else:
                     config[key] = val
 

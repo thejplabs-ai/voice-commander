@@ -15,7 +15,7 @@ from voice.config import validate_license_key, _show_license_expired_notificatio
 from voice.logging_ import _rotate_log
 from voice.mutex import _acquire_named_mutex
 from voice.tray import _start_tray, _stop_tray
-from voice.audio import on_hotkey, validate_microphone, get_whisper_model
+from voice.audio import on_hotkey, on_command_hotkey, validate_microphone, get_whisper_model
 from voice.shutdown import graceful_shutdown
 
 try:
@@ -43,8 +43,13 @@ def _needs_onboarding() -> bool:
     if not os.path.exists(sentinel_path):
         return True
 
-    # Completou antes mas a chave sumiu (ex: usuário editou .env manualmente)
-    if not state._CONFIG.get("GEMINI_API_KEY"):
+    # Completou antes mas nenhuma chave de AI configurada
+    has_ai_key = (
+        state._CONFIG.get("GEMINI_API_KEY")
+        or state._CONFIG.get("OPENROUTER_API_KEY")
+        or state._CONFIG.get("OPENAI_API_KEY")
+    )
+    if not has_ai_key:
         return True
 
     return False
@@ -62,8 +67,8 @@ def _mark_onboarding_done() -> None:
 
 def _run_onboarding() -> None:
     """Abre wizard de configuração inicial (bloqueante)."""
-    from voice.ui import OnboardingWindow
-    OnboardingWindow(done_callback=_mark_onboarding_done).run()
+    from voice.webui import run_onboarding
+    run_onboarding(done_callback=_mark_onboarding_done)
 
 
 def _license_check_loop() -> None:
@@ -206,10 +211,18 @@ def _hotkey_loop() -> None:
             except Exception as e:
                 print(f"[WARN] Falha ao registrar HISTORY_HOTKEY ({history_hotkey}): {e}")
 
+            command_hotkey = state._CONFIG.get("COMMAND_HOTKEY", "ctrl+alt+space")
+            if command_hotkey:
+                try:
+                    keyboard.add_hotkey(command_hotkey, lambda: on_command_hotkey(), suppress=False)
+                except Exception as e:
+                    print(f"[WARN] Falha ao registrar COMMAND_HOTKEY ({command_hotkey}): {e}")
+
             if _restart_count == 0:
                 print(f"[OK]   Hotkey registrado: {record_hotkey}. Aguardando...\n")
                 print(f"[INFO] Ciclar modo : {cycle_hotkey}")
                 print(f"[INFO] Histórico   : {history_hotkey}")
+                print(f"[INFO] Comando voz : {command_hotkey}")
                 print(f"[INFO] Modo atual  : {state.selected_mode}")
             else:
                 print(f"[OK]   Hotkey re-registrado (restart #{_restart_count}). Aguardando...\n")
@@ -228,6 +241,27 @@ def _hotkey_loop() -> None:
             print(f"[INFO] Reiniciando hotkeys em 3s (tentativa #{_restart_count})...\n")
             time.sleep(3)
             continue
+
+    # Signal main thread to exit
+    state._shutdown_event.set()
+
+
+def _main_event_loop() -> None:
+    """Main thread loop — handles settings requests (pywebview requires main thread).
+
+    Blocks until _shutdown_event is set (Ctrl+C or tray quit).
+    IMPORTANTE: usa _shutdown_event (não stop_event). stop_event é usado pelo
+    ciclo de gravação e é setado a cada STOP — não deve encerrar o app.
+    """
+    from voice.webui import open_settings_blocking
+    try:
+        while not state._shutdown_event.is_set():
+            # Wait for either settings request or shutdown (poll every 0.5s for Ctrl+C)
+            if state._settings_requested.wait(timeout=0.5):
+                state._settings_requested.clear()
+                open_settings_blocking()
+    except KeyboardInterrupt:
+        pass
 
 
 def main() -> None:
@@ -277,7 +311,16 @@ def main() -> None:
     _start_tray(quit_callback=graceful_shutdown)
     threading.Thread(target=_license_check_loop, daemon=True).start()
 
-    _hotkey_loop()
+    # Story 5.4.2: Hands-free mode (VAD auto-start/stop)
+    if state._CONFIG.get("HANDS_FREE_ENABLED", False) is True:
+        from voice.audio import hands_free_loop
+        threading.Thread(target=hands_free_loop, daemon=True, name="HandsFree").start()
+
+    # Hotkeys em background thread — main thread fica livre para webview (pywebview exige main thread)
+    threading.Thread(target=_hotkey_loop, daemon=True).start()
+
+    # Main loop: atende requests de settings (webview) e aguarda shutdown
+    _main_event_loop()
 
     # Story 3.3 — Shutdown gracioso (libera mutex internamente)
     _stop_tray()

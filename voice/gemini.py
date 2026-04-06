@@ -14,6 +14,49 @@ _DEFAULT_QUERY_SYSTEM_PROMPT = (
     "O texto pode misturar português e inglês — responda no mesmo idioma da pergunta."
 )
 
+# ── Epic 5.5: Hints de contexto por categoria ─────────────────────────────────
+# Dicas adicionais injetadas nos prompts quando WINDOW_CONTEXT_ENABLED=true.
+# Categorias sem hint ("other", "browser", etc.) não adicionam texto ao prompt.
+
+_CATEGORY_HINTS: dict[str, str] = {
+    "email": "O usuário está escrevendo em um cliente de email. Use tom profissional.",
+    "code_editor": (
+        "O usuário está em um editor de código. "
+        "Preserve termos técnicos e formatação de código."
+    ),
+    "chat": "O usuário está em um chat. Use tom casual e direto.",
+    "document": "O usuário está editando um documento. Use linguagem clara e formal.",
+    "spreadsheet": "O usuário está em uma planilha. Seja preciso e objetivo.",
+    "presentation": "O usuário está em uma apresentação. Prefira linguagem clara e visual.",
+    "text_editor": "O usuário está em um editor de texto simples. Seja direto.",
+    "terminal": (
+        "O usuário está em um terminal. "
+        "Preserve comandos e sintaxe exatamente como estão."
+    ),
+}
+
+
+def _build_context_prefix() -> str:
+    """
+    Epic 5.5: Constrói prefixo de contexto para injeção nos prompts de AI.
+
+    Combina contexto de janela (processo/categoria) quando WINDOW_CONTEXT_ENABLED=true.
+    Retorna string vazia se a feature está desabilitada ou sem contexto relevante.
+    """
+    if not state._CONFIG.get("WINDOW_CONTEXT_ENABLED", False):
+        return ""
+
+    ctx = getattr(state, "_window_context", {})
+    if not ctx:
+        return ""
+
+    category = ctx.get("category", "other")
+    hint = _CATEGORY_HINTS.get(category, "")
+    if not hint:
+        return ""
+
+    return hint + "\n\n"
+
 
 def _get_gemini_client():
     """Retorna o cliente Gemini, criando-o na primeira chamada (lazy init, thread-safe)."""
@@ -84,24 +127,49 @@ def transcribe_audio_with_gemini(wav_path: str) -> str:
     return retry_api_call(_api_call, _is_rate_limit)
 
 
+_PROMPT_MINIMAL = (
+    "Você é um corretor MINIMALISTA de transcrição de voz para texto.\n"
+    "REGRAS ABSOLUTAS:\n"
+    "- NÃO traduza nada. Se a palavra está em inglês, deixe em inglês.\n"
+    "- NÃO mude o sentido ou reorganize frases.\n"
+    "- NÃO expanda abreviações ou siglas.\n"
+    "- Preserve code-switching (mistura PT+EN) exatamente como está.\n"
+    "- Em caso de dúvida, preserve o texto original.\n"
+    "- Retorne APENAS o texto corrigido, sem explicações.\n\n"
+    "Texto: {text}"
+)
+
+_PROMPT_SMART = (
+    "Você é um corretor inteligente de transcrição de voz para texto.\n"
+    "REGRAS:\n"
+    "- Adicione pontuação automaticamente (pontos finais, vírgulas, interrogações, exclamações).\n"
+    "- Capitalize o início de frases.\n"
+    "- Formate números naturalmente (ex: 'duzentos e cinquenta' -> '250').\n"
+    "- Corrija erros ortográficos óbvios da transcrição.\n"
+    "- NÃO traduza nada. Se a palavra está em inglês, deixe em inglês.\n"
+    "- NÃO mude o sentido ou reorganize frases.\n"
+    "- NÃO expanda abreviações ou siglas.\n"
+    "- Preserve code-switching (mistura PT+EN) exatamente como está.\n"
+    "- Retorne APENAS o texto corrigido, sem explicações.\n\n"
+    "Texto: {text}"
+)
+
+
 def correct_with_gemini(text: str) -> str:
+    correction_style = state._CONFIG.get("CORRECTION_STYLE", "smart")
+
+    # "off" bypassa completamente — sem chamada à API
+    if correction_style == "off":
+        return text
+
     if state._CONFIG.get("GEMINI_CORRECT", True) is not True:
-        return text  # bypass — retorna raw sem correção
+        return text  # bypass legado — retorna raw sem correção
     if not state._GEMINI_API_KEY:
         return text
     try:
         client = _get_gemini_client()
-        prompt = (
-            "Você é um corretor MINIMALISTA de transcrição de voz para texto.\n"
-            "REGRAS ABSOLUTAS:\n"
-            "- NÃO traduza nada. Se a palavra está em inglês, deixe em inglês.\n"
-            "- NÃO mude o sentido ou reorganize frases.\n"
-            "- NÃO expanda abreviações ou siglas.\n"
-            "- Preserve code-switching (mistura PT+EN) exatamente como está.\n"
-            "- Em caso de dúvida, preserve o texto original.\n"
-            "- Retorne APENAS o texto corrigido, sem explicações.\n\n"
-            f"Texto: {text}"
-        )
+        template = _PROMPT_MINIMAL if correction_style == "minimal" else _PROMPT_SMART
+        prompt = template.format(text=text)
 
         def _api_call():
             return _safe_text(client.models.generate_content(
@@ -111,6 +179,16 @@ def correct_with_gemini(text: str) -> str:
         if corrected:
             print(f"[OK]   Original : {text}")
             print(f"[OK]   Corrigido: {corrected}")
+            # Aprendizado de vocabulário por correção
+            try:
+                from voice import vocabulary as _vocab
+                candidates = _vocab.learn_from_correction(text, corrected)
+                if candidates:
+                    for word in candidates:
+                        _vocab.add_word(word)
+                    print(f"[INFO] Vocabulário: +{len(candidates)} palavras ({', '.join(candidates)})")
+            except Exception:
+                pass  # vocabulário nunca deve crashar a correção
             return corrected
     except Exception as e:
         if _is_rate_limit(e):
@@ -131,7 +209,8 @@ def simplify_as_prompt(text: str) -> str:
     word_count = len(text.split())
     print(f"[...]  Input: {word_count} palavras → modo prompt simples (fidelidade total)")
 
-    meta_prompt = f"""Você é especialista em prompt engineering.
+    context_prefix = _build_context_prefix()
+    meta_prompt = f"""{context_prefix}Você é especialista em prompt engineering.
 O texto abaixo é transcrição de voz informal (pode misturar PT e EN).
 Transforme-o em um prompt limpo e direto para usar em qualquer LLM.
 
@@ -260,6 +339,10 @@ def query_with_gemini(text: str) -> str:
     if not system_prompt:
         system_prompt = _DEFAULT_QUERY_SYSTEM_PROMPT
 
+    context_prefix = _build_context_prefix()
+    if context_prefix:
+        system_prompt = context_prefix + system_prompt
+
     print(f"[...]  Query Gemini ({len(text)} chars)...")
 
     try:
@@ -305,6 +388,10 @@ def query_with_clipboard_context(text: str, clipboard_content: str) -> str:
     if not system_prompt:
         system_prompt = _DEFAULT_QUERY_SYSTEM_PROMPT
 
+    context_prefix = _build_context_prefix()
+    if context_prefix:
+        system_prompt = context_prefix + system_prompt
+
     full_prompt = (
         f"{system_prompt}\n\n"
         f"[CONTEXTO DO CLIPBOARD]\n{clipboard_content}\n\n"
@@ -343,7 +430,9 @@ def bullet_dump_with_gemini(text: str) -> str:
     try:
         from google import genai
         client = _get_gemini_client()
+        context_prefix = _build_context_prefix()
         prompt = (
+            f"{context_prefix}"
             "Você é especialista em organização de informação.\n"
             "Transforme a transcrição abaixo em bullet points hierárquicos.\n"
             "REGRAS ABSOLUTAS:\n"
@@ -378,7 +467,9 @@ def draft_email_with_gemini(text: str) -> str:
     try:
         from google import genai
         client = _get_gemini_client()
+        context_prefix = _build_context_prefix()
         prompt = (
+            f"{context_prefix}"
             "Você é um redator profissional de emails.\n"
             "Transforme a transcrição abaixo em um email profissional.\n"
             "ESTRUTURA OBRIGATÓRIA:\n"
@@ -410,6 +501,40 @@ def draft_email_with_gemini(text: str) -> str:
     return text
 
 
+def command_with_gemini(instruction: str, selected_text: str) -> str:
+    """Epic 5.0: Aplica instrução de voz sobre texto selecionado via Gemini."""
+    if not state._GEMINI_API_KEY:
+        return selected_text
+    try:
+        from google import genai
+        client = _get_gemini_client()
+        prompt = (
+            "You are a text editing assistant. The user has selected text and spoken an instruction.\n"
+            "Apply the instruction to the selected text.\n"
+            "Return ONLY the modified text, no explanations, no quotes, no markdown formatting "
+            "unless the instruction specifically asks for it.\n\n"
+            f"[SELECTED TEXT]\n{selected_text}\n\n[INSTRUCTION]\n{instruction}"
+        )
+
+        def _api_call():
+            return _safe_text(client.models.generate_content(
+                model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+                contents=prompt,
+                config=genai.types.GenerateContentConfig(temperature=0.2),
+            ))
+
+        result = retry_api_call(_api_call, _is_rate_limit)
+        if result:
+            print(f"[OK]   Comando aplicado ({len(result)} chars)")
+            return result
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] Gemini indisponível ({e}), retornando texto selecionado")
+    return selected_text
+
+
 def translate_with_gemini(text: str) -> str:
     """Detecta idioma e traduz para TRANSLATE_TARGET_LANG. Preserva formatação."""
     if not state._GEMINI_API_KEY:
@@ -419,7 +544,9 @@ def translate_with_gemini(text: str) -> str:
         client = _get_gemini_client()
         target_lang = state._CONFIG.get("TRANSLATE_TARGET_LANG", "en")
         lang_name = "inglês" if target_lang == "en" else "português brasileiro"
+        context_prefix = _build_context_prefix()
         prompt = (
+            f"{context_prefix}"
             f"Detecte o idioma do texto abaixo e traduza para {lang_name}.\n"
             "Preserve a formatação original.\n"
             "Retorne APENAS o texto traduzido, sem explicações.\n\n"

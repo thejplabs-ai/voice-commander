@@ -1,6 +1,7 @@
 # voice/audio.py — recording, transcription, toggle_recording, on_hotkey, validate_microphone
 
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -12,6 +13,34 @@ from voice.tray import _update_tray_state
 from voice.logging_ import _append_history
 from voice.clipboard import copy_to_clipboard, paste_via_sendinput
 from voice.modes import MODE_ACTIONS as _MODE_ACTIONS
+
+
+# ── CUDA DLL discovery ───────────────────────────────────────────────────────
+# ctranslate2 requer cublas64_12.dll e cudnn64_9.dll no DLL search path.
+# Quando instalados via pip (nvidia-cublas-cu12, nvidia-cudnn-cu12), ficam
+# em site-packages/nvidia/*/bin/ — fora do PATH do sistema.
+# Registrar ANTES de qualquer import do faster_whisper/ctranslate2.
+def _register_cuda_dlls() -> None:
+    if sys.platform != "win32" or not hasattr(os, "add_dll_directory"):
+        return
+    # PyInstaller: DLLs ficam no _MEIPASS (mesma pasta do exe)
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", "")
+        if meipass and os.path.isdir(meipass):
+            os.add_dll_directory(meipass)
+        return
+    # Dev: DLLs nos pacotes nvidia pip (site-packages/nvidia/*/bin/)
+    try:
+        import nvidia.cublas
+        import nvidia.cudnn
+        for pkg in (nvidia.cublas, nvidia.cudnn):
+            bin_dir = os.path.join(os.path.dirname(pkg.__path__[0]), pkg.__name__.split(".")[-1], "bin")
+            if os.path.isdir(bin_dir):
+                os.add_dll_directory(bin_dir)
+    except (ImportError, Exception):
+        pass  # pacotes nvidia não instalados — CUDA via toolkit ou indisponível
+
+_register_cuda_dlls()
 
 SAMPLE_RATE = 16000
 CHANNELS    = 1
@@ -77,8 +106,72 @@ def play_sound(event: str) -> None:
 
 # ── Whisper model ─────────────────────────────────────────────────────────────
 
+def _resolve_hf_model_path(model_name: str) -> str | None:
+    """Resolve o path real de um modelo HuggingFace, resolvendo symlinks.
+
+    ctranslate2 (C++) não segue symlinks do HuggingFace no Windows em certos
+    contextos (pós-install do Inno Setup, UAC elevation). Esta função encontra
+    o snapshot directory e resolve model.bin para o blob real.
+    Retorna o path do diretório com arquivos reais, ou None se não encontrar.
+    """
+    hf_cache = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
+    model_dir = os.path.join(hf_cache, f"models--Systran--faster-whisper-{model_name}", "snapshots")
+    if not os.path.isdir(model_dir):
+        return None
+    # Pegar o snapshot mais recente
+    try:
+        snapshots = [d for d in os.listdir(model_dir) if os.path.isdir(os.path.join(model_dir, d))]
+    except OSError:
+        return None
+    if not snapshots:
+        return None
+    snapshot = os.path.join(model_dir, snapshots[-1])
+    model_bin = os.path.join(snapshot, "model.bin")
+    # Se model.bin é symlink, resolver para o path real
+    if os.path.islink(model_bin):
+        real_path = os.path.realpath(model_bin)
+        if os.path.exists(real_path):
+            # Retornar o diretório do snapshot — ctranslate2 espera um diretório
+            # com model.bin, config.json, etc. Precisamos criar um temp dir com
+            # os arquivos resolvidos? Não — mais simples: substituir symlinks por hardlinks.
+            _resolve_symlinks_in_dir(snapshot)
+            return snapshot
+    elif os.path.exists(model_bin):
+        return snapshot  # Arquivo real, sem symlink
+    return None
+
+
+def _resolve_symlinks_in_dir(directory: str) -> None:
+    """Substitui symlinks por hardlinks no diretório (Windows-safe).
+
+    Hardlinks funcionam sem privilégios especiais no mesmo filesystem.
+    Se hardlink falhar (cross-device), faz copy.
+    """
+    import shutil
+    for entry in os.listdir(directory):
+        full_path = os.path.join(directory, entry)
+        if os.path.islink(full_path):
+            real_target = os.path.realpath(full_path)
+            if os.path.exists(real_target):
+                try:
+                    os.remove(full_path)
+                    os.link(real_target, full_path)
+                except OSError:
+                    # Cross-device ou sem permissão para hardlink — copiar
+                    try:
+                        os.remove(full_path) if os.path.exists(full_path) else None
+                        shutil.copy2(real_target, full_path)
+                    except Exception as e:
+                        print(f"[WARN] Falha ao resolver symlink {entry}: {e}")
+
+
 def get_whisper_model(mode: str = "transcribe"):
-    """Lazy-load Whisper. Seleciona modelo e device com base no modo."""
+    """Lazy-load Whisper. Seleciona modelo e device com base no modo.
+
+    Fallback chain: configured model/cuda → configured model/cpu → tiny/cpu.
+    Se ctranslate2 falhar com 'Unable to open file' (symlinks do HuggingFace no
+    Windows), resolve symlinks para hardlinks e tenta novamente.
+    """
     device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
     if device == "auto":
         try:
@@ -108,17 +201,47 @@ def get_whisper_model(mode: str = "transcribe"):
         state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
         state._whisper_cache_key = cache_key
         print(f"[OK]  Whisper {model_name}/{device} pronto (PT-BR âncora + termos EN via hotwords)")
-    except Exception as _cuda_err:
-        # Fallback automático CUDA → CPU se DLLs CUDA não disponíveis
-        # (ex: cublas64_12.dll ausente no ambiente PyInstaller ou CUDA desatualizado)
+    except Exception as _err:
+        err_msg = str(_err).lower()
+        # Symlink issue: ctranslate2 não segue symlinks do HuggingFace no Windows
+        if "unable to open" in err_msg and "model.bin" in err_msg:
+            resolved = _resolve_hf_model_path(model_name)
+            if resolved:
+                print("[INFO] Symlinks HuggingFace resolvidos — tentando novamente...")
+                try:
+                    state._whisper_model = WhisperModel(resolved, device=device, compute_type="int8")
+                    state._whisper_cache_key = cache_key
+                    print(f"[OK]  Whisper {model_name}/{device} pronto (symlinks resolvidos)")
+                    return state._whisper_model
+                except Exception as _resolved_err:
+                    print(f"[WARN] Ainda falhou após resolver symlinks: {_resolved_err}")
+                    _err = _resolved_err
+
+        # Fallback 1: CUDA → CPU com mesmo modelo
         if device == "cuda":
-            print(f"[WARN] CUDA indisponível ({type(_cuda_err).__name__}: {_cuda_err}) — fallback para CPU")
+            print(f"[WARN] CUDA indisponível ({type(_err).__name__}: {_err}) — fallback para CPU")
             device = "cpu"
-            state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
-            state._whisper_cache_key = (model_name, device)
-            print(f"[OK]  Whisper {model_name}/cpu pronto (fallback CPU)")
-        else:
-            raise
+            try:
+                state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
+                state._whisper_cache_key = (model_name, device)
+                print(f"[OK]  Whisper {model_name}/cpu pronto (fallback CPU)")
+                return state._whisper_model
+            except Exception as _cpu_err:
+                print(f"[WARN] Modelo {model_name}/cpu também falhou ({_cpu_err})")
+                # Continua para fallback 2
+
+        # Fallback 2: modelo de emergência tiny/cpu (sempre disponível, ~75MB)
+        if model_name != "tiny":
+            print("[WARN] Fallback emergencial: tiny/cpu")
+            try:
+                state._whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
+                state._whisper_cache_key = ("tiny", "cpu")
+                print("[OK]  Whisper tiny/cpu pronto (fallback emergencial)")
+                return state._whisper_model
+            except Exception as _tiny_err:
+                print(f"[ERRO] Fallback tiny/cpu falhou: {_tiny_err}")
+                raise
+        raise
     return state._whisper_model
 
 
@@ -126,7 +249,7 @@ def get_whisper_model(mode: str = "transcribe"):
 
 def record() -> None:
     """Grava áudio do microfone, appendando frames diretamente em state.frames_buf."""
-    state.stop_event.clear()
+    # stop_event.clear() já foi chamado dentro de _toggle_lock em toggle_recording()
     max_seconds = state._CONFIG.get("MAX_RECORD_SECONDS", 120)
     max_frames = int(max_seconds * SAMPLE_RATE / 1024)
     warn_frames = int((max_seconds - 5) * SAMPLE_RATE / 1024)
@@ -194,6 +317,11 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
     info = None
 
     initial_prompt = state._CONFIG.get("WHISPER_INITIAL_PROMPT") or _DEFAULT_INITIAL_PROMPT
+    try:
+        from voice import vocabulary as _vocab
+        initial_prompt += _vocab.get_initial_prompt_suffix()
+    except Exception:
+        pass  # vocabulário nunca deve crashar a transcrição
 
     # Detectar se faster-whisper suporta o parâmetro hotwords (introduzido em ≥1.0).
     # Se não suportado, omitir silenciosamente para manter compatibilidade.
@@ -212,7 +340,11 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
         beam_size=beam_size,
     )
     if _supports_hotwords:
-        _transcribe_kwargs["hotwords"] = _HOTWORDS
+        try:
+            from voice import vocabulary as _vocab
+            _transcribe_kwargs["hotwords"] = _vocab.get_hotwords_string()
+        except Exception:
+            _transcribe_kwargs["hotwords"] = _HOTWORDS
 
     _vad_params = dict(
         threshold=vad_threshold,
@@ -247,6 +379,7 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
             print(f"[WARN]  CUDA indisponível durante transcrição ({type(_vad_err).__name__}) — fallback CPU")
             print("[WARN]  Configure WHISPER_DEVICE=cpu em Configurações para evitar este fallback.")
             # Forçar reload do modelo em CPU (invalida o cache)
+            # Usa tiny/cpu como fallback rápido (evita reload de modelo grande)
             state._whisper_model = None
             state._whisper_cache_key = ()
             state._CONFIG["WHISPER_DEVICE"] = "cpu"  # override para esta sessão
@@ -258,6 +391,20 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
                 **_transcribe_kwargs,
             )
             raw_text = " ".join(s.text for s in segments_cpu).strip()
+        elif "unable to open" in err_msg or "model.bin" in err_msg or "no such file" in err_msg:
+            # Modelo não encontrado no disco (download incompleto, symlink quebrado)
+            print(f"[WARN]  Modelo indisponível ({type(_vad_err).__name__}: {_vad_err})")
+            state._whisper_model = None
+            state._whisper_cache_key = ()
+            state._CONFIG["WHISPER_DEVICE"] = "cpu"
+            model_fallback = get_whisper_model(mode)  # get_whisper_model tem fallback chain
+            segments_fb, info = model_fallback.transcribe(
+                temp_path,
+                vad_filter=True,
+                vad_parameters=_vad_params,
+                **_transcribe_kwargs,
+            )
+            raw_text = " ".join(s.text for s in segments_fb).strip()
         else:
             raise
 
@@ -378,6 +525,29 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             return
 
         print(f"[OK]   {stt_provider}: {raw_text}")
+
+        # Epic 5.2: Snippet matching — expandir antes do processamento AI
+        try:
+            from voice import snippets as _snippets
+            snippet_text = _snippets.match_snippet(raw_text)
+            if snippet_text is not None:
+                copy_to_clipboard(snippet_text)
+                play_sound("success")
+                paste_delay_ms = state._CONFIG.get("PASTE_DELAY_MS", 50)
+                time.sleep(max(0, paste_delay_ms) / 1000.0 + 0.1)
+                paste_via_sendinput()
+                print(f"[OK]   Snippet expandido ({len(snippet_text)} chars)")
+                try:
+                    from voice import overlay as _overlay
+                    _overlay.show_done(snippet_text)
+                except Exception:
+                    pass
+                duration = time.time() - t_start
+                _append_history(mode, raw_text, snippet_text, duration)
+                return
+        except Exception:
+            pass  # snippets nunca devem crashar a transcrição
+
         text, gemini_ms, paste_ms = _post_process_and_paste(raw_text, mode)
 
         # Story 4.5.1: overlay "Pronto" com preview do output
@@ -452,6 +622,7 @@ _MODE_LOG_LABELS = {
     "bullet":     "BULLET DUMP",
     "email":      "EMAIL DRAFT",
     "translate":  "TRADUZIR",
+    "command":    "COMANDO DE VOZ",
 }
 
 
@@ -494,6 +665,17 @@ def toggle_recording(mode: str = "transcribe") -> None:
                     state._clipboard_context = raw_clip or ""
                 except Exception as _e:
                     print(f"[WARN] Falha ao ler clipboard: {_e}")
+
+            # Epic 5.5: capturar window context no início da gravação
+            state._window_context = {}
+            if state._CONFIG.get("WINDOW_CONTEXT_ENABLED", False) is True:
+                try:
+                    from voice.window_context import get_foreground_window_info
+                    state._window_context = get_foreground_window_info()
+                    if state._window_context.get("process"):
+                        print(f"[INFO] Contexto: {state._window_context['process']} ({state._window_context['category']})")
+                except Exception as _wc_e:
+                    print(f"[WARN] Falha ao capturar window context: {_wc_e}")
 
             _update_tray_state("recording", mode)
 
@@ -578,6 +760,149 @@ def on_hotkey() -> None:
     finally:
         _hotkey_debounce_lock.release()
     threading.Thread(target=toggle_recording, args=(state.selected_mode,), daemon=True).start()
+
+
+_command_debounce_lock = threading.Lock()
+_last_command_hotkey_time: float = 0.0
+
+
+def on_command_hotkey() -> None:
+    """Epic 5.0: Hotkey do Command Mode.
+
+    1. Simula Ctrl+C para capturar texto selecionado
+    2. Lê o clipboard e salva em state._command_selected_text
+    3. Se seleção vazia, toca erro e retorna (sem gravar)
+    4. Exibe overlay de comando com contagem de chars
+    5. Inicia gravação no modo "command" (fluxo normal de transcrição)
+    """
+    global _last_command_hotkey_time
+
+    now = time.time()
+    if not _command_debounce_lock.acquire(blocking=False):
+        return
+    try:
+        if now - _last_command_hotkey_time < 1.0:
+            return
+        _last_command_hotkey_time = now
+    finally:
+        _command_debounce_lock.release()
+
+    def _run():
+        from voice.clipboard import simulate_copy, read_clipboard
+
+        # Capturar texto selecionado
+        simulate_copy()
+        selected = read_clipboard()
+
+        if not selected.strip():
+            print("[SKIP] Nenhum texto selecionado para o Comando de Voz\n")
+            play_sound("error")
+            return
+
+        state._command_selected_text = selected
+        print(f"[INFO] Texto selecionado capturado ({len(selected)} chars) — fale a instrução\n")
+
+        # Overlay de comando (mostra chars capturados)
+        try:
+            from voice import overlay as _overlay
+            _overlay.show_command(len(selected))
+        except Exception:
+            pass
+
+        # Iniciar gravação no modo "command"
+        toggle_recording("command")
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+# ── Hands-Free (VAD Auto-Start/Stop) ─────────────────────────────────────────
+
+def hands_free_loop() -> None:
+    """Background loop que monitora o microfone via VAD e auto-start/stop a gravação.
+
+    Usa RMS como proxy simples de energia (sem dependência de Silero para este loop).
+    Só executa se HANDS_FREE_ENABLED=true no .env.
+    Thread daemon=True — nunca bloqueia o encerramento do app.
+    """
+    if state._CONFIG.get("HANDS_FREE_ENABLED", False) is not True:
+        return
+
+    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
+    speech_ms = state._CONFIG.get("HANDS_FREE_SPEECH_MS", 500)
+    silence_ms = state._CONFIG.get("HANDS_FREE_SILENCE_MS", 2000)
+    device_index = state._CONFIG.get("AUDIO_DEVICE_INDEX")
+
+    # Intervalo de amostragem para detecção de voz
+    chunk_ms = 50  # 50ms por chunk
+    chunk_samples = int(SAMPLE_RATE * chunk_ms / 1000)
+
+    speech_frames_needed = int(speech_ms / chunk_ms)    # chunks consecutivos para confirmar fala
+    silence_frames_needed = int(silence_ms / chunk_ms)  # chunks consecutivos para confirmar silêncio
+
+    speech_frame_count = 0
+    silence_frame_count = 0
+
+    # Escalar threshold VAD (config) para RMS — VAD Silero usa 0-1 em outro domínio;
+    # aqui usamos 10% do valor configurado como limite de energia RMS (float32 normalizado).
+    rms_threshold = vad_threshold * 0.1
+
+    print("[INFO] Hands-free ativo — monitorando microfone...")
+
+    try:
+        stream_kwargs: dict = {
+            "samplerate": SAMPLE_RATE,
+            "channels": CHANNELS,
+            "dtype": "float32",
+        }
+        if device_index is not None:
+            stream_kwargs["device"] = device_index
+
+        with sd.InputStream(**stream_kwargs) as stream:
+            while not state._shutdown_event.is_set():
+                data, _ = stream.read(chunk_samples)
+
+                # RMS do chunk como proxy de energia de fala
+                rms = float(np.sqrt(np.mean(data ** 2)))
+                is_speech = rms > rms_threshold
+
+                if is_speech:
+                    speech_frame_count += 1
+                    silence_frame_count = 0
+
+                    # Fala detectada por tempo suficiente — disparar auto-start
+                    if (
+                        speech_frame_count >= speech_frames_needed
+                        and not state.is_recording
+                        and not state.is_transcribing
+                    ):
+                        print("[INFO] Hands-free: fala detectada — auto-start")
+                        threading.Thread(
+                            target=toggle_recording,
+                            args=(state.selected_mode,),
+                            daemon=True,
+                        ).start()
+                        # Aguardar gravação iniciar e estabilizar antes do próximo ciclo
+                        time.sleep(1.0)
+                        speech_frame_count = 0
+                        silence_frame_count = 0
+                else:
+                    silence_frame_count += 1
+                    speech_frame_count = 0
+
+                    # Silêncio prolongado durante gravação — disparar auto-stop
+                    if silence_frame_count >= silence_frames_needed and state.is_recording:
+                        print("[INFO] Hands-free: silêncio detectado — auto-stop")
+                        threading.Thread(
+                            target=toggle_recording,
+                            args=(state.selected_mode,),
+                            daemon=True,
+                        ).start()
+                        time.sleep(1.0)
+                        speech_frame_count = 0
+                        silence_frame_count = 0
+
+    except Exception as e:
+        print(f"[ERRO] Hands-free loop: {e}")
 
 
 # ── Microphone validation ─────────────────────────────────────────────────────
