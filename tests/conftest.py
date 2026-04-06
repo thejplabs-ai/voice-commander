@@ -85,7 +85,6 @@ def mock_config(monkeypatch):
         "MAX_RECORD_SECONDS": 120,
         "AUDIO_DEVICE_INDEX": None,
         "QUERY_SYSTEM_PROMPT": "",
-        "QUERY_SYSTEM_PROMPT": "",
         "HISTORY_MAX_ENTRIES": 500,
         "LOG_KEEP_SESSIONS": 5,
         "VAD_THRESHOLD": 0.3,

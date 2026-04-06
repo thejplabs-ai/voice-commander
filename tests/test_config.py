@@ -25,7 +25,7 @@ def test_defaults_sem_env(tmp_path, monkeypatch):
     assert cfg["LICENSE_KEY"] is None
     assert cfg["WHISPER_MODEL"] == "tiny"  # 4.6.1: default mudou para tiny
     assert cfg["WHISPER_LANGUAGE"] == ""  # vazio = auto-detect PT+EN
-    assert cfg["MAX_RECORD_SECONDS"] == 120
+    assert cfg["MAX_RECORD_SECONDS"] == 600  # default atual (Epic 5.x)
     assert cfg["AUDIO_DEVICE_INDEX"] is None
     assert cfg["QUERY_SYSTEM_PROMPT"] == ""
     assert cfg["HISTORY_MAX_ENTRIES"] == 500
@@ -100,7 +100,7 @@ def test_chave_vazia_ignorada(tmp_path, monkeypatch):
     cfg = voice.load_config()
 
     # Empty value → val is "" → `if key in config and val:` is False → default kept
-    assert cfg["MAX_RECORD_SECONDS"] == 120
+    assert cfg["MAX_RECORD_SECONDS"] == 600  # default atual
     assert cfg["LOG_KEEP_SESSIONS"] == 5
 
 
