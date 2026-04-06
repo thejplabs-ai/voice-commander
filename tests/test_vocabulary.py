@@ -1,8 +1,6 @@
 # tests/test_vocabulary.py — Unit tests for voice/vocabulary.py
 import json
-import os
 
-import pytest
 
 import voice.state as state
 

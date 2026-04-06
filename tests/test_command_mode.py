@@ -11,9 +11,8 @@ Tests:
 """
 import ctypes
 import sys
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 import voice
 from voice import state
@@ -233,7 +232,6 @@ class TestCommandModeEmptySelection:
                     with patch("voice.audio.toggle_recording", side_effect=toggle_calls.append):
                         with patch("voice.audio.play_sound") as mock_play:
                             # Run _run() directly (synchronously) to avoid threading complexity
-                            from voice import audio as _audio
                             # Save and reset debounce to allow immediate call
                             import voice.audio as _aud
                             _aud._last_command_hotkey_time = 0.0

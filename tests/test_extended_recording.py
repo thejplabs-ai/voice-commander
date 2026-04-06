@@ -5,13 +5,10 @@ Story 5.4.1: MAX_RECORD_SECONDS default = 600 (10 min)
 Story 5.4.2: hands_free_loop() — VAD-based auto-start/stop
 """
 
-import importlib
 import sys
 import threading
-import time
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from voice import state
 from voice.config import load_config

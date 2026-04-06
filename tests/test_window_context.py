@@ -1,9 +1,7 @@
 # tests/test_window_context.py — Epic 5.5: Window Context testes
 
-import sys
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 # ---------------------------------------------------------------------------

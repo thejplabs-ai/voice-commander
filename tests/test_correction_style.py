@@ -5,7 +5,6 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 import voice.state as state
 
