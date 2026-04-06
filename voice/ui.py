@@ -10,10 +10,9 @@ import threading
 from voice import state
 from voice import theme
 from voice.paths import _resource_path
-from voice.license import validate_license_key, _test_gemini_key
+from voice.config import validate_license_key, _test_gemini_key
 from voice.config import _save_env, _reload_config
-
-__version__ = "1.0.14"
+from voice import __version__
 
 # Tentar importar customtkinter — fallback silencioso
 try:
@@ -59,15 +58,15 @@ class OnboardingWindow:
     """Wizard de configuração inicial — 5 steps."""
 
     MODES = [
-        ("transcribe", "Transcrever",    "Voz → texto corrigido",        "✍"),
-        ("simple",     "Prompt Simples", "Injeta contexto",               "⚙"),
-        ("prompt",     "Prompt COSTAR",  "Formato estruturado XML",       "☰"),
-        ("query",      "Query AI",       "Pergunta direta à IA",          "❓"),
-        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos",    "•"),
-        ("email",      "Email Draft",    "Voz → email profissional",      "✉"),
-        ("translate",  "Traduzir",       "Traduz para EN/PT",             "⇄"),
-        ("visual",     "Visual Query",   "Screenshot + voz → Gemini",    "👁"),
-        ("pipeline",   "Pipeline",       "Clipboard + instrução de voz",  "⛓"),
+        ("transcribe", "Transcrever",    "Voz → texto corrigido"),
+        ("simple",     "Prompt Simples", "Injeta contexto"),
+        ("prompt",     "Prompt COSTAR",  "Formato estruturado XML"),
+        ("query",      "Query AI",       "Pergunta direta à IA"),
+        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos"),
+        ("email",      "Email Draft",    "Voz → email profissional"),
+        ("translate",  "Traduzir",       "Traduz para EN/PT"),
+        ("visual",     "Visual Query",   "Screenshot + voz → Gemini"),
+        ("pipeline",   "Pipeline",       "Clipboard + instrução de voz"),
     ]
 
     def __init__(self, done_callback=None):
@@ -269,15 +268,13 @@ class OnboardingWindow:
         cols = 4
         for i in range(cols):
             grid.columnconfigure(i, weight=1)
-        for idx, (mode_id, label, desc, icon) in enumerate(self.MODES):
+        for idx, (mode_id, label, desc) in enumerate(self.MODES):
             row_idx, col_idx = divmod(idx, cols)
             padx_l = 0 if col_idx == 0 else 3
             padx_r = 0 if col_idx == cols - 1 else 3
             card = ctk.CTkFrame(grid, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_MD,
                                 border_width=1, border_color=theme.BORDER_DEFAULT)
             card.grid(row=row_idx, column=col_idx, padx=(padx_l, padx_r), pady=(0, 6), sticky="nsew")
-            ctk.CTkLabel(card, text=icon, font=theme.FONT_CAPTION(),
-                         text_color=theme.TEXT_SECONDARY).pack(anchor="w", padx=10, pady=(8, 2))
             ctk.CTkLabel(card, text=label,
                          font=theme.FONT_OVERLINE(), text_color=theme.TEXT_PRIMARY).pack(
                 anchor="w", padx=10)
@@ -380,12 +377,10 @@ class OnboardingWindow:
         ctk.CTkLabel(r_hk, text="  Gravar (modo selecionado na bandeja)",
                      font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(side="left")
         ctk.CTkFrame(card, height=1, fg_color=theme.BORDER_DEFAULT, corner_radius=0).pack(fill="x", padx=12, pady=4)
-        for _, label, desc, icon in self.MODES:
+        for _, label, desc in self.MODES:
             r = ctk.CTkFrame(card, fg_color="transparent")
             r.pack(fill="x", padx=12, pady=2)
-            ctk.CTkLabel(r, text=icon, font=theme.FONT_CAPTION(), text_color=theme.TEXT_SECONDARY,
-                         width=14).pack(side="left")
-            ctk.CTkLabel(r, text=f" {label}  ", font=theme.FONT_BODY_BOLD(),
+            ctk.CTkLabel(r, text=f"{label}  ", font=theme.FONT_BODY_BOLD(),
                          text_color=theme.TEXT_PRIMARY).pack(side="left")
             ctk.CTkLabel(r, text=desc, font=theme.FONT_BODY(),
                          text_color=theme.TEXT_MUTED).pack(side="left")
@@ -542,30 +537,30 @@ class SettingsWindow:
     MODELS = ["tiny", "base", "small", "medium", "large-v2", "large-v3"]
     LANGUAGES = ["auto-detect", "pt", "en"]
 
-    # Grid 3x3 — ordem: (mode_id, icon, label, desc)
+    # Grid 3x3 — ordem: (mode_id, label, desc)
     MODES_GRID = [
-        ("transcribe", "✍",  "Transcrever",    "Voz → texto"),
-        ("simple",     "⚙",  "Prompt Simples",  "+contexto"),
-        ("prompt",     "☰",  "COSTAR",          "XML estruturado"),
-        ("query",      "❓", "Perguntar",        "Gemini responde"),
-        ("bullet",     "•",  "Bullet Points",   "Lista hierárquica"),
-        ("email",      "✉",  "Email",           "Profissional"),
-        ("translate",  "⇄",  "Traduzir",        "EN/PT"),
-        ("visual",     "👁", "Visual",          "Screenshot+Voz"),
-        ("pipeline",   "⛓",  "Pipeline",        "Clipboard"),
+        ("transcribe", "Transcrever",    "Voz → texto"),
+        ("simple",     "Prompt Simples", "+contexto"),
+        ("prompt",     "COSTAR",         "XML estruturado"),
+        ("query",      "Perguntar",      "Gemini responde"),
+        ("bullet",     "Bullet Points",  "Lista hierárquica"),
+        ("email",      "Email",          "Profissional"),
+        ("translate",  "Traduzir",       "EN/PT"),
+        ("visual",     "Visual",         "Screenshot+Voz"),
+        ("pipeline",   "Pipeline",       "Clipboard"),
     ]
 
     # Mantida para compatibilidade com OnboardingWindow e step_5
     MODES = [
-        ("transcribe", "Transcrever",    "Voz → texto corrigido",        "✍"),
-        ("simple",     "Prompt Simples", "Injeta contexto",               "⚙"),
-        ("prompt",     "Prompt COSTAR",  "Formato estruturado XML",       "☰"),
-        ("query",      "Query AI",       "Pergunta direta à IA",          "❓"),
-        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos",    "•"),
-        ("email",      "Email Draft",    "Voz → email profissional",      "✉"),
-        ("translate",  "Traduzir",       "Traduz para EN/PT",             "⇄"),
-        ("visual",     "Visual Query",   "Screenshot + voz → Gemini",    "👁"),
-        ("pipeline",   "Pipeline",       "Clipboard + instrução de voz",  "⛓"),
+        ("transcribe", "Transcrever",    "Voz → texto corrigido"),
+        ("simple",     "Prompt Simples", "Injeta contexto"),
+        ("prompt",     "Prompt COSTAR",  "Formato estruturado XML"),
+        ("query",      "Query AI",       "Pergunta direta à IA"),
+        ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos"),
+        ("email",      "Email Draft",    "Voz → email profissional"),
+        ("translate",  "Traduzir",       "Traduz para EN/PT"),
+        ("visual",     "Visual Query",   "Screenshot + voz → Gemini"),
+        ("pipeline",   "Pipeline",       "Clipboard + instrução de voz"),
     ]
 
     def __init__(self):
@@ -582,12 +577,17 @@ class SettingsWindow:
         self._eye_btn = None
         self._show_key = False
         self._show_openai_key = False
+        self._show_groq_key = False
+        self._show_openrouter_key = False
+        self._openrouter_key_entry = None
         # New fields
         self._hotkey_entry = None
         self._provider_var = None
         self._openai_key_entry = None
         self._openai_eye_btn = None
         self._openai_key_frame = None
+        self._groq_key_entry = None
+        self._groq_eye_btn = None
         self._device_var = None
         self._translate_lang_var = None
         self._wake_enabled_var = None
@@ -601,6 +601,7 @@ class SettingsWindow:
         self._content_area = None
         self._section_btns = {}
         self._section_frames = {}
+        self._indicator_bars = {}  # section_id -> CTkFrame (accent bar)
 
     def open(self):
         """Abre a janela em thread daemon. Singleton — foca se já aberta."""
@@ -681,12 +682,11 @@ class SettingsWindow:
         self._content_area = ctk.CTkFrame(right, fg_color=theme.BG_ABYSS, corner_radius=0)
         self._content_area.pack(fill="both", expand=True)
 
-        # Build all section frames (6 nav items — ai e license agora dentro de general)
+        # Build all section frames (5 nav items)
         self._build_section_status()
         self._build_section_modes()
         self._build_section_general()
         self._build_section_advanced()
-        self._build_section_profile()
         self._build_section_about()
 
         # Footer
@@ -711,21 +711,31 @@ class SettingsWindow:
             fill="x", padx=12, pady=(12, 8))
 
         nav_items = [
-            ("status",   "● Status"),
-            ("modes",    "🎤 Modo Ativo"),
-            ("general",  "⚙ Geral"),
-            ("advanced", "⚒ Avançado"),
-            ("profile",  "👤 Perfil"),
-            ("about",    "ℹ Sobre"),
+            ("status",   "Status"),
+            ("modes",    "Modo Ativo"),
+            ("general",  "Geral"),
+            ("advanced", "Avançado"),
+            ("about",    "Sobre"),
         ]
         for section_id, label in nav_items:
+            # Row wrapper so indicator bar + button sit side-by-side
+            row = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=0)
+            row.pack(fill="x", padx=8, pady=2)
+
+            # Vertical accent bar (3px wide, hidden by default)
+            bar = ctk.CTkFrame(row, width=3, height=theme.BTN_HEIGHT,
+                               corner_radius=2, fg_color="transparent")
+            bar.pack(side="left", fill="y")
+            bar.pack_propagate(False)
+            self._indicator_bars[section_id] = bar
+
             btn = ctk.CTkButton(
-                parent, text=label, anchor="w",
+                row, text=label, anchor="w",
                 height=theme.BTN_HEIGHT, corner_radius=theme.CORNER_MD,
                 fg_color="transparent", hover_color=theme.BG_ELEVATED,
                 font=theme.FONT_BODY(), text_color=theme.TEXT_MUTED,
                 command=lambda sid=section_id: self._switch_section(sid))
-            btn.pack(fill="x", padx=8, pady=2)
+            btn.pack(side="left", fill="x", expand=True)
             btn.bind("<Enter>",
                 lambda e, b=btn, sid=section_id: self._on_nav_hover(b, sid, True))
             btn.bind("<Leave>",
@@ -745,6 +755,8 @@ class SettingsWindow:
                 btn.configure(fg_color=theme.BG_NIGHT, text_color=theme.TEXT_PRIMARY)
             else:
                 btn.configure(fg_color="transparent", text_color=theme.TEXT_MUTED)
+        for sid, bar in self._indicator_bars.items():
+            bar.configure(fg_color=theme.PURPLE if sid == section_id else "transparent")
         self._current_section = section_id
         if section_id in self._section_frames:
             self._section_frames[section_id].pack(fill="both", expand=True)
@@ -882,7 +894,7 @@ class SettingsWindow:
             grid.columnconfigure(i, weight=1)
 
         self._mode_card_refs = {}
-        for idx, (mode_id, icon, label, desc) in enumerate(self.MODES_GRID):
+        for idx, (mode_id, label, desc) in enumerate(self.MODES_GRID):
             row_idx, col_idx = divmod(idx, 3)
             is_active = (state.selected_mode == mode_id)
             card = ctk.CTkFrame(
@@ -894,8 +906,6 @@ class SettingsWindow:
                 cursor="hand2",
             )
             card.grid(row=row_idx, column=col_idx, padx=3, pady=3, sticky="nsew")
-            ctk.CTkLabel(card, text=icon, font=theme.FONT_HEADING(),
-                         text_color=theme.TEXT_SECONDARY).pack(pady=(12, 4))
             ctk.CTkLabel(card, text=label, font=theme.FONT_BODY_BOLD(),
                          text_color=theme.TEXT_PRIMARY).pack(pady=(0, 2))
             ctk.CTkLabel(card, text=desc, font=theme.FONT_CAPTION(),
@@ -1057,6 +1067,43 @@ class SettingsWindow:
                           command=lambda _: self._update_openai_visibility(ac)).pack(
             fill="x", padx=16, pady=(0, 8))
 
+        # ── OpenRouter API Key (primário) ─────────────────────────────────
+        ctk.CTkLabel(ac, text="OpenRouter API Key (Recomendado)",
+                     font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(
+            anchor="w", padx=16, pady=(0, 2))
+        ctk.CTkLabel(ac,
+                     text="Gateway unico. Modos rapidos usam Llama 4 Scout, complexos usam Gemini 2.5 Flash",
+                     font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED).pack(
+            anchor="w", padx=16, pady=(0, 4))
+        or_row = ctk.CTkFrame(ac, fg_color="transparent")
+        or_row.pack(fill="x", padx=16, pady=(0, 4))
+        self._openrouter_key_entry = ctk.CTkEntry(
+            or_row, height=theme.INPUT_HEIGHT, show="*",
+            font=theme.FONT_MONO(), fg_color=theme.BG_ABYSS,
+            border_color=theme.BORDER_DEFAULT, border_width=1, text_color=theme.TEXT_PRIMARY,
+            corner_radius=theme.CORNER_MD, placeholder_text="sk-or-...")
+        self._openrouter_key_entry.pack(side="left", fill="x", expand=True)
+        self._openrouter_key_entry.bind("<FocusIn>",
+            lambda e: self._openrouter_key_entry.configure(border_color=theme.BORDER_ACTIVE))
+        self._openrouter_key_entry.bind("<FocusOut>",
+            lambda e: self._openrouter_key_entry.configure(border_color=theme.BORDER_DEFAULT))
+        if state._CONFIG.get("OPENROUTER_API_KEY"):
+            self._openrouter_key_entry.insert(0, state._CONFIG.get("OPENROUTER_API_KEY"))
+        ctk.CTkButton(
+            or_row, text="***", width=theme.INPUT_HEIGHT, height=theme.INPUT_HEIGHT,
+            fg_color=theme.BG_ABYSS, hover_color=theme.BG_NIGHT,
+            border_color=theme.BORDER_DEFAULT, border_width=1, corner_radius=theme.CORNER_MD,
+            command=self._toggle_openrouter_key_visibility).pack(side="left", padx=(6, 0))
+        ctk.CTkLabel(ac, text="Obter em openrouter.ai/keys",
+                     font=theme.FONT_CAPTION(), text_color=theme.BORDER_HOVER).pack(
+            anchor="w", padx=16, pady=(0, 8))
+
+        # ── Separador — fallback Gemini ───────────────────────────────────
+        ctk.CTkLabel(ac, text="Alternativa (usado se OpenRouter vazio)",
+                     font=theme.FONT_CAPTION(), text_color=theme.TEXT_DISABLED).pack(
+            anchor="w", padx=16, pady=(4, 4))
+
+        # ── Gemini API Key (fallback) ─────────────────────────────────────
         ctk.CTkLabel(ac, text="Gemini API Key",
                      font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(
             anchor="w", padx=16, pady=(0, 2))
@@ -1075,7 +1122,7 @@ class SettingsWindow:
         if state._GEMINI_API_KEY:
             self._api_entry.insert(0, state._GEMINI_API_KEY)
         self._eye_btn = ctk.CTkButton(
-            key_row, text="👁", width=theme.INPUT_HEIGHT, height=theme.INPUT_HEIGHT,
+            key_row, text="***", width=theme.INPUT_HEIGHT, height=theme.INPUT_HEIGHT,
             fg_color=theme.BG_ABYSS, hover_color=theme.BG_NIGHT,
             border_color=theme.BORDER_DEFAULT, border_width=1, corner_radius=theme.CORNER_MD,
             command=self._toggle_key_visibility)
@@ -1096,12 +1143,40 @@ class SettingsWindow:
         if state._CONFIG.get("OPENAI_API_KEY"):
             self._openai_key_entry.insert(0, state._CONFIG.get("OPENAI_API_KEY"))
         self._openai_eye_btn = ctk.CTkButton(
-            oai_row, text="👁", width=theme.INPUT_HEIGHT, height=theme.INPUT_HEIGHT,
+            oai_row, text="***", width=theme.INPUT_HEIGHT, height=theme.INPUT_HEIGHT,
             fg_color=theme.BG_ABYSS, hover_color=theme.BG_NIGHT,
             border_color=theme.BORDER_DEFAULT, border_width=1, corner_radius=theme.CORNER_MD,
             command=self._toggle_openai_key_visibility)
         self._openai_eye_btn.pack(side="left", padx=(6, 0))
         self._update_openai_visibility(ac)
+
+        # Groq API Key
+        groq_frame = ctk.CTkFrame(ac, fg_color="transparent")
+        groq_frame.pack(fill="x", pady=(8, 0))
+        ctk.CTkLabel(groq_frame, text="Groq API Key (Llama 4 Scout)",
+                     font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(
+            anchor="w", pady=(0, 2))
+        ctk.CTkLabel(groq_frame,
+                     text="Modos rapidos (transcribe, email, bullet, translate) usam Groq quando disponivel",
+                     font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED).pack(
+            anchor="w", pady=(0, 4))
+        groq_row = ctk.CTkFrame(groq_frame, fg_color="transparent")
+        groq_row.pack(fill="x", pady=(0, 4))
+        self._groq_key_entry = ctk.CTkEntry(
+            groq_row, height=theme.INPUT_HEIGHT, show="*",
+            font=theme.FONT_MONO(), fg_color=theme.BG_ABYSS,
+            border_color=theme.BORDER_DEFAULT, border_width=1, text_color=theme.TEXT_PRIMARY,
+            corner_radius=theme.CORNER_MD, placeholder_text="gsk_...")
+        self._groq_key_entry.pack(side="left", fill="x", expand=True)
+        if state._CONFIG.get("GROQ_API_KEY"):
+            self._groq_key_entry.insert(0, state._CONFIG.get("GROQ_API_KEY"))
+        self._groq_eye_btn = ctk.CTkButton(
+            groq_row, text="***", width=theme.INPUT_HEIGHT, height=theme.INPUT_HEIGHT,
+            fg_color=theme.BG_ABYSS, hover_color=theme.BG_NIGHT,
+            border_color=theme.BORDER_DEFAULT, border_width=1, corner_radius=theme.CORNER_MD,
+            command=self._toggle_groq_key_visibility)
+        self._groq_eye_btn.pack(side="left", padx=(6, 0))
+
         ctk.CTkFrame(ac, height=4, fg_color="transparent").pack()
 
     def _build_license_section(self, parent) -> None:
@@ -1148,7 +1223,7 @@ class SettingsWindow:
                      font=theme.FONT_OVERLINE(), text_color=theme.TEXT_MUTED).pack(
             anchor="w", padx=16, pady=(12, 4))
 
-        ww_enabled = state._CONFIG.get("WAKE_WORD_ENABLED", "false").lower() == "true"
+        ww_enabled = state._CONFIG.get("WAKE_WORD_ENABLED", False) is True
         self._wake_enabled_var = ctk.BooleanVar(value=ww_enabled)
         ctk.CTkCheckBox(wc, text="Ativar wake word",
                         variable=self._wake_enabled_var,
@@ -1355,111 +1430,6 @@ class SettingsWindow:
         self._build_wakeword_section(f)
         self._build_sounds_section(f)
 
-    def _build_section_profile(self):
-        """Feature 1: User Profile — lista de fatos injetados em todas as chamadas Gemini."""
-        f = ctk.CTkScrollableFrame(
-            self._content_area, fg_color="transparent",
-            scrollbar_button_color=theme.BORDER_HOVER,
-            scrollbar_button_hover_color=theme.BORDER_ACTIVE)
-        self._section_frames["profile"] = f
-
-        # Header
-        hdr = ctk.CTkFrame(f, fg_color="transparent")
-        hdr.pack(fill="x", padx=20, pady=(16, 4))
-        ctk.CTkLabel(hdr, text="PERFIL DO USUÁRIO",
-                     font=theme.FONT_OVERLINE(), text_color=theme.TEXT_DISABLED).pack(anchor="w")
-        ctk.CTkLabel(hdr,
-                     text='Fatos injetados em todas as chamadas Gemini · Voz: "adiciona ao meu perfil: ..."',
-                     font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED).pack(anchor="w")
-
-        # Facts list frame (refreshable)
-        self._profile_facts_frame = ctk.CTkFrame(f, fg_color="transparent")
-        self._profile_facts_frame.pack(fill="x", padx=20, pady=(8, 0))
-
-        # Add fact row
-        add_row = ctk.CTkFrame(f, fg_color="transparent")
-        add_row.pack(fill="x", padx=20, pady=(12, 4))
-        self._profile_new_fact_entry = ctk.CTkEntry(
-            add_row, placeholder_text="Novo fato (ex: Prefere respostas em inglês)",
-            font=theme.FONT_BODY(), height=theme.BTN_HEIGHT,
-            fg_color=theme.BG_DEEP, border_color=theme.BORDER_DEFAULT,
-            text_color=theme.TEXT_PRIMARY,
-        )
-        self._profile_new_fact_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        ctk.CTkButton(
-            add_row, text="Adicionar", width=90, height=theme.BTN_HEIGHT,
-            corner_radius=theme.CORNER_MD, fg_color=theme.PURPLE,
-            hover_color=theme.PURPLE_HOVER, font=theme.FONT_BODY_BOLD(),
-            command=self._profile_add_fact,
-        ).pack(side="left")
-
-        self._profile_refresh_facts()
-
-    def _profile_refresh_facts(self):
-        """Limpa e reconstrói a lista de fatos do perfil."""
-        for widget in self._profile_facts_frame.winfo_children():
-            widget.destroy()
-
-        try:
-            from voice.user_profile import load_profile
-            profile = load_profile()
-            state._user_profile = profile
-        except Exception:
-            profile = {"facts": []}
-
-        facts = profile.get("facts", [])
-        if not facts:
-            ctk.CTkLabel(
-                self._profile_facts_frame,
-                text="Nenhum fato cadastrado.",
-                font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED,
-                anchor="w",
-            ).pack(anchor="w", pady=4)
-            return
-
-        for i, fact in enumerate(facts):
-            row = ctk.CTkFrame(
-                self._profile_facts_frame, fg_color=theme.BG_DEEP,
-                corner_radius=theme.CORNER_MD, border_width=1,
-                border_color=theme.BORDER_DEFAULT)
-            row.pack(fill="x", pady=(0, 4))
-            ctk.CTkLabel(
-                row, text=f"• {fact}",
-                font=theme.FONT_BODY(), text_color=theme.TEXT_PRIMARY,
-                anchor="w", justify="left", wraplength=400,
-            ).pack(side="left", padx=12, pady=8, fill="x", expand=True)
-            idx = i  # capture for closure
-
-            def _make_delete(index):
-                def _delete():
-                    try:
-                        from voice.user_profile import remove_fact
-                        remove_fact(index)
-                        self._profile_refresh_facts()
-                    except Exception as e:
-                        print(f"[WARN] Falha ao remover fato: {e}")
-                return _delete
-
-            ctk.CTkButton(
-                row, text="✕", width=28, height=28,
-                corner_radius=theme.CORNER_MD,
-                fg_color="transparent", hover_color=theme.BG_ELEVATED,
-                font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED,
-                command=_make_delete(idx),
-            ).pack(side="right", padx=8)
-
-    def _profile_add_fact(self):
-        fact = self._profile_new_fact_entry.get().strip()
-        if not fact:
-            return
-        try:
-            from voice.user_profile import add_fact
-            add_fact(fact)
-        except Exception as e:
-            print(f"[WARN] Falha ao adicionar fato: {e}")
-        self._profile_new_fact_entry.delete(0, "end")
-        self._profile_refresh_facts()
-
     def _build_section_about(self):
         f = ctk.CTkFrame(self._content_area, fg_color="transparent", corner_radius=0)
         self._section_frames["about"] = f
@@ -1471,6 +1441,12 @@ class SettingsWindow:
         ctk.CTkFrame(f, height=16, fg_color="transparent").pack()
         ctk.CTkLabel(f, text="voice.jplabs.ai",
                      font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack()
+
+    @staticmethod
+    def _bind_press_feedback(button, normal_color: str, pressed_color: str) -> None:
+        """Adds press/release visual feedback to a CTkButton."""
+        button.bind("<ButtonPress-1>",   lambda e: button.configure(fg_color=pressed_color))
+        button.bind("<ButtonRelease-1>", lambda e: button.configure(fg_color=normal_color))
 
     def _build_footer(self, parent):
         foot = ctk.CTkFrame(parent, fg_color=theme.BG_ABYSS, height=64, corner_radius=0)
@@ -1489,6 +1465,7 @@ class SettingsWindow:
             font=theme.FONT_BODY_BOLD(), text_color=theme.TEXT_PRIMARY,
             command=self._save)
         self._save_btn.pack(side="left")
+        self._bind_press_feedback(self._save_btn, theme.PURPLE, theme.PURPLE_DARK)
 
     def _update_openai_visibility(self, parent=None) -> None:
         """Mostra/oculta campo OpenAI Key baseado no provider selecionado."""
@@ -1523,6 +1500,16 @@ class SettingsWindow:
         self._show_openai_key = not self._show_openai_key
         if self._openai_key_entry:
             self._openai_key_entry.configure(show="" if self._show_openai_key else "*")
+
+    def _toggle_groq_key_visibility(self):
+        self._show_groq_key = not self._show_groq_key
+        if self._groq_key_entry:
+            self._groq_key_entry.configure(show="" if self._show_groq_key else "*")
+
+    def _toggle_openrouter_key_visibility(self):
+        self._show_openrouter_key = not self._show_openrouter_key
+        if self._openrouter_key_entry:
+            self._openrouter_key_entry.configure(show="" if self._show_openrouter_key else "*")
 
     def _check_license(self):
         key = self._license_entry.get().strip() if self._license_entry else ""
@@ -1583,6 +1570,14 @@ class SettingsWindow:
             oai_key = self._openai_key_entry.get().strip()
             if oai_key:
                 new_values["OPENAI_API_KEY"] = oai_key
+        if self._groq_key_entry:
+            groq_key = self._groq_key_entry.get().strip()
+            if groq_key:
+                new_values["GROQ_API_KEY"] = groq_key
+        if self._openrouter_key_entry:
+            or_key = self._openrouter_key_entry.get().strip()
+            if or_key:
+                new_values["OPENROUTER_API_KEY"] = or_key
         if self._device_var:
             new_values["WHISPER_DEVICE"] = self._device_var.get()
         if self._translate_lang_var:

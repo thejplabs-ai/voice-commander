@@ -135,20 +135,20 @@ class TestMakeTrayIcon:
         result = tray._make_tray_icon("unknown_state")
         assert result is not None
 
-    def test_idle_usa_purple(self):
-        """`_make_tray_icon()` idle state must use brand purple (TRAY_IDLE)."""
+    def test_idle_usa_amber(self):
+        """`_make_tray_icon()` idle state must use warm amber (TRAY_IDLE)."""
         assert tray._STATE_COLORS["idle"] == theme.TRAY_IDLE
-        assert theme.TRAY_IDLE == "#6B2FF8"
+        assert theme.TRAY_IDLE == "#C4956A"
 
-    def test_recording_usa_error_red(self):
-        """`_make_tray_icon()` recording state must use error red (TRAY_RECORDING)."""
+    def test_recording_usa_rose(self):
+        """`_make_tray_icon()` recording state must use muted rose (TRAY_RECORDING)."""
         assert tray._STATE_COLORS["recording"] == theme.TRAY_RECORDING
-        assert theme.TRAY_RECORDING == "#FF3366"
+        assert theme.TRAY_RECORDING == "#D4626E"
 
-    def test_processing_usa_blue_neo(self):
-        """`_make_tray_icon()` processing state must use blue-neo (TRAY_PROCESSING)."""
+    def test_processing_usa_steel_blue(self):
+        """`_make_tray_icon()` processing state must use steel blue (TRAY_PROCESSING)."""
         assert tray._STATE_COLORS["processing"] == theme.TRAY_PROCESSING
-        assert theme.TRAY_PROCESSING == "#1E38F7"
+        assert theme.TRAY_PROCESSING == "#6B8EBF"
 
 
 # ---------------------------------------------------------------------------

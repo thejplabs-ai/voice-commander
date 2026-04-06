@@ -3,7 +3,7 @@
 
 [Setup]
 AppName=Voice Commander
-AppVersion=1.0.14
+AppVersion=1.0.15
 ; Manter em sincronia com __version__ em voice/ui.py
 AppCopyright=Copyright (C) 2026 JP Labs
 AppPublisher=JP Labs

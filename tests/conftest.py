@@ -84,7 +84,6 @@ def mock_config(monkeypatch):
         "WHISPER_LANGUAGE": "",
         "MAX_RECORD_SECONDS": 120,
         "AUDIO_DEVICE_INDEX": None,
-        "QUERY_HOTKEY": "ctrl+shift+alt+space",
         "QUERY_SYSTEM_PROMPT": "",
         "HISTORY_MAX_ENTRIES": 500,
         "LOG_KEEP_SESSIONS": 5,

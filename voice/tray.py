@@ -19,29 +19,34 @@ except ImportError:
 
 
 _STATE_COLORS = {
-    "idle":       theme.TRAY_IDLE,       # #6B2FF8 purple-labs
-    "recording":  theme.TRAY_RECORDING,  # #FF3366 error red
-    "processing": theme.TRAY_PROCESSING, # #1E38F7 blue-neo
+    "idle":       theme.TRAY_IDLE,       # warm amber
+    "recording":  theme.TRAY_RECORDING,  # muted rose
+    "processing": theme.TRAY_PROCESSING, # steel blue
 }
 
 
 def _make_tray_icon(tray_state: str = "idle") -> "Image.Image":
     """
-    Gera ícone 64x64 RGBA com rounded square + wave bars indicando o estado:
-    - idle:       roxo   (#6B2FF8) — brand purple
-    - recording:  vermelho (#FF3366) — error red
-    - processing: azul   (#1E38F7) — blue-neo
+    Gera icone 64x64 RGBA com circulo + waveform abstrata:
+    - idle:       amber quente (#C4956A)
+    - recording:  rose (#D4626E)
+    - processing: steel blue (#6B8EBF)
     """
     color = _STATE_COLORS.get(tray_state, theme.TRAY_IDLE)
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Rounded square background
-    draw.rounded_rectangle([4, 4, 60, 60], radius=14, fill=color)
-    # Wave bars (sound visualization) — white 80% opacity
-    bar = (255, 255, 255, 200)
-    draw.rounded_rectangle([19, 24, 25, 40], radius=3, fill=bar)  # short
-    draw.rounded_rectangle([29, 18, 35, 46], radius=3, fill=bar)  # tall
-    draw.rounded_rectangle([39, 22, 45, 42], radius=3, fill=bar)  # medium
+    # Circle background
+    draw.ellipse([4, 4, 60, 60], fill=color)
+    # Abstract waveform — 3 arcs (white, varying opacity)
+    bar_bright = (255, 255, 255, 220)
+    bar_mid = (255, 255, 255, 180)
+    bar_dim = (255, 255, 255, 140)
+    # Center arc (tallest)
+    draw.rounded_rectangle([29, 16, 35, 48], radius=3, fill=bar_bright)
+    # Left arc (medium)
+    draw.rounded_rectangle([19, 22, 25, 42], radius=3, fill=bar_mid)
+    # Right arc (short)
+    draw.rounded_rectangle([39, 26, 45, 38], radius=3, fill=bar_dim)
     return img
 
 
@@ -64,7 +69,11 @@ def _tray_tooltip() -> str:
 
 
 def _start_recording_tooltip_thread() -> None:
-    """QW-6: Inicia thread que atualiza o tooltip da tray a cada 1s durante gravação."""
+    """QW-6: Inicia (ou reutiliza) thread que atualiza tooltip da tray a cada 1s durante gravação."""
+    existing = state._tray_tooltip_thread
+    if existing is not None and existing.is_alive():
+        return
+
     def _update_loop():
         while state._tray_state == "recording":
             if state._tray_icon is not None and state._tray_available:
@@ -81,15 +90,17 @@ def _start_recording_tooltip_thread() -> None:
 
 def _update_tray_state(tray_state: str, mode: str | None = None) -> None:
     """Atualiza ícone e tooltip da system tray."""
-    state._tray_state = tray_state
-    if mode is not None:
-        state._tray_last_mode = mode
-    # QW-6: rastrear início da gravação para tooltip dinâmico
+    with state._state_lock:
+        state._tray_state = tray_state
+        if mode is not None:
+            state._tray_last_mode = mode
+        # QW-6: rastrear início da gravação para tooltip dinâmico
+        if tray_state == "recording":
+            state._recording_start_time = time.time()
+        elif tray_state != "recording":
+            state._recording_start_time = 0.0
     if tray_state == "recording":
-        state._recording_start_time = time.time()
         _start_recording_tooltip_thread()
-    elif tray_state != "recording":
-        state._recording_start_time = 0.0
     if state._tray_icon is not None and state._tray_available:
         try:
             state._tray_icon.icon = _make_tray_icon(tray_state)
@@ -107,13 +118,6 @@ _MODES = [
     ("email",      "Email Draft"),
     ("translate",  "Traduzir"),
 ]
-
-# Inclui modos com hotkey dedicado (visual/pipeline) — para status e labels
-_MODES_EXTENDED = _MODES + [
-    ("visual",   "Visual Query"),
-    ("pipeline", "Pipeline"),
-]
-
 
 def _set_mode(mode: str) -> None:
     """Seleciona o modo ativo e persiste no .env."""
@@ -145,8 +149,6 @@ def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
         "bullet":     "Bullet Dump",
         "email":      "Email Draft",
         "translate":  "Traduzir",
-        "visual":     "Visual Query",
-        "pipeline":   "Pipeline",
         "—":          "—",
     }
     gemini_status = "Ativo" if state._GEMINI_API_KEY else "Desativado"

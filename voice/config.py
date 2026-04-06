@@ -1,8 +1,74 @@
-# voice/config.py — load_config(), _save_env(), _reload_config()
+# voice/config.py — load_config(), _save_env(), _reload_config(), license validation
 
+import base64
+import datetime
+import hashlib
+import hmac
 import os
 
 from voice import state
+
+
+# ── License validation (migrado de license.py) ────────────────────────────────
+
+# Obfuscated secret (evita extração por grep no .exe)
+_K = [ord(c) ^ 0x42 for c in "jp-labs-vc-secret-2026"]
+
+
+def _get_secret() -> str:
+    return "".join(chr(c ^ 0x42) for c in _K)
+
+
+def validate_license_key(key: str) -> tuple[bool, str]:
+    """Valida chave de licença via HMAC local (sem servidor necessário)."""
+    try:
+        parts = key.strip().split("-", 2)  # ["vc", expiry_b64, sig]
+        if len(parts) != 3 or parts[0] != "vc":
+            return False, "Formato inválido"
+        expiry_b64, sig = parts[1], parts[2]
+        expiry = base64.urlsafe_b64decode(expiry_b64 + "==").decode()
+        expected_sig = hmac.HMAC(_get_secret().encode(), expiry.encode(), hashlib.sha256).hexdigest()[:12]
+        if not hmac.compare_digest(sig, expected_sig):
+            return False, "Chave inválida"
+        expiry_date = datetime.date.fromisoformat(expiry)
+        if datetime.date.today() > expiry_date:
+            return False, f"Expirada em {expiry}"
+        return True, f"Válida até {expiry}"
+    except Exception:
+        return False, "Chave inválida"
+
+
+def _test_gemini_key(api_key: str) -> tuple[bool, str]:
+    """Valida formato da chave Gemini sem fazer chamada à API.
+
+    Não consumimos quota no setup — a chave é validada de verdade
+    na primeira transcrição real. Formato AI Studio: AIza + ~35 chars.
+    """
+    key = api_key.strip()
+    if not key:
+        return False, "Chave vazia"
+    if not key.startswith("AIza"):
+        return False, "Formato inválido — chave deve começar com 'AIza'"
+    if len(key) < 30:
+        return False, "Chave muito curta — verifique se copiou completo"
+    if len(key) > 60:
+        return False, "Chave muito longa — verifique se há espaços extras"
+    return True, "Formato OK"
+
+
+def _show_license_expired_notification() -> None:
+    """Notifica licença expirada via tray balloon — não bloqueia o teclado."""
+    if state._tray_icon is not None and state._tray_available:
+        try:
+            state._tray_icon.notify(
+                "Licença expirada — renove em voice.jplabs.ai",
+                "Voice Commander",
+            )
+            return
+        except Exception:
+            pass
+    # Fallback: só loga, não abre dialog bloqueante
+    print("[WARN] Licença expirada — renove em voice.jplabs.ai")
 
 
 def load_config() -> dict:
@@ -13,10 +79,9 @@ def load_config() -> dict:
         "GEMINI_MODEL": "gemini-2.5-flash",
         "LICENSE_KEY": None,
         "WHISPER_MODEL": "tiny",
-        "WHISPER_LANGUAGE": "pt",
-        "MAX_RECORD_SECONDS": 120,
+        "WHISPER_LANGUAGE": "",
+        "MAX_RECORD_SECONDS": 600,
         "AUDIO_DEVICE_INDEX": None,
-        "QUERY_HOTKEY": "ctrl+shift+alt+space",
         "QUERY_SYSTEM_PROMPT": "",
         "HISTORY_MAX_ENTRIES": 500,
         "LOG_KEEP_SESSIONS": 5,
@@ -24,9 +89,6 @@ def load_config() -> dict:
         # Mode selection
         "SELECTED_MODE": "transcribe",
         "RECORD_HOTKEY": "ctrl+shift+space",
-        # Wake word
-        "WAKE_WORD_ENABLED": "false",
-        "WAKE_WORD_KEYWORD": "hey_jarvis",
         # Custom sounds (empty = use default beeps)
         "SOUND_START": "",
         "SOUND_SUCCESS": "",
@@ -37,8 +99,12 @@ def load_config() -> dict:
         "WHISPER_DEVICE": "cpu",
         "WHISPER_MODEL_FAST": "tiny",
         "WHISPER_MODEL_QUALITY": "small",
-        # AI Provider
-        "AI_PROVIDER": "gemini",
+        # AI Provider — OpenRouter (gateway unico, recomendado)
+        "AI_PROVIDER": "",
+        "OPENROUTER_API_KEY": None,
+        "OPENROUTER_MODEL_FAST": "meta-llama/llama-4-scout-17b-16e-instruct",
+        "OPENROUTER_MODEL_QUALITY": "google/gemini-2.5-flash",
+        # Legacy providers (fallback se OPENROUTER_API_KEY nao configurada)
         "OPENAI_API_KEY": None,
         "OPENAI_MODEL": "gpt-4o-mini",
         # Translate
@@ -62,24 +128,52 @@ def load_config() -> dict:
         "HISTORY_HOTKEY": "ctrl+shift+h",
         # Story 4.5.1: Overlay de feedback visual
         "OVERLAY_ENABLED": "true",
-        # Feature 1: User Profile
-        "USER_PROFILE_ENABLED": "false",  # 4.6.5: OFF by default
-        # Feature 2: Active Window Context (default OFF — privacidade)
-        "WINDOW_CONTEXT_ENABLED": "false",
-        # Feature 3: Screenshot + Voice
-        "VISUAL_HOTKEY": "",  # 4.6.5: vazio = desativado por padrão
-        "SCREENSHOT_MAX_WIDTH": 1280,
-        # Feature 4: Briefing Matinal
-        "BRIEFING_ENABLED": "false",  # 4.6.5: OFF by default
-        "BRIEFING_MIN_ENTRIES": 3,
-        # Feature 5: Pipeline Composto
-        "PIPELINE_HOTKEY": "",  # 4.6.5: vazio = desativado por padrão
-        "PIPELINE_CLIPBOARD_MAX_CHARS": 8000,
-        # Story 4.6.4: Ciclo de modos reduzido (visual e pipeline excluídos)
+        # Story 4.6.4: Ciclo de modos
         "CYCLE_MODES": "transcribe,email,simple,prompt,query",
+        # Story 4.6.6: Debug de performance — imprime [PERF] após cada transcrição
+        "DEBUG_PERF": "false",
+        # Epic 5.0: Command Mode — edição de texto por voz
+        "COMMAND_HOTKEY": "ctrl+alt+space",
+        # Epic 5.1: Dicionário Pessoal — vocabulário dinâmico para Whisper
+        "VOCABULARY_ENABLED": "true",
+        # Epic 5.2: Snippets — expansão de texto por voz
+        "SNIPPETS_ENABLED": "true",
+        # Epic 5.3: Estilo de correção — "smart" (padrão) | "minimal" | "off"
+        # "smart":   adiciona pontuação, capitalização, formata números (comportamento novo)
+        # "minimal": apenas corrige ortografia — comportamento anterior ao Epic 5.3
+        # "off":     bypass total — retorna transcrição raw sem chamada à API
+        "CORRECTION_STYLE": "smart",
+        # Story 5.4.2: Hands-Free (VAD Auto-Start/Stop)
+        "HANDS_FREE_ENABLED": "false",
+        "HANDS_FREE_SILENCE_MS": 2000,  # ms de silêncio para auto-stop
+        "HANDS_FREE_SPEECH_MS": 500,    # ms de fala para auto-start
+        # Epic 5.5: Window Context — captura processo + categoria da janela ativa
+        "WINDOW_CONTEXT_ENABLED": "false",
     }
-    if not os.path.exists(env_path):
-        return config
+    if os.path.exists(env_path):
+        _load_env_file(config, env_path)
+
+    # Filtrar placeholder
+    if config["GEMINI_API_KEY"] == "your_gemini_api_key_here":
+        config["GEMINI_API_KEY"] = None
+
+    # Converter configs booleanas de string para bool nativo
+    _BOOL_KEYS = (
+        "OVERLAY_ENABLED", "CLIPBOARD_CONTEXT_ENABLED",
+        "GEMINI_CORRECT", "DEBUG_PERF", "VOCABULARY_ENABLED", "SNIPPETS_ENABLED",
+        "HANDS_FREE_ENABLED", "WINDOW_CONTEXT_ENABLED",
+    )
+    for key in _BOOL_KEYS:
+        val = config.get(key)
+        if isinstance(val, bool):
+            continue
+        config[key] = str(val).strip().lower() in ("true", "1", "yes")
+
+    return config
+
+
+def _load_env_file(config: dict, env_path: str) -> None:
+    """Carrega variáveis do .env no dict config."""
     with open(env_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -91,27 +185,23 @@ def load_config() -> dict:
             if key in config and val:
                 if key in ("MAX_RECORD_SECONDS", "HISTORY_MAX_ENTRIES", "LOG_KEEP_SESSIONS",
                            "WHISPER_BEAM_SIZE", "PASTE_DELAY_MS", "CLIPBOARD_CONTEXT_MAX_CHARS",
-                           "SCREENSHOT_MAX_WIDTH", "BRIEFING_MIN_ENTRIES", "PIPELINE_CLIPBOARD_MAX_CHARS"):
+                           "HANDS_FREE_SILENCE_MS", "HANDS_FREE_SPEECH_MS"):
                     try:
                         config[key] = int(val)
                     except ValueError:
-                        pass
+                        print(f"[WARN] Config {key}={val} não é inteiro válido, usando default {config[key]}")
                 elif key == "VAD_THRESHOLD":
                     try:
                         config[key] = float(val)
                     except ValueError:
-                        pass
+                        print(f"[WARN] Config {key}={val} não é float válido, usando default {config[key]}")
                 elif key == "AUDIO_DEVICE_INDEX":
                     try:
                         config[key] = int(val)
                     except ValueError:
-                        pass
+                        print(f"[WARN] Config {key}={val} não é inteiro válido, ignorando")
                 else:
                     config[key] = val
-    # Filtrar placeholder
-    if config["GEMINI_API_KEY"] == "your_gemini_api_key_here":
-        config["GEMINI_API_KEY"] = None
-    return config
 
 
 def _save_env(new_values: dict) -> None:
@@ -160,7 +250,6 @@ def _reload_config() -> None:
     old_key = state._GEMINI_API_KEY
     old_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
     old_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
-    old_provider = state._CONFIG.get("AI_PROVIDER", "gemini")
     old_openai_key = state._CONFIG.get("OPENAI_API_KEY")
 
     state._CONFIG = load_config()
@@ -178,11 +267,22 @@ def _reload_config() -> None:
         state._gemini_client = None
         print("[INFO] API key Gemini mudou — singleton resetado")
 
-    new_provider = state._CONFIG.get("AI_PROVIDER", "gemini")
     new_openai_key = state._CONFIG.get("OPENAI_API_KEY")
-    if new_provider != old_provider or new_openai_key != old_openai_key:
+    if new_openai_key != old_openai_key:
         state._openai_client = None
         state._OPENAI_API_KEY = new_openai_key
-        print("[INFO] AI provider/OpenAI key mudou — singleton resetado")
+        print("[INFO] OpenAI key mudou — singleton resetado")
+
+    # OpenRouter singleton reset
+    old_or_key = getattr(state, "_OPENROUTER_API_KEY", None)
+    new_or_key = state._CONFIG.get("OPENROUTER_API_KEY")
+    if new_or_key != old_or_key:
+        try:
+            from voice.openrouter import reset_client
+            reset_client()
+        except Exception:
+            pass
+        state._OPENROUTER_API_KEY = new_or_key
+        print("[INFO] OpenRouter API key mudou — singleton resetado")
 
     print("[OK]   Config recarregada do .env")

@@ -1,0 +1,2469 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Commander — Settings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<style>
+  /* ── Design Tokens ──────────────────────────────────────────────────────── */
+  :root {
+    --bg-abyss:      #0F0F0F;
+    --bg-deep:       #1A1A1E;
+    --bg-elevated:   #242428;
+    --bg-night:      #2C2C30;
+    --text-primary:  #F5F5F0;
+    --text-secondary:#B3B0AA;
+    --text-muted:    #807E7A;
+    --text-disabled: #4D4C4A;
+    --border-default:#2A2A2E;
+    --border-hover:  #3A3A3E;
+    --border-active: #C4956A;
+    --accent-primary:#C4956A;
+    --accent-hover:  #D4A87A;
+    --accent-pressed:#B4855A;
+    --accent-secondary:#6B8EBF;
+    --status-recording:#D4626E;
+    --status-processing:#6B8EBF;
+    --status-success:#7EC89B;
+    --status-error:  #D4626E;
+    --status-warning:#D4A24E;
+    --radius-sm:     8px;
+    --radius-md:     12px;
+    --radius-lg:     16px;
+    --radius-xl:     20px;
+    --radius-pill:   999px;
+    --font-heading:  'Figtree', 'Segoe UI', sans-serif;
+    --font-body:     'Inter', 'Segoe UI', sans-serif;
+    --font-mono:     'JetBrains Mono', 'Consolas', monospace;
+    --space-2xs: 2px;
+    --space-xs:  4px;
+    --space-sm:  8px;
+    --space-md:  16px;
+    --space-lg:  24px;
+    --space-xl:  32px;
+    --space-2xl: 48px;
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.15);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.20);
+    --motion-instant: 100ms;
+    --motion-fast:    200ms;
+    --motion-normal:  250ms;
+    --motion-slow:    350ms;
+    --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+    --btn-height:     40px;
+    --input-height:   40px;
+    --sidebar-width:  240px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg-abyss);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  /* ── Layout ──────────────────────────────────────────────────────────────── */
+  .app {
+    display: flex;
+    height: 100vh;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────────────────────────── */
+  .sidebar {
+    width: var(--sidebar-width);
+    min-width: var(--sidebar-width);
+    background: var(--bg-deep);
+    border-right: 1px solid var(--border-default);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 0 16px;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+
+  .sidebar-logo {
+    padding: 0 16px 16px;
+    border-bottom: 1px solid var(--border-default);
+    margin-bottom: 8px;
+  }
+
+  .sidebar-logo-title {
+    font-family: var(--font-heading);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+  }
+
+  .sidebar-logo-version {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sidebar-group-label {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-disabled);
+    padding: 16px 16px 8px;
+  }
+
+  .sidebar-separator {
+    height: 1px;
+    background: var(--border-default);
+    margin: 8px 12px;
+  }
+
+  .sidebar-spacer { flex: 1; }
+
+  .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+    margin: 0 8px 2px;
+    padding: 0 12px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-muted);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-md);
+    transition: color var(--motion-instant) ease-out, background var(--motion-instant) ease-out;
+    width: calc(100% - 16px);
+    text-align: left;
+  }
+
+  .nav-item:hover {
+    color: var(--text-secondary);
+    background: var(--bg-elevated);
+  }
+
+  .nav-item.active {
+    color: var(--text-primary);
+    background: var(--bg-night);
+  }
+
+  .nav-indicator {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background var(--motion-instant) ease-out;
+  }
+
+  .nav-item.active .nav-indicator { background: var(--accent-primary); }
+
+  .nav-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: currentColor;
+  }
+
+  .nav-item.active .nav-icon { color: var(--accent-primary); }
+
+  /* ── Content Wrapper ─────────────────────────────────────────────────────── */
+  .content-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-2xl) var(--space-xl) var(--space-xl);
+    scroll-behavior: smooth;
+    background: var(--bg-abyss);
+  }
+
+  .content-inner {
+    max-width: 640px;
+  }
+
+  /* Custom scrollbar */
+  .content::-webkit-scrollbar,
+  .sidebar::-webkit-scrollbar { width: 6px; }
+  .content::-webkit-scrollbar-track,
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .content::-webkit-scrollbar-thumb,
+  .sidebar::-webkit-scrollbar-thumb {
+    background: var(--border-hover);
+    border-radius: 3px;
+  }
+  .content::-webkit-scrollbar-thumb:hover,
+  .sidebar::-webkit-scrollbar-thumb:hover { background: var(--accent-primary); }
+
+  /* ── Sections ────────────────────────────────────────────────────────────── */
+  .section {
+    display: none;
+    animation: fadeIn var(--motion-fast) var(--ease-out-cubic);
+  }
+
+  .section.active { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .section-title {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .section-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-lg);
+    line-height: 1.5;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: var(--space-lg);
+    gap: var(--space-md);
+  }
+
+  .section-header .section-title { margin-bottom: 0; }
+
+  .section-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  /* ── Cards ───────────────────────────────────────────────────────────────── */
+  .card {
+    background: var(--bg-deep);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin-bottom: var(--space-md);
+    transition: border-color var(--motion-instant) ease-out;
+  }
+
+  .card:hover { border-color: var(--border-hover); }
+
+  .card:last-child { margin-bottom: 0; }
+
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: var(--space-md);
+  }
+
+  /* ── Info Rows ───────────────────────────────────────────────────────────── */
+  .info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .info-row:last-child { border-bottom: none; }
+
+  .info-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .info-value {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  /* ── Badges ──────────────────────────────────────────────────────────────── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+    white-space: nowrap;
+  }
+
+  .badge-accent {
+    background: rgba(196,149,106,0.12);
+    color: var(--accent-primary);
+    border-color: rgba(196,149,106,0.25);
+  }
+
+  .badge-blue {
+    background: rgba(107,142,191,0.12);
+    color: var(--accent-secondary);
+    border-color: rgba(107,142,191,0.25);
+  }
+
+  .badge-success {
+    background: rgba(126,200,155,0.12);
+    color: var(--status-success);
+    border-color: rgba(126,200,155,0.25);
+  }
+
+  .badge-error {
+    background: rgba(212,98,110,0.12);
+    color: var(--status-error);
+    border-color: rgba(212,98,110,0.25);
+  }
+
+  .badge-warning {
+    background: rgba(212,162,78,0.12);
+    color: var(--status-warning);
+    border-color: rgba(212,162,78,0.25);
+  }
+
+  /* ── Status Dot ──────────────────────────────────────────────────────────── */
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    flex-shrink: 0;
+  }
+
+  .status-dot.recording {
+    background: var(--status-recording);
+    animation: pulse-recording 1.5s ease-in-out infinite;
+  }
+
+  .status-dot.processing {
+    background: var(--status-processing);
+    animation: pulse-processing 1.5s ease-in-out infinite;
+  }
+
+  .status-dot.success { background: var(--status-success); }
+  .status-dot.error { background: var(--status-error); }
+  .status-dot.warning { background: var(--status-warning); }
+
+  @keyframes pulse-recording {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(212,98,110,0.5); }
+    50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(212,98,110,0); }
+  }
+
+  @keyframes pulse-processing {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(107,142,191,0.5); }
+    50% { opacity: 0.6; box-shadow: 0 0 0 6px rgba(107,142,191,0); }
+  }
+
+  .status-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .status-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    font-family: var(--font-mono);
+  }
+
+  /* ── Mode Grid ───────────────────────────────────────────────────────────── */
+  .mode-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: var(--space-lg);
+  }
+
+  .mode-card {
+    background: var(--bg-deep);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: var(--space-md);
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    cursor: pointer;
+    transition: background var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out;
+    text-align: center;
+    user-select: none;
+  }
+
+  .mode-card:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-hover);
+  }
+
+  .mode-card.active {
+    background: var(--bg-night);
+    border: 2px solid var(--accent-primary);
+  }
+
+  .mode-card-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--text-muted);
+  }
+
+  .mode-card:hover .mode-card-icon { color: var(--text-secondary); }
+  .mode-card.active .mode-card-icon { color: var(--accent-primary); }
+
+  .mode-card-name {
+    font-family: var(--font-heading);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .mode-card.active .mode-card-name { color: var(--text-primary); }
+
+  .mode-card-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.3;
+  }
+
+  /* ── Cycle modes checkboxes ──────────────────────────────────────────────── */
+  .cycle-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-sm);
+  }
+
+  .cycle-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    user-select: none;
+    padding: 4px 0;
+  }
+
+  .cycle-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-primary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* ── Form Elements ───────────────────────────────────────────────────────── */
+  .field-group {
+    margin-bottom: var(--space-md);
+  }
+
+  .field-group:last-child { margin-bottom: 0; }
+
+  .field-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+
+  .field-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  .input {
+    width: 100%;
+    height: var(--input-height);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 0 12px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--font-body);
+    transition: border-color var(--motion-instant) ease-out, box-shadow var(--motion-instant) ease-out;
+    outline: none;
+    appearance: none;
+  }
+
+  .input:hover { border-color: var(--border-hover); }
+
+  .input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(196,149,106,0.12);
+  }
+
+  .input::placeholder { color: var(--text-disabled); }
+
+  .input.mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* Password input wrapper */
+  .input-pw-wrap {
+    position: relative;
+  }
+
+  .input-pw-wrap .input { padding-right: 72px; }
+
+  .pw-toggle {
+    position: absolute;
+    right: 40px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    transition: color var(--motion-instant) ease-out;
+  }
+
+  .pw-toggle:hover { color: var(--text-secondary); }
+
+  .btn-test-key {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: color var(--motion-instant) ease-out, background var(--motion-instant) ease-out;
+  }
+
+  .btn-test-key:hover {
+    color: var(--accent-primary);
+    background: rgba(196,149,106,0.08);
+  }
+
+  .btn-test-key.testing { color: var(--text-disabled); pointer-events: none; }
+  .btn-test-key.ok { color: var(--status-success); }
+  .btn-test-key.err { color: var(--status-error); }
+
+  /* Select */
+  .select-wrap { position: relative; }
+
+  .select-wrap::after {
+    content: '';
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid var(--text-muted);
+    pointer-events: none;
+  }
+
+  .select {
+    width: 100%;
+    height: var(--input-height);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 0 32px 0 12px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: border-color var(--motion-instant) ease-out, box-shadow var(--motion-instant) ease-out;
+    outline: none;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .select:hover { border-color: var(--border-hover); }
+
+  .select:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(196,149,106,0.12);
+  }
+
+  .select option {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+  }
+
+  /* Sound file row */
+  .sound-row {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+  }
+
+  .sound-row .input { flex: 1; }
+
+  .btn-browse {
+    flex-shrink: 0;
+    height: var(--input-height);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 0 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: var(--font-body);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--motion-instant) ease-out, border-color var(--motion-instant) ease-out, color var(--motion-instant) ease-out;
+    white-space: nowrap;
+  }
+
+  .btn-browse:hover {
+    background: var(--bg-night);
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+  }
+
+  /* Toggle switch */
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-default);
+    gap: var(--space-md);
+  }
+
+  .toggle-row:last-child { border-bottom: none; }
+
+  .toggle-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .toggle-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+    line-height: 1.3;
+  }
+
+  .toggle {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  .toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    transition: background var(--motion-fast) ease-out, border-color var(--motion-fast) ease-out;
+  }
+
+  .toggle input:checked + .toggle-track {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+  }
+
+  .toggle-track::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: transform var(--motion-fast) ease-out, background var(--motion-fast) ease-out;
+  }
+
+  .toggle input:checked + .toggle-track::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+
+  .toggle input:focus-visible + .toggle-track {
+    box-shadow: 0 0 0 3px rgba(196,149,106,0.2);
+  }
+
+  /* Slider */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+  }
+
+  .slider-row input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--bg-night);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  .slider-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    cursor: pointer;
+    border: none;
+    transition: box-shadow var(--motion-instant) ease-out;
+  }
+
+  .slider-row input[type="range"]::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 4px rgba(196,149,106,0.2);
+  }
+
+  .slider-value {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    min-width: 32px;
+    text-align: right;
+  }
+
+  /* Provider radio cards */
+  .provider-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+  }
+
+  .provider-radio {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    padding: 10px 12px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--motion-instant) ease-out, border-color var(--motion-instant) ease-out;
+    user-select: none;
+  }
+
+  .provider-radio:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-hover);
+  }
+
+  .provider-radio.selected {
+    background: rgba(196,149,106,0.06);
+    border-color: var(--accent-primary);
+  }
+
+  .provider-radio input[type="radio"] {
+    margin-top: 2px;
+    accent-color: var(--accent-primary);
+    flex-shrink: 0;
+  }
+
+  .provider-radio-info { flex: 1; }
+
+  .provider-radio-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .provider-radio-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    line-height: 1.3;
+  }
+
+  .provider-fields {
+    display: none;
+    margin-top: var(--space-sm);
+  }
+
+  .provider-fields.visible { display: block; }
+
+  /* Key test result inline */
+  .key-test-result {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    margin-top: 6px;
+    min-height: 20px;
+    transition: opacity var(--motion-fast) ease-out;
+  }
+
+  .key-test-result.hidden { opacity: 0; }
+  .key-test-result .status-dot { width: 6px; height: 6px; }
+
+  /* ── Two-column layout ───────────────────────────────────────────────────── */
+  .col-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* ── Hotkey display ──────────────────────────────────────────────────────── */
+  .hotkey-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+
+  .hotkey-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .hotkey-name {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  /* ── Divider ─────────────────────────────────────────────────────────────── */
+  .divider {
+    height: 1px;
+    background: var(--border-default);
+    margin: var(--space-md) 0;
+  }
+
+  /* ── License ─────────────────────────────────────────────────────────────── */
+  .license-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    margin-top: var(--space-sm);
+  }
+
+  .license-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+  }
+
+  .license-dot.ok { background: var(--status-success); }
+  .license-dot.err { background: var(--status-error); }
+
+  /* ── Buttons ─────────────────────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: var(--btn-height);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 0 16px;
+    font-size: 13px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--motion-instant) ease-out, transform 0.1s ease-out, color var(--motion-instant) ease-out;
+    white-space: nowrap;
+  }
+
+  .btn:active { transform: scale(0.98); }
+
+  .btn-primary {
+    background: var(--accent-primary);
+    color: var(--bg-abyss);
+  }
+
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-primary:active { background: var(--accent-pressed); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+  }
+
+  .btn-ghost:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+  }
+
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+  }
+
+  /* ── Footer ──────────────────────────────────────────────────────────────── */
+  .footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-md);
+    padding: 14px var(--space-xl);
+    border-top: 1px solid var(--border-default);
+    background: rgba(15, 15, 15, 0.85);
+    backdrop-filter: blur(8px);
+    flex-shrink: 0;
+    transform: translateY(100%);
+    transition: transform var(--motion-normal) var(--ease-out-cubic);
+  }
+
+  .footer.visible { transform: translateY(0); }
+
+  .save-feedback {
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity var(--motion-fast) ease-out;
+  }
+
+  .save-feedback.visible { opacity: 1; }
+
+  .btn-save {
+    background: var(--accent-primary);
+    border: none;
+    border-radius: var(--radius-sm);
+    padding: 0 20px;
+    height: var(--btn-height);
+    color: var(--bg-abyss);
+    font-size: 13px;
+    font-family: var(--font-body);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--motion-instant) ease-out, transform 0.1s ease-out;
+  }
+
+  .btn-save:hover { background: var(--accent-hover); }
+  .btn-save:active { transform: scale(0.98); background: var(--accent-pressed); }
+
+  .btn-save.success { background: var(--status-success); }
+
+  .btn-save:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 0 16px;
+    height: var(--btn-height);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: var(--font-body);
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--motion-instant) ease-out, border-color var(--motion-instant) ease-out, color var(--motion-instant) ease-out;
+  }
+
+  .btn-cancel:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-hover);
+    color: var(--text-primary);
+  }
+
+  /* ── About section ───────────────────────────────────────────────────────── */
+  .about-heading {
+    font-family: var(--font-heading);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+    letter-spacing: -0.02em;
+  }
+
+  .about-version {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: var(--space-lg);
+  }
+
+  .about-tagline {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-lg);
+    font-style: italic;
+  }
+
+  .about-credits {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+  }
+
+  .about-credits dt {
+    color: var(--text-muted);
+    font-size: 12px;
+    display: inline;
+  }
+
+  .about-credits dd {
+    display: inline;
+    margin-left: 4px;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .about-link {
+    color: var(--accent-primary);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color var(--motion-instant) ease-out;
+  }
+
+  .about-link:hover { color: var(--accent-hover); }
+
+  /* ── Responsive ──────────────────────────────────────────────────────────── */
+  @media (max-width: 700px) {
+    .sidebar { width: 200px; min-width: 200px; }
+    .col-2 { grid-template-columns: 1fr; }
+    .mode-grid { grid-template-columns: repeat(2, 1fr); }
+    .content { padding: var(--space-lg); }
+  }
+
+  @media (max-width: 560px) {
+    .sidebar { display: none; }
+    :root { --sidebar-width: 0px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-title">Voice Commander</div>
+      <div class="sidebar-logo-version" id="sidebar-version">v--</div>
+    </div>
+
+    <nav class="sidebar-nav" id="nav">
+      <!-- ESSENCIAL -->
+      <button class="nav-item active" data-section="status">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Status
+      </button>
+      <button class="nav-item" data-section="ai">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M12 18v-5"/></svg>
+        AI Provider
+      </button>
+      <button class="nav-item" data-section="modes">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/></svg>
+        Modos
+      </button>
+
+      <div class="sidebar-separator"></div>
+      <div class="sidebar-group-label">Configuracao</div>
+
+      <button class="nav-item" data-section="audio">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+        Audio
+      </button>
+      <button class="nav-item" data-section="hotkeys">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
+        Hotkeys
+      </button>
+      <button class="nav-item" data-section="traducao">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
+        Traducao
+      </button>
+
+      <div class="sidebar-separator"></div>
+      <div class="sidebar-group-label">Avancado</div>
+
+      <button class="nav-item" data-section="whisper">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"/></svg>
+        Whisper
+      </button>
+      <button class="nav-item" data-section="sons">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></svg>
+        Sons
+      </button>
+      <button class="nav-item" data-section="debug">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>
+        Debug
+      </button>
+      <button class="nav-item" data-section="licenca">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+        Licenca
+      </button>
+
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-separator"></div>
+
+      <button class="nav-item" data-section="sobre">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        Sobre
+      </button>
+    </nav>
+  </aside>
+
+  <!-- ── Content ─────────────────────────────────────────────────────────── -->
+  <div class="content-wrapper">
+    <div class="content" id="content">
+      <div class="content-inner">
+
+      <!-- ============================================================== -->
+      <!-- STATUS -->
+      <!-- ============================================================== -->
+      <section class="section active" id="section-status">
+        <div class="section-title">Status</div>
+        <div class="section-desc">Resumo do estado atual do Voice Commander.</div>
+
+        <div class="card">
+          <div class="card-title">Modo Ativo</div>
+          <div class="status-row">
+            <div class="status-dot" id="status-dot"></div>
+            <div>
+              <div class="status-label" id="status-mode-label">--</div>
+              <div class="status-sub" id="status-mode-desc">--</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Estado do Sistema</div>
+          <div class="info-row">
+            <span class="info-label">AI Provider</span>
+            <span id="status-provider"><span class="badge" id="status-provider-badge">--</span></span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Whisper</span>
+            <span class="badge" id="status-whisper">--</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Hotkey de gravacao</span>
+            <span class="badge" id="status-hotkey">--</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Estado</span>
+            <span class="badge" id="status-state-badge">Idle</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Licenca</span>
+            <span id="status-license-wrap"><span class="badge" id="status-license-badge">--</span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- AI PROVIDER -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-ai">
+        <div class="section-title">Inteligencia Artificial</div>
+        <div class="section-desc">Configure a API que processa seus textos.</div>
+
+        <div class="card">
+          <div class="card-title">Provider</div>
+          <div class="provider-radio-group" id="provider-radios">
+            <label class="provider-radio selected" data-provider="openrouter">
+              <input type="radio" name="ai-provider" value="openrouter" checked>
+              <div class="provider-radio-info">
+                <div class="provider-radio-name">OpenRouter <span class="badge badge-accent" style="font-size:10px;padding:1px 5px;margin-left:4px">recomendado</span></div>
+                <div class="provider-radio-desc">Roteamento inteligente. 1 chave, varios modelos.</div>
+              </div>
+            </label>
+            <label class="provider-radio" data-provider="gemini">
+              <input type="radio" name="ai-provider" value="gemini">
+              <div class="provider-radio-info">
+                <div class="provider-radio-name">Gemini direto</div>
+                <div class="provider-radio-desc">Google AI Studio. Gratuito, rapido.</div>
+              </div>
+            </label>
+            <label class="provider-radio" data-provider="openai">
+              <input type="radio" name="ai-provider" value="openai">
+              <div class="provider-radio-info">
+                <div class="provider-radio-name">OpenAI (legacy)</div>
+                <div class="provider-radio-desc">GPT-4o Mini. Compatibilidade.</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- OpenRouter fields -->
+        <div id="fields-openrouter" class="provider-fields visible">
+          <div class="card">
+            <div class="card-title">Chave OpenRouter</div>
+            <div class="field-group">
+              <div class="input-pw-wrap">
+                <input type="password" class="input mono" id="openrouter-key" placeholder="sk-or-...">
+                <button class="pw-toggle" data-target="openrouter-key" aria-label="Mostrar chave">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button class="btn-test-key" data-provider="openrouter" title="Testar chave">Testar</button>
+              </div>
+              <div class="key-test-result hidden" id="test-result-openrouter">
+                <div class="status-dot"></div>
+                <span></span>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Modelos OpenRouter</div>
+            <div class="col-2">
+              <div class="field-group">
+                <label class="field-label" for="openrouter-model-fast">Modelo rapido</label>
+                <input type="text" class="input mono" id="openrouter-model-fast" placeholder="meta-llama/llama-4-scout...">
+                <div class="field-hint">Usado em: transcribe, email, bullet, translate</div>
+              </div>
+              <div class="field-group">
+                <label class="field-label" for="openrouter-model-quality">Modelo complexo</label>
+                <input type="text" class="input mono" id="openrouter-model-quality" placeholder="google/gemini-2.5-flash">
+                <div class="field-hint">Usado em: simple, prompt, query</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gemini fields -->
+        <div id="fields-gemini" class="provider-fields">
+          <div class="card">
+            <div class="card-title">Chave Gemini</div>
+            <div class="field-group">
+              <div class="input-pw-wrap">
+                <input type="password" class="input mono" id="gemini-key" placeholder="AIza...">
+                <button class="pw-toggle" data-target="gemini-key" aria-label="Mostrar chave">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button class="btn-test-key" data-provider="gemini" title="Testar chave">Testar</button>
+              </div>
+              <div class="key-test-result hidden" id="test-result-gemini">
+                <div class="status-dot"></div>
+                <span></span>
+              </div>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="gemini-model">Modelo</label>
+              <input type="text" class="input mono" id="gemini-model" placeholder="gemini-2.5-flash">
+            </div>
+          </div>
+        </div>
+
+        <!-- OpenAI fields -->
+        <div id="fields-openai" class="provider-fields">
+          <div class="card">
+            <div class="card-title">Chave OpenAI</div>
+            <div class="field-group">
+              <div class="input-pw-wrap">
+                <input type="password" class="input mono" id="openai-key" placeholder="sk-...">
+                <button class="pw-toggle" data-target="openai-key" aria-label="Mostrar chave">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button class="btn-test-key" data-provider="openai" title="Testar chave">Testar</button>
+              </div>
+              <div class="key-test-result hidden" id="test-result-openai">
+                <div class="status-dot"></div>
+                <span></span>
+              </div>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="openai-model">Modelo</label>
+              <input type="text" class="input mono" id="openai-model" placeholder="gpt-4o-mini">
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- MODOS -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-modes">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Modos</div>
+            <div class="section-desc" style="margin-bottom:0">Selecione o modo ativo e configure o ciclo.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Modo Ativo</div>
+          <div class="mode-grid" id="mode-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Ciclo de Modos</div>
+          <div class="field-hint" style="margin-bottom:12px;margin-top:-8px">Modos acessiveis via hotkey de ciclo.</div>
+          <div class="cycle-grid" id="cycle-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">System Prompt do Modo Query</div>
+          <div class="field-group">
+            <label class="field-label" for="query-system-prompt">Prompt customizado (opcional)</label>
+            <textarea class="input" id="query-system-prompt" rows="3" placeholder="Vazio = prompt padrao do Voice Commander" style="resize:vertical;min-height:60px;font-family:var(--font-body)"></textarea>
+            <div class="field-hint">Instrucao enviada como system prompt no modo "Perguntar ao Gemini".</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- AUDIO -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-audio">
+        <div class="section-title">Audio</div>
+        <div class="section-desc">Dispositivo de captura e configuracoes de gravacao.</div>
+
+        <div class="card">
+          <div class="card-title">Dispositivo</div>
+          <div class="field-group">
+            <label class="field-label" for="audio-device-index">Indice do dispositivo de audio</label>
+            <input type="text" class="input mono" id="audio-device-index" placeholder="Vazio = padrao do sistema">
+            <div class="field-hint">Numero do dispositivo. Vazio usa o microfone padrao do Windows.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Gravacao</div>
+          <div class="col-2">
+            <div class="field-group">
+              <label class="field-label" for="max-record-seconds">Timeout de gravacao</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="number" class="input" id="max-record-seconds" min="10" max="600" step="10" style="flex:1">
+                <span style="font-size:12px;color:var(--text-muted)">segundos</span>
+              </div>
+              <div class="field-hint">Bip de aviso 5s antes do timeout.</div>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="paste-delay-ms">Delay de colagem</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="number" class="input" id="paste-delay-ms" min="0" max="500" step="10" style="flex:1">
+                <span style="font-size:12px;color:var(--text-muted)">ms</span>
+              </div>
+              <div class="field-hint">Aumentar se paste falha em apps lentos.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- HOTKEYS -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-hotkeys">
+        <div class="section-title">Hotkeys</div>
+        <div class="section-desc">Atalhos globais do teclado.</div>
+
+        <div class="card">
+          <div class="field-group">
+            <label class="field-label" for="record-hotkey">Gravar / Parar</label>
+            <input type="text" class="input mono" id="record-hotkey" placeholder="ctrl+shift+space">
+          </div>
+          <div class="field-group">
+            <label class="field-label" for="cycle-hotkey">Ciclar modos</label>
+            <input type="text" class="input mono" id="cycle-hotkey" placeholder="ctrl+shift+tab">
+          </div>
+          <div class="field-group">
+            <label class="field-label" for="history-hotkey">Buscar historico</label>
+            <input type="text" class="input mono" id="history-hotkey" placeholder="ctrl+shift+h">
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- TRADUCAO -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-traducao">
+        <div class="section-title">Traducao</div>
+        <div class="section-desc">Configuracao do modo Traduzir.</div>
+
+        <div class="card">
+          <div class="field-group">
+            <label class="field-label" for="translate-lang">Idioma alvo</label>
+            <div class="select-wrap">
+              <select class="select" id="translate-lang">
+                <option value="en">English (en)</option>
+                <option value="pt">Portugues (pt)</option>
+                <option value="es">Espanol (es)</option>
+                <option value="fr">Francais (fr)</option>
+                <option value="de">Deutsch (de)</option>
+                <option value="it">Italiano (it)</option>
+                <option value="ja">Japanese (ja)</option>
+                <option value="ko">Korean (ko)</option>
+                <option value="zh">Chinese (zh)</option>
+                <option value="ru">Russian (ru)</option>
+                <option value="ar">Arabic (ar)</option>
+                <option value="nl">Dutch (nl)</option>
+              </select>
+            </div>
+            <div class="field-hint">O texto falado sera traduzido para este idioma no modo Traduzir.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- WHISPER -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-whisper">
+        <div class="section-title">Whisper</div>
+        <div class="section-desc">Configuracao avancada do motor de transcricao local.</div>
+
+        <div class="card">
+          <div class="card-title">Modelos</div>
+          <div class="col-2">
+            <div class="field-group">
+              <label class="field-label" for="whisper-model-fast">Modelo rapido</label>
+              <div class="select-wrap">
+                <select class="select" id="whisper-model-fast">
+                  <option value="tiny">tiny</option>
+                  <option value="base">base</option>
+                  <option value="small">small</option>
+                  <option value="medium">medium</option>
+                  <option value="large-v2">large-v2</option>
+                  <option value="large-v3">large-v3</option>
+                </select>
+              </div>
+              <div class="field-hint">Usado em: transcribe, email, bullet, translate</div>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="whisper-model-quality">Modelo qualidade</label>
+              <div class="select-wrap">
+                <select class="select" id="whisper-model-quality">
+                  <option value="tiny">tiny</option>
+                  <option value="base">base</option>
+                  <option value="small">small</option>
+                  <option value="medium">medium</option>
+                  <option value="large-v2">large-v2</option>
+                  <option value="large-v3">large-v3</option>
+                </select>
+              </div>
+              <div class="field-hint">Usado em: simple, prompt, query</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Engine</div>
+          <div class="col-2">
+            <div class="field-group">
+              <label class="field-label" for="whisper-device">Dispositivo</label>
+              <div class="select-wrap">
+                <select class="select" id="whisper-device">
+                  <option value="cpu">CPU</option>
+                  <option value="cuda">CUDA (GPU)</option>
+                </select>
+              </div>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="whisper-beam-size">Beam Size</label>
+              <input type="number" class="input" id="whisper-beam-size" min="1" max="10" step="1">
+              <div class="field-hint">1 = rapido, 5 = preciso</div>
+            </div>
+          </div>
+          <div class="col-2">
+            <div class="field-group">
+              <label class="field-label" for="whisper-language">Idioma Whisper</label>
+              <div class="select-wrap">
+                <select class="select" id="whisper-language">
+                  <option value="">Auto-detect (PT + EN)</option>
+                  <option value="pt">Portugues (pt)</option>
+                  <option value="en">Ingles (en)</option>
+                </select>
+              </div>
+            </div>
+            <div class="field-group">
+              <label class="field-label">VAD Threshold</label>
+              <div class="slider-row">
+                <input type="range" id="vad-threshold" min="0.1" max="0.9" step="0.05" value="0.3">
+                <span class="slider-value" id="vad-threshold-value">0.3</span>
+              </div>
+              <div class="field-hint">0.1 = muito sensivel, 0.9 = pouco sensivel</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">STT Provider</div>
+          <div class="field-group">
+            <label class="field-label" for="stt-provider">Motor de transcricao</label>
+            <div class="select-wrap">
+              <select class="select" id="stt-provider">
+                <option value="whisper">Whisper (local, offline)</option>
+                <option value="gemini">Gemini (cloud, melhor PT-BR)</option>
+              </select>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Correcao Gemini</div>
+              <div class="toggle-desc">Gemini corrige ortografia apos transcricao do Whisper.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="gemini-correct">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Vocabulario</div>
+          <div class="field-group">
+            <label class="field-label" for="whisper-initial-prompt">Initial Prompt</label>
+            <input type="text" class="input" id="whisper-initial-prompt" placeholder="Termos de vocabulario para melhorar transcricao">
+            <div class="field-hint">Insira termos que o Whisper deve reconhecer. Vazio = padrao PT-BR.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SONS -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-sons">
+        <div class="section-title">Sons Customizados</div>
+        <div class="section-desc">Substitua os beeps padrao por arquivos .wav.</div>
+
+        <div class="card">
+          <div class="field-group">
+            <label class="field-label">Inicio de gravacao</label>
+            <div class="sound-row">
+              <input type="text" class="input mono" id="sound-start" placeholder="Padrao (beep)" readonly>
+              <button class="btn-browse" data-sound="sound-start">Procurar</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Sucesso</label>
+            <div class="sound-row">
+              <input type="text" class="input mono" id="sound-success" placeholder="Padrao (beep)" readonly>
+              <button class="btn-browse" data-sound="sound-success">Procurar</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Erro</label>
+            <div class="sound-row">
+              <input type="text" class="input mono" id="sound-error" placeholder="Padrao (beep)" readonly>
+              <button class="btn-browse" data-sound="sound-error">Procurar</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Aviso</label>
+            <div class="sound-row">
+              <input type="text" class="input mono" id="sound-warning" placeholder="Padrao (beep)" readonly>
+              <button class="btn-browse" data-sound="sound-warning">Procurar</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">Skip</label>
+            <div class="sound-row">
+              <input type="text" class="input mono" id="sound-skip" placeholder="Padrao (beep)" readonly>
+              <button class="btn-browse" data-sound="sound-skip">Procurar</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- DEBUG -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-debug">
+        <div class="section-title">Debug</div>
+        <div class="section-desc">Ferramentas de diagnostico e opcoes avancadas.</div>
+
+        <div class="card">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Overlay visual</div>
+              <div class="toggle-desc">Mostra toast de feedback ao iniciar / terminar gravacao.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="overlay-enabled">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Performance logging</div>
+              <div class="toggle-desc">Imprime [PERF] breakdown de latencia no log.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="debug-perf">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Contexto do clipboard</div>
+              <div class="toggle-desc">Injeta conteudo do clipboard no modo Query.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="clipboard-context">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Limites</div>
+          <div class="col-2">
+            <div class="field-group">
+              <label class="field-label" for="clipboard-max-chars">Max chars do clipboard</label>
+              <input type="number" class="input" id="clipboard-max-chars" min="100" max="10000" step="100">
+              <div class="field-hint">Maximo de caracteres do clipboard enviados a IA.</div>
+            </div>
+            <div class="field-group">
+              <label class="field-label" for="history-max-entries">Max entradas do historico</label>
+              <input type="number" class="input" id="history-max-entries" min="50" max="5000" step="50">
+            </div>
+          </div>
+          <div class="field-group">
+            <label class="field-label" for="log-keep-sessions">Sessoes de log a manter</label>
+            <input type="number" class="input" id="log-keep-sessions" min="1" max="50" step="1" style="max-width:120px">
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- LICENCA -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-licenca">
+        <div class="section-title">Licenca</div>
+        <div class="section-desc">Opcional. O Voice Commander funciona sem licenca.</div>
+
+        <div class="card">
+          <div class="card-title">Chave de Licenca</div>
+          <div class="field-group">
+            <div style="display:flex;gap:8px">
+              <input type="text" class="input mono" id="license-key" placeholder="vc-xxxxx-xxxxx" style="flex:1">
+              <button class="btn btn-ghost" id="btn-validate-license">Validar</button>
+            </div>
+          </div>
+          <div class="license-status" id="license-status">
+            <div class="license-dot" id="license-dot"></div>
+            <span id="license-msg">Verificando...</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SOBRE -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-sobre">
+        <div class="about-heading">Voice Commander</div>
+        <div class="about-version" id="about-version">v--</div>
+        <div class="about-tagline">"Sua voz. Seu texto. Sem friccao."</div>
+
+        <div class="card">
+          <div class="about-credits">
+            <p><dt>Criado por</dt><dd>JP Labs Creative Studio</dd></p>
+            <p><dt>Motor de transcricao</dt><dd>faster-whisper</dd></p>
+            <p><dt>IA</dt><dd>Google Gemini / OpenRouter</dd></p>
+            <p><dt>Runtime</dt><dd>Python 3.13 + pywebview</dd></p>
+          </div>
+          <div style="margin-top:16px">
+            <a href="https://thejplabs.com" class="about-link" target="_blank">thejplabs.com</a>
+          </div>
+        </div>
+      </section>
+
+      </div><!-- /content-inner -->
+    </div><!-- /content -->
+
+    <!-- Footer (appears only when dirty) -->
+    <div class="footer" id="footer">
+      <span class="save-feedback" id="save-feedback"></span>
+      <button class="btn-cancel" id="btn-cancel">Cancelar</button>
+      <button class="btn-save" id="btn-save">Salvar</button>
+    </div>
+  </div><!-- /content-wrapper -->
+
+</div><!-- /app -->
+
+<script>
+  'use strict';
+
+  // ── Mode definitions ──────────────────────────────────────────────────────
+  const MODES = [
+    { id: 'transcribe', name: 'Transcrever',       desc: 'Voz para texto corrigido',     icon: 'mic' },
+    { id: 'email',      name: 'Email',             desc: 'Voz para email profissional',  icon: 'mail' },
+    { id: 'simple',     name: 'Prompt Simples',    desc: 'Voz para prompt com bullets',  icon: 'align-left' },
+    { id: 'prompt',     name: 'Prompt COSTAR',     desc: 'Voz para XML estruturado',     icon: 'code' },
+    { id: 'query',      name: 'Perguntar ao Gemini', desc: 'Voz para resposta da IA',    icon: 'message-circle' },
+    { id: 'bullet',     name: 'Bullet Dump',       desc: 'Voz para bullets hierarquicos', icon: 'list' },
+    { id: 'translate',  name: 'Traduzir',          desc: 'Voz para traducao',            icon: 'languages' },
+  ];
+
+  const MODE_ICONS = {
+    mic: '<path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/>',
+    mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+    'align-left': '<line x1="21" x2="3" y1="6" y2="6"/><line x1="15" x2="3" y1="12" y2="12"/><line x1="17" x2="3" y1="18" y2="18"/>',
+    code: '<path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/>',
+    'message-circle': '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    list: '<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>',
+    languages: '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
+  };
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let _config = {};
+  let _appState = {};
+  let _selectedMode = 'transcribe';
+  let _pollInterval = null;
+  let _dirty = false;
+  let _initialFormSnapshot = '';
+
+  // ── DOM Helpers ────────────────────────────────────────────────────────────
+  const $  = (id) => document.getElementById(id);
+  const $v = (id) => { const el = $(id); return el ? el.value : ''; };
+  const sv = (id, val) => { const el = $(id); if (el) el.value = (val !== null && val !== undefined) ? val : ''; };
+  const sc = (id, val) => { const el = $(id); if (el) el.checked = !!val; };
+  const gv = (id) => { const el = $(id); return el ? el.checked : false; };
+
+  // ── Dirty state (show/hide footer) ────────────────────────────────────────
+  function markDirty() {
+    if (!_dirty) {
+      _dirty = true;
+      const footer = $('footer');
+      if (footer) footer.classList.add('visible');
+    }
+  }
+
+  function markClean() {
+    _dirty = false;
+    const footer = $('footer');
+    if (footer) footer.classList.remove('visible');
+  }
+
+  function takeFormSnapshot() {
+    return JSON.stringify(collectForm());
+  }
+
+  function checkDirty() {
+    const current = takeFormSnapshot();
+    if (current !== _initialFormSnapshot) {
+      markDirty();
+    } else {
+      markClean();
+    }
+  }
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+  function initNav() {
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const section = item.dataset.section;
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        item.classList.add('active');
+        const el = $('section-' + section);
+        if (el) el.classList.add('active');
+        // Scroll content to top
+        const content = $('content');
+        if (content) content.scrollTop = 0;
+      });
+    });
+  }
+
+  // ── Mode Grid ─────────────────────────────────────────────────────────────
+  function makeSvgIcon(name) {
+    const paths = MODE_ICONS[name];
+    if (!paths) return '';
+    return `<svg class="mode-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  }
+
+  function buildModeGrid() {
+    const grid = $('mode-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    MODES.forEach(m => {
+      const card = document.createElement('div');
+      card.className = 'mode-card';
+      card.dataset.modeId = m.id;
+      card.innerHTML = `
+        ${makeSvgIcon(m.icon)}
+        <div class="mode-card-name">${m.name}</div>
+        <div class="mode-card-desc">${m.desc}</div>
+      `;
+      card.addEventListener('click', () => selectMode(m.id));
+      grid.appendChild(card);
+    });
+  }
+
+  function buildCycleGrid() {
+    const grid = $('cycle-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    MODES.forEach(m => {
+      const label = document.createElement('label');
+      label.className = 'cycle-item';
+      label.innerHTML = `
+        <input type="checkbox" data-mode-id="${m.id}" value="${m.id}">
+        <span>${m.name}</span>
+      `;
+      label.querySelector('input').addEventListener('change', () => checkDirty());
+      grid.appendChild(label);
+    });
+  }
+
+  function updateModeGrid(activeId) {
+    document.querySelectorAll('.mode-card').forEach(card => {
+      card.classList.toggle('active', card.dataset.modeId === activeId);
+    });
+  }
+
+  function setCycleModes(cycleModeStr) {
+    const active = (cycleModeStr || 'transcribe,email,simple,prompt,query').split(',').map(s => s.trim());
+    document.querySelectorAll('#cycle-grid input[type="checkbox"]').forEach(cb => {
+      cb.checked = active.includes(cb.dataset.modeId);
+    });
+  }
+
+  function getCycleModes() {
+    const checked = [];
+    document.querySelectorAll('#cycle-grid input[type="checkbox"]').forEach(cb => {
+      if (cb.checked) checked.push(cb.dataset.modeId);
+    });
+    return checked.join(',');
+  }
+
+  async function selectMode(modeId) {
+    _selectedMode = modeId;
+    updateModeGrid(modeId);
+    updateStatusSection();
+    try {
+      await window.pywebview.api.select_mode(modeId);
+    } catch (e) {
+      console.warn('select_mode failed', e);
+    }
+  }
+
+  // ── Provider radio selection ──────────────────────────────────────────────
+  function initProviderRadios() {
+    document.querySelectorAll('.provider-radio').forEach(label => {
+      label.addEventListener('click', () => {
+        const radio = label.querySelector('input[type="radio"]');
+        if (radio) radio.checked = true;
+        document.querySelectorAll('.provider-radio').forEach(l => l.classList.remove('selected'));
+        label.classList.add('selected');
+        updateProviderFields(radio.value);
+        checkDirty();
+      });
+    });
+  }
+
+  function updateProviderFields(provider) {
+    ['openrouter', 'gemini', 'openai'].forEach(p => {
+      const el = $('fields-' + p);
+      if (el) el.classList.toggle('visible', p === provider);
+    });
+    // Update radio visual
+    document.querySelectorAll('.provider-radio').forEach(label => {
+      const isSelected = label.dataset.provider === provider;
+      label.classList.toggle('selected', isSelected);
+      const radio = label.querySelector('input[type="radio"]');
+      if (radio) radio.checked = isSelected;
+    });
+  }
+
+  function getSelectedProvider() {
+    const checked = document.querySelector('input[name="ai-provider"]:checked');
+    return checked ? checked.value : 'openrouter';
+  }
+
+  // ── Password toggles ─────────────────────────────────────────────────────
+  function initPwToggles() {
+    document.querySelectorAll('.pw-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = $(btn.dataset.target);
+        if (!input) return;
+        const isHidden = input.type === 'password';
+        input.type = isHidden ? 'text' : 'password';
+        btn.innerHTML = isHidden
+          ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>';
+      });
+    });
+  }
+
+  // ── API key test buttons ──────────────────────────────────────────────────
+  function initKeyTests() {
+    document.querySelectorAll('.btn-test-key').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const provider = btn.dataset.provider;
+        const resultEl = $('test-result-' + provider);
+        if (!resultEl) return;
+
+        btn.classList.add('testing');
+        btn.textContent = '...';
+        resultEl.classList.remove('hidden');
+
+        let key = '';
+        if (provider === 'openrouter') key = $v('openrouter-key');
+        else if (provider === 'gemini') key = $v('gemini-key');
+        else if (provider === 'openai') key = $v('openai-key');
+
+        // If key starts with ***, it's masked - we can't test it
+        if (key.startsWith('***')) {
+          showTestResult(resultEl, btn, false, 'Insira a chave completa para testar');
+          return;
+        }
+
+        try {
+          let result;
+          if (provider === 'openrouter') {
+            result = await window.pywebview.api.test_openrouter_key(key);
+          } else if (provider === 'gemini') {
+            result = await window.pywebview.api.test_gemini_key(key);
+          } else {
+            // No test method for OpenAI yet, just format check
+            result = { ok: key.startsWith('sk-') && key.length > 20, message: key.startsWith('sk-') ? 'Formato OK' : 'Formato invalido' };
+          }
+          showTestResult(resultEl, btn, result.ok, result.message);
+        } catch (e) {
+          showTestResult(resultEl, btn, false, 'Erro ao testar');
+        }
+      });
+    });
+  }
+
+  function showTestResult(resultEl, btn, ok, msg) {
+    const dot = resultEl.querySelector('.status-dot');
+    const span = resultEl.querySelector('span');
+    dot.className = 'status-dot ' + (ok ? 'success' : 'error');
+    span.textContent = msg;
+    span.style.color = ok ? 'var(--status-success)' : 'var(--status-error)';
+    btn.classList.remove('testing');
+    btn.classList.toggle('ok', ok);
+    btn.classList.toggle('err', !ok);
+    btn.textContent = 'Testar';
+    setTimeout(() => {
+      btn.classList.remove('ok', 'err');
+    }, 3000);
+  }
+
+  // ── Sound browse buttons ──────────────────────────────────────────────────
+  function initSoundBrowse() {
+    document.querySelectorAll('.btn-browse').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          const path = await window.pywebview.api.pick_sound_file();
+          if (path) {
+            sv(btn.dataset.sound, path);
+            checkDirty();
+          }
+        } catch (e) {
+          console.warn('pick_sound_file failed', e);
+        }
+      });
+    });
+  }
+
+  // ── VAD slider ────────────────────────────────────────────────────────────
+  function initVadSlider() {
+    const slider = $('vad-threshold');
+    const display = $('vad-threshold-value');
+    if (!slider || !display) return;
+    slider.addEventListener('input', () => {
+      display.textContent = parseFloat(slider.value).toFixed(2);
+      checkDirty();
+    });
+  }
+
+  // ── License validation ────────────────────────────────────────────────────
+  function initLicenseValidation() {
+    const btn = $('btn-validate-license');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      const key = $v('license-key').trim();
+      if (!key) return;
+      btn.disabled = true;
+      btn.textContent = 'Validando...';
+      try {
+        const result = await window.pywebview.api.validate_license(key);
+        updateLicenseDisplay(result.valid, result.message);
+      } catch (e) {
+        updateLicenseDisplay(false, 'Erro ao validar');
+      }
+      btn.disabled = false;
+      btn.textContent = 'Validar';
+    });
+  }
+
+  function updateLicenseDisplay(valid, msg) {
+    const dot = $('license-dot');
+    const msgEl = $('license-msg');
+    if (dot) dot.className = 'license-dot ' + (valid ? 'ok' : 'err');
+    if (msgEl) msgEl.textContent = msg || '--';
+  }
+
+  // ── Populate form from config ─────────────────────────────────────────────
+  function populateForm(cfg) {
+    // Provider
+    const provider = detectProvider(cfg);
+    updateProviderFields(provider);
+
+    // Keys (masked from bridge)
+    sv('openrouter-key',           cfg.OPENROUTER_API_KEY  || '');
+    sv('openrouter-model-fast',    cfg.OPENROUTER_MODEL_FAST || '');
+    sv('openrouter-model-quality', cfg.OPENROUTER_MODEL_QUALITY || '');
+    sv('gemini-key',    cfg.GEMINI_API_KEY  || '');
+    sv('gemini-model',  cfg.GEMINI_MODEL    || '');
+    sv('openai-key',    cfg.OPENAI_API_KEY  || '');
+    sv('openai-model',  cfg.OPENAI_MODEL    || '');
+
+    // Hotkeys
+    sv('record-hotkey',  cfg.RECORD_HOTKEY  || '');
+    sv('cycle-hotkey',   cfg.CYCLE_HOTKEY   || '');
+    sv('history-hotkey', cfg.HISTORY_HOTKEY || '');
+
+    // Audio
+    sv('audio-device-index', cfg.AUDIO_DEVICE_INDEX || '');
+    sv('max-record-seconds', cfg.MAX_RECORD_SECONDS || 120);
+    sv('paste-delay-ms',     cfg.PASTE_DELAY_MS !== undefined ? cfg.PASTE_DELAY_MS : 50);
+
+    // Traducao
+    sv('translate-lang', cfg.TRANSLATE_TARGET_LANG || 'en');
+
+    // Whisper
+    sv('whisper-model-fast',    cfg.WHISPER_MODEL_FAST    || 'tiny');
+    sv('whisper-model-quality', cfg.WHISPER_MODEL_QUALITY || 'small');
+    sv('whisper-device',        cfg.WHISPER_DEVICE        || 'cpu');
+    sv('whisper-beam-size',     cfg.WHISPER_BEAM_SIZE     !== undefined ? cfg.WHISPER_BEAM_SIZE : 1);
+    sv('whisper-language',      cfg.WHISPER_LANGUAGE      || '');
+    sv('whisper-initial-prompt',cfg.WHISPER_INITIAL_PROMPT || '');
+    sv('stt-provider',          cfg.STT_PROVIDER || 'whisper');
+
+    // VAD slider
+    const vadVal = cfg.VAD_THRESHOLD !== undefined ? cfg.VAD_THRESHOLD : 0.3;
+    const vadSlider = $('vad-threshold');
+    const vadDisplay = $('vad-threshold-value');
+    if (vadSlider) vadSlider.value = vadVal;
+    if (vadDisplay) vadDisplay.textContent = parseFloat(vadVal).toFixed(2);
+
+    // Toggles
+    sc('gemini-correct',   parseBool(cfg.GEMINI_CORRECT, true));
+    sc('overlay-enabled',  parseBool(cfg.OVERLAY_ENABLED, true));
+    sc('debug-perf',       parseBool(cfg.DEBUG_PERF, false));
+    sc('clipboard-context',parseBool(cfg.CLIPBOARD_CONTEXT_ENABLED, true));
+
+    // Debug / limits
+    sv('clipboard-max-chars', cfg.CLIPBOARD_CONTEXT_MAX_CHARS || 2000);
+    sv('history-max-entries', cfg.HISTORY_MAX_ENTRIES || 500);
+    sv('log-keep-sessions',  cfg.LOG_KEEP_SESSIONS || 5);
+
+    // Sounds
+    sv('sound-start',   cfg.SOUND_START   || '');
+    sv('sound-success', cfg.SOUND_SUCCESS || '');
+    sv('sound-error',   cfg.SOUND_ERROR   || '');
+    sv('sound-warning', cfg.SOUND_WARNING || '');
+    sv('sound-skip',    cfg.SOUND_SKIP    || '');
+
+    // Query system prompt
+    sv('query-system-prompt', cfg.QUERY_SYSTEM_PROMPT || '');
+
+    // License
+    sv('license-key', cfg.LICENSE_KEY || '');
+
+    // Cycle modes
+    setCycleModes(cfg.CYCLE_MODES);
+
+    // Take snapshot for dirty detection
+    _initialFormSnapshot = takeFormSnapshot();
+  }
+
+  function parseBool(val, defaultVal) {
+    if (val === undefined || val === null || val === '') return defaultVal;
+    if (typeof val === 'boolean') return val;
+    return String(val).toLowerCase() === 'true';
+  }
+
+  function detectProvider(cfg) {
+    // Priority: if there's an explicit AI_PROVIDER saved, use it
+    if (cfg.AI_PROVIDER) return cfg.AI_PROVIDER.toLowerCase();
+    // Otherwise detect from masked keys (bridge returns ***xxxx when key exists)
+    if (cfg.OPENROUTER_API_KEY) return 'openrouter';
+    if (cfg.GEMINI_API_KEY) return 'gemini';
+    if (cfg.OPENAI_API_KEY) return 'openai';
+    return 'openrouter';
+  }
+
+  // ── Collect form for save ─────────────────────────────────────────────────
+  function collectForm() {
+    return {
+      AI_PROVIDER:               getSelectedProvider(),
+      OPENROUTER_API_KEY:        $v('openrouter-key'),
+      OPENROUTER_MODEL_FAST:     $v('openrouter-model-fast'),
+      OPENROUTER_MODEL_QUALITY:  $v('openrouter-model-quality'),
+      GEMINI_API_KEY:            $v('gemini-key'),
+      GEMINI_MODEL:              $v('gemini-model'),
+      OPENAI_API_KEY:            $v('openai-key'),
+      OPENAI_MODEL:              $v('openai-model'),
+      RECORD_HOTKEY:             $v('record-hotkey'),
+      CYCLE_HOTKEY:              $v('cycle-hotkey'),
+      HISTORY_HOTKEY:            $v('history-hotkey'),
+      AUDIO_DEVICE_INDEX:        $v('audio-device-index'),
+      MAX_RECORD_SECONDS:        $v('max-record-seconds'),
+      PASTE_DELAY_MS:            $v('paste-delay-ms'),
+      TRANSLATE_TARGET_LANG:     $v('translate-lang'),
+      WHISPER_MODEL_FAST:        $v('whisper-model-fast'),
+      WHISPER_MODEL_QUALITY:     $v('whisper-model-quality'),
+      WHISPER_DEVICE:            $v('whisper-device'),
+      WHISPER_BEAM_SIZE:         $v('whisper-beam-size'),
+      WHISPER_LANGUAGE:          $v('whisper-language'),
+      WHISPER_INITIAL_PROMPT:    $v('whisper-initial-prompt'),
+      STT_PROVIDER:              $v('stt-provider'),
+      VAD_THRESHOLD:             $v('vad-threshold'),
+      GEMINI_CORRECT:            gv('gemini-correct'),
+      OVERLAY_ENABLED:           gv('overlay-enabled'),
+      DEBUG_PERF:                gv('debug-perf'),
+      CLIPBOARD_CONTEXT_ENABLED: gv('clipboard-context'),
+      CLIPBOARD_CONTEXT_MAX_CHARS: $v('clipboard-max-chars'),
+      HISTORY_MAX_ENTRIES:       $v('history-max-entries'),
+      LOG_KEEP_SESSIONS:         $v('log-keep-sessions'),
+      SOUND_START:               $v('sound-start'),
+      SOUND_SUCCESS:             $v('sound-success'),
+      SOUND_ERROR:               $v('sound-error'),
+      SOUND_WARNING:             $v('sound-warning'),
+      SOUND_SKIP:                $v('sound-skip'),
+      QUERY_SYSTEM_PROMPT:       $v('query-system-prompt'),
+      LICENSE_KEY:               $v('license-key'),
+      CYCLE_MODES:               getCycleModes(),
+    };
+  }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
+  async function save() {
+    const btn = $('btn-save');
+    const feedback = $('save-feedback');
+    if (!btn) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+
+    try {
+      const values = collectForm();
+
+      // Don't send masked keys back (they'd overwrite real keys)
+      for (const k of ['OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'OPENAI_API_KEY']) {
+        if (values[k] && values[k].startsWith('***')) {
+          delete values[k];
+        }
+      }
+
+      const result = await window.pywebview.api.save_config(values);
+
+      if (result && result.ok) {
+        btn.classList.add('success');
+        btn.textContent = 'Salvo!';
+        if (feedback) {
+          feedback.textContent = 'Configuracoes salvas com sucesso';
+          feedback.classList.add('visible');
+        }
+        // Update snapshot so footer hides
+        _initialFormSnapshot = takeFormSnapshot();
+        setTimeout(() => {
+          btn.classList.remove('success');
+          btn.textContent = 'Salvar';
+          btn.disabled = false;
+          if (feedback) feedback.classList.remove('visible');
+          markClean();
+        }, 1500);
+      } else {
+        btn.textContent = 'Erro';
+        btn.style.background = 'var(--status-error)';
+        if (feedback) {
+          feedback.textContent = result && result.error ? result.error : 'Erro desconhecido';
+          feedback.style.color = 'var(--status-error)';
+          feedback.classList.add('visible');
+        }
+        setTimeout(() => {
+          btn.style.background = '';
+          btn.textContent = 'Salvar';
+          btn.disabled = false;
+          if (feedback) {
+            feedback.classList.remove('visible');
+            feedback.style.color = '';
+          }
+        }, 2500);
+      }
+    } catch (e) {
+      console.error('save failed', e);
+      btn.textContent = 'Salvar';
+      btn.disabled = false;
+    }
+  }
+
+  function cancelChanges() {
+    // Re-populate form from last loaded config
+    populateForm(_config);
+    markClean();
+  }
+
+  // ── Status section updates ────────────────────────────────────────────────
+  const MODE_LABELS = {};
+  const MODE_DESCS = {};
+  MODES.forEach(m => {
+    MODE_LABELS[m.id] = m.name;
+    MODE_DESCS[m.id] = m.desc;
+  });
+
+  function updateStatusSection() {
+    // Mode
+    const modeLabel = $('status-mode-label');
+    const modeDesc = $('status-mode-desc');
+    if (modeLabel) modeLabel.textContent = MODE_LABELS[_selectedMode] || _selectedMode;
+    if (modeDesc) modeDesc.textContent = MODE_DESCS[_selectedMode] || '';
+  }
+
+  function applyLiveState(st) {
+    if (!st) return;
+    _selectedMode = st.selected_mode || _selectedMode;
+    updateModeGrid(_selectedMode);
+    updateStatusSection();
+
+    const dot = $('status-dot');
+    const stateBadge = $('status-state-badge');
+
+    if (dot) {
+      if (st.is_recording) {
+        dot.className = 'status-dot recording';
+      } else if (st.is_transcribing) {
+        dot.className = 'status-dot processing';
+      } else {
+        dot.className = 'status-dot';
+      }
+    }
+
+    if (stateBadge) {
+      if (st.is_recording) {
+        stateBadge.className = 'badge badge-error';
+        stateBadge.textContent = 'Gravando';
+      } else if (st.is_transcribing) {
+        stateBadge.className = 'badge badge-blue';
+        stateBadge.textContent = 'Processando';
+      } else {
+        stateBadge.className = 'badge badge-accent';
+        stateBadge.textContent = 'Idle';
+      }
+    }
+
+    // Version
+    if (st.version) {
+      const sbv = $('sidebar-version');
+      const av = $('about-version');
+      if (sbv) sbv.textContent = 'v' + st.version;
+      if (av) av.textContent = 'v' + st.version;
+    }
+  }
+
+  function applyConfig(cfg) {
+    _config = cfg;
+
+    // Status section values
+    const statusWhisper = $('status-whisper');
+    const statusHotkey = $('status-hotkey');
+    const statusProviderBadge = $('status-provider-badge');
+    const statusLicenseBadge = $('status-license-badge');
+
+    if (statusWhisper) {
+      statusWhisper.textContent = (cfg.WHISPER_MODEL_FAST || 'tiny') + ' / ' + (cfg.WHISPER_MODEL_QUALITY || 'small');
+    }
+    if (statusHotkey) statusHotkey.textContent = cfg.RECORD_HOTKEY || '--';
+
+    // Provider detection
+    const provider = detectProvider(cfg);
+    if (statusProviderBadge) {
+      const providerNames = { openrouter: 'OpenRouter', gemini: 'Gemini', openai: 'OpenAI' };
+      const hasKey = (provider === 'openrouter' && cfg.OPENROUTER_API_KEY) ||
+                     (provider === 'gemini' && cfg.GEMINI_API_KEY) ||
+                     (provider === 'openai' && cfg.OPENAI_API_KEY);
+      statusProviderBadge.textContent = providerNames[provider] || provider;
+      statusProviderBadge.className = 'badge ' + (hasKey ? 'badge-success' : 'badge-warning');
+    }
+
+    // License status on status page
+    if (statusLicenseBadge) {
+      if (cfg.LICENSE_KEY) {
+        statusLicenseBadge.textContent = 'Configurada';
+        statusLicenseBadge.className = 'badge badge-success';
+      } else {
+        statusLicenseBadge.textContent = 'Sem chave';
+        statusLicenseBadge.className = 'badge';
+      }
+    }
+  }
+
+  // ── License check ─────────────────────────────────────────────────────────
+  async function checkLicense() {
+    const key = _config.LICENSE_KEY;
+    if (!key) {
+      updateLicenseDisplay(false, 'Sem chave de licenca configurada');
+      return;
+    }
+    try {
+      const result = await window.pywebview.api.validate_license(key);
+      updateLicenseDisplay(result.valid, result.message);
+    } catch (e) {
+      updateLicenseDisplay(false, 'Nao foi possivel verificar');
+    }
+  }
+
+  // ── Change detection (dirty state) ────────────────────────────────────────
+  function initChangeDetection() {
+    // Listen to all inputs, selects, textareas
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+      const eventName = (el.type === 'checkbox' || el.type === 'radio') ? 'change' : 'input';
+      el.addEventListener(eventName, checkDirty);
+    });
+  }
+
+  // ── Polling for live state ────────────────────────────────────────────────
+  function startPolling() {
+    if (_pollInterval) return;
+    _pollInterval = setInterval(async () => {
+      try {
+        const st = await window.pywebview.api.get_state();
+        applyLiveState(st);
+      } catch (_) {}
+    }, 1500);
+  }
+
+  function stopPolling() {
+    if (_pollInterval) { clearInterval(_pollInterval); _pollInterval = null; }
+  }
+
+  window.addEventListener('beforeunload', stopPolling);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function init() {
+    initNav();
+    buildModeGrid();
+    buildCycleGrid();
+    initProviderRadios();
+    initPwToggles();
+    initKeyTests();
+    initSoundBrowse();
+    initVadSlider();
+    initLicenseValidation();
+
+    // Save / Cancel buttons
+    const btnSave = $('btn-save');
+    const btnCancel = $('btn-cancel');
+    if (btnSave) btnSave.addEventListener('click', save);
+    if (btnCancel) btnCancel.addEventListener('click', cancelChanges);
+
+    // Load config + state from Python bridge
+    try {
+      const [cfg, st] = await Promise.all([
+        window.pywebview.api.get_config(),
+        window.pywebview.api.get_state(),
+      ]);
+      applyConfig(cfg);
+      populateForm(cfg);
+      applyLiveState(st);
+    } catch (e) {
+      console.error('init load failed', e);
+    }
+
+    // Setup dirty detection after form is populated
+    initChangeDetection();
+
+    // License check (deferred)
+    setTimeout(checkLicense, 500);
+
+    // Start state polling
+    startPolling();
+  }
+
+  // ── Entry point ───────────────────────────────────────────────────────────
+  let _initDone = false;
+  function safeInit() {
+    if (_initDone) return;
+    _initDone = true;
+    init();
+  }
+
+  window.addEventListener('pywebviewready', safeInit);
+
+  // Fallback: if pywebviewready already fired
+  if (typeof window.pywebview !== 'undefined' && window.pywebview.api) {
+    safeInit();
+  }
+</script>
+</body>
+</html>

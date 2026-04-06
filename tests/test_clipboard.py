@@ -30,6 +30,7 @@ def _make_windll_mock():
     mock_kernel32.GlobalLock.return_value = 0xBEEF
     mock_kernel32.GlobalUnlock.return_value = 1
     mock_kernel32.GlobalFree.return_value = 0
+    mock_kernel32.GlobalSize.return_value = 4096  # buffer grande o suficiente para read_clipboard
 
     mock_windll = MagicMock()
     mock_windll.kernel32 = mock_kernel32

@@ -33,7 +33,7 @@ def env_dir(tmp_path, monkeypatch):
         "OPENAI_MODEL": "gpt-4o-mini",
         "WHISPER_DEVICE": "cpu",
         "TRANSLATE_TARGET_LANG": "en",
-        "WAKE_WORD_ENABLED": "false",
+        "WAKE_WORD_ENABLED": False,
         "WAKE_WORD_KEYWORD": "hey_jarvis",
         "LICENSE_KEY": None,
         "HISTORY_MAX_ENTRIES": 500,
@@ -170,6 +170,11 @@ class TestSettingsSave:
         instance._translate_lang_var = _str_var("en")
         instance._wake_enabled_var = _bool_var(False)
         instance._wake_keyword_var = _str_var("hey_jarvis")
+        instance._groq_key_entry = MagicMock()
+        instance._groq_key_entry.get.return_value = ""
+        instance._openrouter_key_entry = MagicMock()
+        instance._openrouter_key_entry.get.return_value = ""
+        instance._indicator_bars = {}
 
         return instance
 

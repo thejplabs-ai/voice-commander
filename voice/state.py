@@ -6,6 +6,7 @@ import threading
 # Config / credentials
 _CONFIG: dict = {}
 _GEMINI_API_KEY: str | None = None
+_OPENROUTER_API_KEY: str | None = None
 _LICENSE_EXPIRED_NOTIFIED: bool = False
 
 # Paths (populated by voice/paths.py on import)
@@ -14,12 +15,13 @@ _log_path: str = ""
 _history_path: str = ""
 
 # Recording state
-stop_event = threading.Event()
+stop_event = threading.Event()        # sinaliza recording thread para parar
+_shutdown_event = threading.Event()   # sinaliza app para encerrar (separado de stop_event)
 is_recording: bool = False
 is_transcribing: bool = False
 frames_buf: list = []
 record_thread = None
-_toggle_lock = threading.Lock()
+_toggle_lock = threading.RLock()
 current_mode: str = "transcribe"
 record_start_time: float = 0.0  # timestamp when recording started (for min-recording guard)
 
@@ -47,6 +49,9 @@ _ctk_available: bool = False
 _settings_window_ref = None
 _settings_window_lock = threading.Lock()
 
+# Settings request — main thread opens webview when set
+_settings_requested = threading.Event()
+
 # AI rate limiting — cooldown de 2s entre chamadas AI (SEC-05)
 _ai_last_call_time: float = 0.0
 _AI_COOLDOWN_SECONDS: float = 2.0
@@ -62,11 +67,15 @@ _tray_tooltip_thread = None
 # Story 4.5.4: clipboard context capturado no início da gravação
 _clipboard_context: str = ""
 
-# Feature 1: User Profile — fatos sobre o usuário injetados em todas as chamadas Gemini
-_user_profile: dict = {}
+# Epic 5.0: Command Mode — texto selecionado capturado via simulate_copy()
+_command_selected_text: str = ""
 
-# Feature 2: Active Window Context — título+processo da janela ativa no início da gravação
-_window_context: str = ""
+# Lock para estado cross-thread fora do ciclo de gravação
+# Protege: _ai_last_call_time, _query_cooldown_until, _tray_state, _clipboard_context
+_state_lock = threading.RLock()
 
-# Feature 3: Screenshot — bytes PNG capturados no modo visual
-_screenshot_bytes: bytes | None = None
+# Epic 5.1: Dicionário Pessoal — cache do custom_vocabulary.json
+_vocabulary_cache: dict | None = None
+
+# Epic 5.5: Window Context — dict com title, process, category da janela ativa no momento da gravação
+_window_context: dict = {}

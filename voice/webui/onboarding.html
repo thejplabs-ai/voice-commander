@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Commander — Setup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<style>
+:root {
+    --bg-abyss:      #0F0F0F;
+    --bg-deep:       #1A1A1E;
+    --bg-elevated:   #242428;
+    --bg-night:      #2C2C30;
+    --text-primary:  #F5F5F0;
+    --text-secondary:#B3B0AA;
+    --text-muted:    #807E7A;
+    --text-disabled: #4D4C4A;
+    --border-default:#2A2A2E;
+    --border-hover:  #3A3A3E;
+    --border-active: #C4956A;
+    --accent-primary:#C4956A;
+    --accent-hover:  #D4A87A;
+    --accent-pressed:#B4855A;
+    --accent-secondary:#6B8EBF;
+    --status-success:#7EC89B;
+    --status-error:  #D4626E;
+    --status-warning:#D4A24E;
+    --radius-sm:     8px;
+    --radius-md:     12px;
+    --radius-lg:     16px;
+    --radius-xl:     20px;
+    --font-head:     'Figtree', 'Segoe UI', sans-serif;
+    --font-body:     'Inter', 'Segoe UI', sans-serif;
+    --font-mono:     'JetBrains Mono', 'Consolas', monospace;
+    --motion-fast:   200ms;
+    --motion-normal: 250ms;
+    --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-abyss);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden;
+    user-select: none;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-night); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* ── Layout ──────────────────────────────────────────────────── */
+
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ── Progress bar (top) ──────────────────────────────────────── */
+
+.progress-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 28px 48px 0;
+    flex-shrink: 0;
+}
+
+.progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+    z-index: 1;
+}
+
+.progress-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: transparent;
+    border: 2px solid var(--border-hover);
+    transition: all var(--motion-fast) var(--ease-out-cubic);
+    cursor: default;
+}
+
+.progress-dot.completed {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    cursor: pointer;
+}
+
+.progress-dot.active {
+    width: 14px;
+    height: 14px;
+    background: var(--text-primary);
+    border: 2px solid var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.15);
+}
+
+.progress-label {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-disabled);
+    white-space: nowrap;
+    transition: color var(--motion-fast) ease;
+}
+
+.progress-step.completed .progress-label,
+.progress-step.active .progress-label {
+    color: var(--text-muted);
+}
+
+.progress-connector {
+    width: 48px;
+    height: 2px;
+    background: var(--border-default);
+    margin: 0 4px;
+    margin-bottom: 22px; /* align with dots, not labels */
+    transition: background 300ms ease-out;
+}
+
+.progress-connector.completed {
+    background: var(--accent-primary);
+}
+
+/* ── Step viewport ───────────────────────────────────────────── */
+
+#steps-viewport {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.step {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 40px 0;
+    overflow-y: auto;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(24px);
+    transition: opacity var(--motion-normal) var(--ease-out-cubic),
+                transform var(--motion-normal) var(--ease-out-cubic);
+}
+
+.step.active {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateX(0);
+}
+
+.step.exit-left {
+    opacity: 0;
+    transform: translateX(-24px);
+    pointer-events: none;
+}
+
+.step.exit-right {
+    opacity: 0;
+    transform: translateX(24px);
+    pointer-events: none;
+}
+
+.step-inner {
+    width: 100%;
+    max-width: 480px;
+}
+
+/* ── Step header ─────────────────────────────────────────────── */
+
+.step-header {
+    margin-bottom: 24px;
+}
+
+.step-title {
+    font-family: var(--font-head);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+    line-height: 1.2;
+}
+
+.step-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+    line-height: 1.5;
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+
+#footer {
+    padding: 16px 40px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg-abyss);
+    border-top: 1px solid var(--border-default);
+    flex-shrink: 0;
+}
+
+.nav-btns {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 38px;
+    padding: 0 20px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: background 150ms ease, color 150ms ease, opacity 150ms ease, border-color 150ms ease;
+    white-space: nowrap;
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+}
+
+.btn-ghost:hover:not(:disabled) {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+}
+
+.btn-amber {
+    background: var(--accent-primary);
+    color: #1A1208;
+}
+
+.btn-amber:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.btn-amber:active:not(:disabled) {
+    background: var(--accent-pressed);
+}
+
+.btn-green {
+    background: var(--status-success);
+    color: #0D1F15;
+}
+
+.btn-green:hover:not(:disabled) {
+    background: #8FD4A8;
+}
+
+.btn-green:active:not(:disabled) {
+    background: #6EBB8A;
+}
+
+.btn-sm {
+    height: 34px;
+    padding: 0 14px;
+    font-size: 12.5px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ── Provider tabs ───────────────────────────────────────────── */
+
+.provider-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 20px;
+}
+
+.provider-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px 8px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 200ms ease;
+    font-family: var(--font-body);
+    color: var(--text-muted);
+}
+
+.provider-tab:hover {
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border-color: var(--border-hover);
+}
+
+.provider-tab.active {
+    background: var(--bg-night);
+    color: var(--text-primary);
+    border-color: var(--border-active);
+}
+
+.provider-tab-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.provider-tab-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+.provider-tab.active .provider-tab-desc {
+    color: var(--text-secondary);
+}
+
+/* ── Cards ───────────────────────────────────────────────────── */
+
+.card {
+    background: var(--bg-deep);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    transition: border-color 200ms ease;
+}
+
+/* ══════════════════════════════════════════════════════════════ */
+/* STEP 1 — Welcome                                              */
+/* ══════════════════════════════════════════════════════════════ */
+
+.welcome-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin-bottom: 28px;
+}
+
+.welcome-logo {
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    box-shadow: 0 0 0 1px rgba(196, 149, 106, 0.2), 0 8px 24px rgba(196, 149, 106, 0.12);
+}
+
+.welcome-logo svg {
+    width: 28px;
+    height: 28px;
+    fill: none;
+    stroke: #1A1208;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.welcome-brand .step-title {
+    font-size: 28px;
+    letter-spacing: -0.5px;
+}
+
+.welcome-tagline {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+
+.badge-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 28px;
+}
+
+.badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.hotkey-card {
+    padding: 18px 20px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.hotkey-card .hotkey-icon {
+    width: 44px;
+    height: 44px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.hotkey-card .hotkey-icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: var(--accent-primary);
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.hotkey-card .hotkey-info { flex: 1; }
+
+.hotkey-card .hotkey-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.kbd-row {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 7px;
+    background: var(--bg-night);
+    border: 1px solid var(--border-hover);
+    border-bottom: 2px solid var(--border-hover);
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.kbd-sep {
+    color: var(--text-disabled);
+    font-size: 11px;
+}
+
+.welcome-footer-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════════════ */
+/* STEP 2 — How it works                                         */
+/* ══════════════════════════════════════════════════════════════ */
+
+.flow-cards {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 28px;
+}
+
+.flow-card {
+    flex: 1;
+    padding: 20px 16px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.flow-card .flow-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-head);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--accent-primary);
+}
+
+.flow-card .flow-icon {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.flow-card .flow-icon svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--accent-primary);
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.flow-card .flow-title {
+    font-family: var(--font-head);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.flow-card .flow-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.flow-connector {
+    display: flex;
+    align-items: center;
+    padding-bottom: 40px;
+}
+
+.flow-connector svg {
+    width: 16px;
+    height: 16px;
+    stroke: var(--text-disabled);
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.modes-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.mode-card {
+    padding: 12px 10px;
+    cursor: default;
+    text-align: center;
+}
+
+.mode-card .mode-icon {
+    width: 28px;
+    height: 28px;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 6px;
+}
+
+.mode-card .mode-icon svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--accent-primary);
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.mode-card .mode-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.mode-card .mode-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+.modes-tip {
+    padding: 10px 14px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modes-tip svg {
+    width: 14px;
+    height: 14px;
+    stroke: var(--accent-secondary);
+    fill: none;
+    stroke-width: 1.8;
+    flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════ */
+/* STEP 3 — Configure AI                                         */
+/* ══════════════════════════════════════════════════════════════ */
+
+.instructions-card {
+    padding: 16px 18px;
+    margin-bottom: 16px;
+}
+
+.instructions-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 10px;
+}
+
+.instruction-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.instruction-step {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.step-num {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--bg-night);
+    border: 1px solid var(--border-hover);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.instruction-step .step-text {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.instruction-step .step-text a {
+    color: var(--accent-secondary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.instruction-step .step-text a:hover {
+    color: #7FA3D1;
+    text-decoration: underline;
+}
+
+.field-group {
+    margin-bottom: 12px;
+}
+
+.field-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.input-wrap {
+    position: relative;
+}
+
+.input-wrap input {
+    width: 100%;
+    height: 40px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 0 40px 0 14px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.input-wrap input::placeholder {
+    font-family: var(--font-body);
+    color: var(--text-disabled);
+    font-size: 12px;
+}
+
+.input-wrap input:focus {
+    border-color: var(--border-active);
+    box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.08);
+}
+
+.input-wrap input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.eye-btn {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 40px;
+    width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    transition: color 150ms ease;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.eye-btn:hover { color: var(--text-secondary); }
+
+.eye-btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
+    border-radius: var(--radius-sm);
+}
+
+.eye-btn svg {
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.test-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.status-label {
+    font-size: 12px;
+    min-height: 16px;
+    transition: color 200ms ease;
+}
+
+.status-ok   { color: var(--status-success); }
+.status-err  { color: var(--status-error); }
+.status-wait { color: var(--text-muted); }
+
+.spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 1.5px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 5px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.section-divider {
+    height: 1px;
+    background: var(--border-default);
+    margin: 20px 0;
+}
+
+.section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-disabled);
+    margin-bottom: 12px;
+}
+
+/* ══════════════════════════════════════════════════════════════ */
+/* STEP 4 — Done                                                 */
+/* ══════════════════════════════════════════════════════════════ */
+
+.done-hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin-bottom: 28px;
+}
+
+.done-check {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: rgba(126, 200, 155, 0.1);
+    border: 1px solid rgba(126, 200, 155, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+    animation: pop 400ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes pop {
+    from { transform: scale(0.5); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+}
+
+.done-check svg {
+    width: 28px;
+    height: 28px;
+    stroke: var(--status-success);
+    fill: none;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.done-title {
+    font-family: var(--font-head);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    color: var(--text-primary);
+}
+
+.done-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+
+.summary-card {
+    padding: 18px 20px;
+    margin-bottom: 12px;
+}
+
+.summary-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+.summary-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.summary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.summary-key {
+    font-size: 13px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.summary-val {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.summary-val kbd {
+    font-size: 10.5px;
+}
+
+.divider {
+    height: 1px;
+    background: var(--border-default);
+    margin: 12px 0;
+}
+
+.done-tip {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1.5;
+}
+
+.done-tip kbd {
+    font-size: 10px;
+    margin: 0 2px;
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+    <!-- ═══ PROGRESS BAR ═════════════════════════════════════════════ -->
+    <div class="progress-bar" id="progress-bar">
+        <div class="progress-step active" data-step="1">
+            <div class="progress-dot active"></div>
+            <span class="progress-label">Bem-vindo</span>
+        </div>
+        <div class="progress-connector" data-after="1"></div>
+        <div class="progress-step" data-step="2">
+            <div class="progress-dot"></div>
+            <span class="progress-label">Como Funciona</span>
+        </div>
+        <div class="progress-connector" data-after="2"></div>
+        <div class="progress-step" data-step="3">
+            <div class="progress-dot"></div>
+            <span class="progress-label">IA</span>
+        </div>
+        <div class="progress-connector" data-after="3"></div>
+        <div class="progress-step" data-step="4">
+            <div class="progress-dot"></div>
+            <span class="progress-label">Pronto</span>
+        </div>
+    </div>
+
+    <!-- ═══ STEPS VIEWPORT ═══════════════════════════════════════════ -->
+    <div id="steps-viewport">
+
+        <!-- STEP 1 — Bem-vindo -->
+        <div class="step active" id="step-1">
+            <div class="step-inner">
+                <div class="welcome-brand">
+                    <div class="welcome-logo">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="22"/>
+                            <line x1="8" y1="22" x2="16" y2="22"/>
+                        </svg>
+                    </div>
+                    <div class="step-title">Voice Commander</div>
+                    <div class="welcome-tagline">Sua voz, seu texto. Configuracao rapida.</div>
+                </div>
+
+                <div class="badge-row">
+                    <div class="badge">
+                        <div class="badge-dot"></div>
+                        7 Modos
+                    </div>
+                    <div class="badge">
+                        <div class="badge-dot" style="background:var(--accent-secondary)"></div>
+                        Whisper Local
+                    </div>
+                    <div class="badge">
+                        <div class="badge-dot" style="background:var(--status-success)"></div>
+                        Gemini AI
+                    </div>
+                </div>
+
+                <div class="card hotkey-card">
+                    <div class="hotkey-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            <line x1="12" y1="19" x2="12" y2="22"/>
+                        </svg>
+                    </div>
+                    <div class="hotkey-info">
+                        <div class="hotkey-label">Hotkey principal</div>
+                        <div class="kbd-row">
+                            <kbd>Ctrl</kbd>
+                            <span class="kbd-sep">+</span>
+                            <kbd>Shift</kbd>
+                            <span class="kbd-sep">+</span>
+                            <kbd>Space</kbd>
+                        </div>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-muted);text-align:right;line-height:1.4;">
+                        Pressione<br>para gravar
+                    </div>
+                </div>
+
+                <div class="welcome-footer-text">
+                    Levamos ~1 minuto para configurar.
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2 — Como Funciona -->
+        <div class="step" id="step-2">
+            <div class="step-inner">
+                <div class="step-header">
+                    <div class="step-title">Como funciona</div>
+                    <div class="step-subtitle">Tres passos simples. Um hotkey faz tudo.</div>
+                </div>
+
+                <div class="flow-cards">
+                    <div class="card flow-card">
+                        <div class="flow-num">1</div>
+                        <div class="flow-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            </svg>
+                        </div>
+                        <div class="flow-title">Falar</div>
+                        <div class="flow-desc">Pressione o hotkey e fale normalmente</div>
+                    </div>
+                    <div class="flow-connector">
+                        <svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>
+                    </div>
+                    <div class="card flow-card">
+                        <div class="flow-num">2</div>
+                        <div class="flow-icon">
+                            <svg viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                            </svg>
+                        </div>
+                        <div class="flow-title">Processar</div>
+                        <div class="flow-desc">Whisper transcreve, IA corrige e formata</div>
+                    </div>
+                    <div class="flow-connector">
+                        <svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>
+                    </div>
+                    <div class="card flow-card">
+                        <div class="flow-num">3</div>
+                        <div class="flow-icon">
+                            <svg viewBox="0 0 24 24">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                        </div>
+                        <div class="flow-title">Colar</div>
+                        <div class="flow-desc">Texto aparece onde seu cursor estiver</div>
+                    </div>
+                </div>
+
+                <div class="modes-grid">
+                    <!-- transcribe -->
+                    <div class="card mode-card">
+                        <div class="mode-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3z"/>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                            </svg>
+                        </div>
+                        <div class="mode-name">Transcrever</div>
+                        <div class="mode-desc">Voz para texto</div>
+                    </div>
+                    <!-- email -->
+                    <div class="card mode-card">
+                        <div class="mode-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                                <polyline points="22,6 12,13 2,6"/>
+                            </svg>
+                        </div>
+                        <div class="mode-name">Email</div>
+                        <div class="mode-desc">Email formatado</div>
+                    </div>
+                    <!-- simple -->
+                    <div class="card mode-card">
+                        <div class="mode-icon">
+                            <svg viewBox="0 0 24 24">
+                                <line x1="8" y1="6" x2="21" y2="6"/>
+                                <line x1="8" y1="12" x2="21" y2="12"/>
+                                <line x1="8" y1="18" x2="21" y2="18"/>
+                                <line x1="3" y1="6" x2="3.01" y2="6"/>
+                                <line x1="3" y1="12" x2="3.01" y2="12"/>
+                                <line x1="3" y1="18" x2="3.01" y2="18"/>
+                            </svg>
+                        </div>
+                        <div class="mode-name">Simples</div>
+                        <div class="mode-desc">Bullet points</div>
+                    </div>
+                    <!-- prompt -->
+                    <div class="card mode-card">
+                        <div class="mode-icon">
+                            <svg viewBox="0 0 24 24">
+                                <polyline points="16 18 22 12 16 6"/>
+                                <polyline points="8 6 2 12 8 18"/>
+                            </svg>
+                        </div>
+                        <div class="mode-name">COSTAR</div>
+                        <div class="mode-desc">Prompt XML</div>
+                    </div>
+                    <!-- query -->
+                    <div class="card mode-card">
+                        <div class="mode-icon">
+                            <svg viewBox="0 0 24 24">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                        </div>
+                        <div class="mode-name">Perguntar</div>
+                        <div class="mode-desc">Resposta da IA</div>
+                    </div>
+                    <!-- bullet -->
+                    <div class="card mode-card">
+                        <div class="mode-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="9" y1="13" x2="15" y2="13"/>
+                            </svg>
+                        </div>
+                        <div class="mode-name">Bullets</div>
+                        <div class="mode-desc">Lista rapida</div>
+                    </div>
+                    <!-- translate -->
+                    <div class="card mode-card">
+                        <div class="mode-icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="m5 8 6 6"/>
+                                <path d="m4 14 6-6 2-3"/>
+                                <path d="M2 5h12"/>
+                                <path d="M7 2h1"/>
+                                <path d="m22 22-5-10-5 10"/>
+                                <path d="M14 18h6"/>
+                            </svg>
+                        </div>
+                        <div class="mode-name">Traduzir</div>
+                        <div class="mode-desc">Para outro idioma</div>
+                    </div>
+                </div>
+
+                <div class="modes-tip">
+                    <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    Cicle entre modos com <kbd style="font-size:10px;margin:0 3px;">Ctrl</kbd><span class="kbd-sep">+</span><kbd style="font-size:10px;">Shift</kbd><span class="kbd-sep">+</span><kbd style="font-size:10px;margin-left:2px;">Tab</kbd>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3 — Configurar AI -->
+        <div class="step" id="step-3">
+            <div class="step-inner">
+                <div class="step-header">
+                    <div class="step-title">Configurar IA</div>
+                    <div class="step-subtitle">Escolha o provider e insira sua API key</div>
+                </div>
+
+                <!-- Provider tabs -->
+                <div class="provider-tabs">
+                    <button class="provider-tab active" id="tab-openrouter" onclick="switchProvider('openrouter')">
+                        <span class="provider-tab-name">OpenRouter</span>
+                        <span class="provider-tab-desc">Recomendado</span>
+                    </button>
+                    <button class="provider-tab" id="tab-gemini" onclick="switchProvider('gemini')">
+                        <span class="provider-tab-name">Gemini</span>
+                        <span class="provider-tab-desc">Google AI, gratuito</span>
+                    </button>
+                    <button class="provider-tab" id="tab-openai" onclick="switchProvider('openai')">
+                        <span class="provider-tab-name">OpenAI</span>
+                        <span class="provider-tab-desc">GPT-4o Mini</span>
+                    </button>
+                </div>
+
+                <!-- OpenRouter panel -->
+                <div id="provider-openrouter">
+                    <div class="card instructions-card">
+                        <div class="instructions-title">Como obter</div>
+                        <div class="instruction-steps">
+                            <div class="instruction-step">
+                                <div class="step-num">1</div>
+                                <div class="step-text">Acesse <a href="#" onclick="openLink('https://openrouter.ai/keys');return false;">openrouter.ai/keys</a></div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">2</div>
+                                <div class="step-text">Crie uma conta (Google login)</div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">3</div>
+                                <div class="step-text">Clique em <strong style="color:var(--text-primary)">Create Key</strong></div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">4</div>
+                                <div class="step-text">Copie a chave e cole abaixo</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="openrouter-input">OpenRouter API Key</label>
+                        <div class="input-wrap">
+                            <input type="password" id="openrouter-input" placeholder="sk-or-..." autocomplete="off" spellcheck="false">
+                            <button class="eye-btn" type="button" onclick="toggleEye('openrouter-input', this)" aria-label="Mostrar/ocultar">
+                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="test-row">
+                        <button class="btn btn-ghost btn-sm" id="test-openrouter-btn" onclick="testApiKey()">Testar Conexao</button>
+                        <span class="status-label" id="api-status-openrouter"></span>
+                    </div>
+                </div>
+
+                <!-- Gemini panel -->
+                <div id="provider-gemini" style="display:none;">
+                    <div class="card instructions-card">
+                        <div class="instructions-title">Como obter</div>
+                        <div class="instruction-steps">
+                            <div class="instruction-step">
+                                <div class="step-num">1</div>
+                                <div class="step-text">Acesse <a href="#" onclick="openLink('https://aistudio.google.com/apikey');return false;">aistudio.google.com/apikey</a></div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">2</div>
+                                <div class="step-text">Login com conta Google</div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">3</div>
+                                <div class="step-text">Clique em <strong style="color:var(--text-primary)">Create API key</strong></div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">4</div>
+                                <div class="step-text">Copie a chave e cole abaixo</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="gemini-input">Gemini API Key</label>
+                        <div class="input-wrap">
+                            <input type="password" id="gemini-input" placeholder="AIza..." autocomplete="off" spellcheck="false">
+                            <button class="eye-btn" type="button" onclick="toggleEye('gemini-input', this)" aria-label="Mostrar/ocultar">
+                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="test-row">
+                        <button class="btn btn-ghost btn-sm" id="test-gemini-btn" onclick="testApiKey()">Testar Conexao</button>
+                        <span class="status-label" id="api-status-gemini"></span>
+                    </div>
+                </div>
+
+                <!-- OpenAI panel -->
+                <div id="provider-openai" style="display:none;">
+                    <div class="card instructions-card">
+                        <div class="instructions-title">Como obter</div>
+                        <div class="instruction-steps">
+                            <div class="instruction-step">
+                                <div class="step-num">1</div>
+                                <div class="step-text">Acesse <a href="#" onclick="openLink('https://platform.openai.com/api-keys');return false;">platform.openai.com/api-keys</a></div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">2</div>
+                                <div class="step-text">Login na sua conta OpenAI</div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">3</div>
+                                <div class="step-text">Clique em <strong style="color:var(--text-primary)">Create new secret key</strong></div>
+                            </div>
+                            <div class="instruction-step">
+                                <div class="step-num">4</div>
+                                <div class="step-text">Copie a chave e cole abaixo</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="openai-input">OpenAI API Key</label>
+                        <div class="input-wrap">
+                            <input type="password" id="openai-input" placeholder="sk-..." autocomplete="off" spellcheck="false">
+                            <button class="eye-btn" type="button" onclick="toggleEye('openai-input', this)" aria-label="Mostrar/ocultar">
+                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="test-row">
+                        <button class="btn btn-ghost btn-sm" id="test-openai-btn" onclick="testApiKey()">Testar Conexao</button>
+                        <span class="status-label" id="api-status-openai"></span>
+                    </div>
+                </div>
+
+                <!-- License (optional, same step) -->
+                <div class="section-divider"></div>
+                <div class="section-label">Licenca (opcional)</div>
+
+                <div class="field-group">
+                    <label class="field-label" for="license-input">Chave de Licenca</label>
+                    <div class="input-wrap">
+                        <input type="password" id="license-input" placeholder="vc-..." autocomplete="off" spellcheck="false">
+                        <button class="eye-btn" type="button" onclick="toggleEye('license-input', this)" aria-label="Mostrar/ocultar">
+                            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="test-row">
+                    <button class="btn btn-ghost btn-sm" id="validate-license-btn" onclick="validateLicense()">Validar</button>
+                    <span class="status-label" id="license-status"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 4 — Tudo Pronto -->
+        <div class="step" id="step-4">
+            <div class="step-inner">
+                <div class="done-hero">
+                    <div class="done-check">
+                        <svg viewBox="0 0 24 24">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                    </div>
+                    <div class="done-title">Tudo pronto!</div>
+                    <div class="done-sub" id="done-sub">Voice Commander configurado</div>
+                </div>
+
+                <div class="card summary-card">
+                    <div class="summary-title">Atalhos</div>
+                    <div class="summary-rows">
+                        <div class="summary-row">
+                            <span class="summary-key">Gravar / Parar</span>
+                            <div class="summary-val">
+                                <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Space</kbd>
+                            </div>
+                        </div>
+                        <div class="summary-row">
+                            <span class="summary-key">Ciclar modos</span>
+                            <div class="summary-val">
+                                <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Tab</kbd>
+                            </div>
+                        </div>
+                        <div class="summary-row">
+                            <span class="summary-key">Buscar historico</span>
+                            <div class="summary-val">
+                                <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>H</kbd>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="divider"></div>
+                    <div class="summary-rows">
+                        <div class="summary-row">
+                            <span class="summary-key">Provider</span>
+                            <span class="summary-key" id="done-provider" style="color:var(--text-primary);font-weight:500;">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="done-tip">
+                    Troque de modo com <kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>Tab</kbd> ou pelo icone na bandeja do sistema.
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /steps-viewport -->
+
+    <!-- ═══ FOOTER ═══════════════════════════════════════════════════ -->
+    <div id="footer">
+        <div style="width:80px;"></div>
+        <div class="nav-btns">
+            <button class="btn btn-ghost" id="btn-prev" onclick="goBack()" style="display:none;">Anterior</button>
+            <button class="btn btn-amber" id="btn-next" onclick="goNext()">Comecar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ── State ──────────────────────────────────────────────────────── */
+
+var currentStep   = 1;
+var TOTAL         = 4;
+var apiKeyTested  = false;
+var apiKeySkipped = false;
+var apiReady      = false;
+
+/* ── pywebview bridge ───────────────────────────────────────────── */
+
+var api = {
+    get_config:         function() { return Promise.resolve({}); },
+    get_version:        function() { return Promise.resolve('1.0.x'); },
+    test_gemini_key:    function() { return Promise.resolve({ ok: false, message: 'Bridge nao disponivel' }); },
+    test_openrouter_key:function() { return Promise.resolve({ ok: false, message: 'Bridge nao disponivel' }); },
+    validate_license:   function() { return Promise.resolve({ valid: false, message: 'Bridge nao disponivel' }); },
+    finish_onboarding:  function() { return Promise.resolve({ ok: true }); },
+    close_window:       function() {},
+};
+
+window.addEventListener('pywebviewready', function () {
+    if (window.pywebview && window.pywebview.api) {
+        // Copy all methods including prototype properties (pywebview exposes them on prototype)
+        const src = window.pywebview.api;
+        for (const key of Object.getOwnPropertyNames(Object.getPrototypeOf(src)).concat(Object.keys(src))) {
+            if (key !== 'constructor' && typeof src[key] === 'function') {
+                api[key] = src[key].bind(src);
+            }
+        }
+    }
+    apiReady = true;
+    init();
+});
+
+// Fallback for browser dev
+setTimeout(function () {
+    if (!apiReady) {
+        apiReady = true;
+        init();
+    }
+}, 800);
+
+/* ── Init ───────────────────────────────────────────────────────── */
+
+function init() {
+    renderStep(1);
+}
+
+function openLink(url) {
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.open_url) {
+        window.pywebview.api.open_url(url);
+    }
+}
+
+/* ── Navigation ─────────────────────────────────────────────────── */
+
+function goNext() {
+    if (currentStep === TOTAL) {
+        finish();
+        return;
+    }
+    // Step 3 gate: need tested key OR explicit skip
+    if (currentStep === 3 && !apiKeyTested && !apiKeySkipped) {
+        // Show skip confirmation
+        apiKeySkipped = true;
+        updateFooter(3);
+        return;
+    }
+    navigateTo(currentStep + 1);
+}
+
+function goBack() {
+    if (currentStep <= 1) return;
+    navigateTo(currentStep - 1, true);
+}
+
+function navigateTo(target, backward) {
+    if (target < 1 || target > TOTAL) return;
+
+    var outEl = document.getElementById('step-' + currentStep);
+    var inEl  = document.getElementById('step-' + target);
+
+    outEl.classList.remove('active');
+    outEl.classList.add(backward ? 'exit-right' : 'exit-left');
+
+    inEl.classList.remove('exit-left', 'exit-right');
+    inEl.style.transition = 'none';
+    inEl.style.opacity = '0';
+    inEl.style.transform = backward ? 'translateX(-24px)' : 'translateX(24px)';
+
+    void inEl.offsetHeight;
+
+    inEl.style.transition = '';
+    inEl.style.opacity = '1';
+    inEl.style.transform = 'translateX(0)';
+    inEl.classList.add('active');
+
+    setTimeout(function () {
+        outEl.classList.remove('exit-left', 'exit-right');
+        outEl.style.transform = '';
+        outEl.style.opacity = '';
+        inEl.style.transform = '';
+        inEl.style.opacity = '';
+    }, 300);
+
+    currentStep = target;
+    renderStep(target);
+}
+
+/* ── Progress dot click ─────────────────────────────────────────── */
+
+document.querySelectorAll('.progress-dot').forEach(function (dot) {
+    dot.addEventListener('click', function () {
+        var stepEl = dot.closest('.progress-step');
+        if (!stepEl) return;
+        var target = parseInt(stepEl.dataset.step);
+        if (target < currentStep) {
+            navigateTo(target, true);
+        }
+    });
+});
+
+/* ── Render step ────────────────────────────────────────────────── */
+
+function renderStep(n) {
+    updateProgress(n);
+    updateFooter(n);
+    if (n === 4) {
+        renderDoneSummary();
+    }
+}
+
+function updateProgress(n) {
+    document.querySelectorAll('.progress-step').forEach(function (el) {
+        var i = parseInt(el.dataset.step);
+        var dot = el.querySelector('.progress-dot');
+        el.classList.remove('completed', 'active');
+        dot.classList.remove('completed', 'active');
+        if (i < n) {
+            el.classList.add('completed');
+            dot.classList.add('completed');
+        } else if (i === n) {
+            el.classList.add('active');
+            dot.classList.add('active');
+        }
+    });
+    document.querySelectorAll('.progress-connector').forEach(function (c) {
+        var after = parseInt(c.dataset.after);
+        c.classList.toggle('completed', after < n);
+    });
+}
+
+function updateFooter(n) {
+    var prev = document.getElementById('btn-prev');
+    var next = document.getElementById('btn-next');
+
+    prev.style.display = (n <= 1) ? 'none' : '';
+
+    next.className = 'btn';
+
+    if (n === TOTAL) {
+        next.textContent = 'Comecar a usar';
+        next.classList.add('btn-green');
+        next.style.minWidth = '160px';
+    } else if (n === 3) {
+        next.style.minWidth = '';
+        if (apiKeyTested) {
+            next.textContent = 'Proximo';
+            next.classList.add('btn-amber');
+        } else if (apiKeySkipped) {
+            next.textContent = 'Pular mesmo assim';
+            next.classList.add('btn-ghost');
+        } else {
+            next.textContent = 'Pular';
+            next.classList.add('btn-amber');
+        }
+    } else if (n === 1) {
+        next.style.minWidth = '';
+        next.textContent = 'Comecar';
+        next.classList.add('btn-amber');
+    } else {
+        next.style.minWidth = '';
+        next.textContent = 'Proximo';
+        next.classList.add('btn-amber');
+    }
+}
+
+/* ── Step 4 summary ─────────────────────────────────────────────── */
+
+function renderDoneSummary() {
+    var providerNames = { openrouter: 'OpenRouter', gemini: 'Gemini', openai: 'OpenAI' };
+    var providerLabel = document.getElementById('done-provider');
+    var sub = document.getElementById('done-sub');
+
+    var key = getActiveApiKey();
+    var licKey = (document.getElementById('license-input') || {}).value || '';
+
+    if (key) {
+        providerLabel.textContent = providerNames[selectedProvider] || selectedProvider;
+        if (licKey.trim()) {
+            sub.textContent = providerNames[selectedProvider] + ' conectado. Licenca configurada.';
+        } else {
+            sub.textContent = providerNames[selectedProvider] + ' conectado. Pronto para usar.';
+        }
+    } else {
+        providerLabel.textContent = 'Nenhum';
+        sub.textContent = 'Configure um provider nas configuracoes para usar modos IA.';
+    }
+}
+
+/* ── Eye toggle ─────────────────────────────────────────────────── */
+
+function toggleEye(inputId, btn) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    btn.querySelector('svg').innerHTML = isHidden
+        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>'
+        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+}
+
+/* ── Provider toggle ────────────────────────────────────────────── */
+
+var selectedProvider = 'openrouter';
+
+function switchProvider(prov) {
+    selectedProvider = prov;
+    var providers = ['openrouter', 'gemini', 'openai'];
+    providers.forEach(function (p) {
+        document.getElementById('provider-' + p).style.display = (p === prov) ? '' : 'none';
+        document.getElementById('tab-' + p).classList.toggle('active', p === prov);
+    });
+    // Reset test state when switching
+    apiKeyTested = false;
+    apiKeySkipped = false;
+    updateFooter(currentStep);
+}
+
+/* ── Get active API key ─────────────────────────────────────────── */
+
+function getActiveApiKey() {
+    var inputMap = { openrouter: 'openrouter-input', gemini: 'gemini-input', openai: 'openai-input' };
+    var input = document.getElementById(inputMap[selectedProvider]);
+    return input ? input.value.trim() : '';
+}
+
+/* ── Test API Key ───────────────────────────────────────────────── */
+
+async function testApiKey() {
+    var inputMap  = { openrouter: 'openrouter-input', gemini: 'gemini-input', openai: 'openai-input' };
+    var btnMap    = { openrouter: 'test-openrouter-btn', gemini: 'test-gemini-btn', openai: 'test-openai-btn' };
+    var statusMap = { openrouter: 'api-status-openrouter', gemini: 'api-status-gemini', openai: 'api-status-openai' };
+
+    var key    = document.getElementById(inputMap[selectedProvider]).value.trim();
+    var btn    = document.getElementById(btnMap[selectedProvider]);
+    var status = document.getElementById(statusMap[selectedProvider]);
+
+    if (!key) {
+        setStatus(status, 'Cole sua API key primeiro', 'err');
+        return;
+    }
+
+    btn.disabled = true;
+    setStatus(status, '<span class="spinner"></span>Testando...', 'wait', true);
+
+    try {
+        var res;
+        if (selectedProvider === 'openrouter') {
+            res = await api.test_openrouter_key(key);
+        } else if (selectedProvider === 'gemini') {
+            res = await api.test_gemini_key(key);
+        } else {
+            // OpenAI: basic format validation (bridge doesn't have test_openai_key)
+            if (key.startsWith('sk-') && key.length > 20) {
+                res = { ok: true, message: 'Formato OK' };
+            } else {
+                res = { ok: false, message: 'Formato invalido. Deve comecar com sk-' };
+            }
+        }
+        if (res.ok) {
+            setStatus(status, res.message || 'Conexao OK', 'ok');
+            apiKeyTested = true;
+            apiKeySkipped = false;
+        } else {
+            setStatus(status, res.message || 'Validacao falhou', 'err');
+            apiKeyTested = false;
+        }
+    } catch (e) {
+        setStatus(status, 'Erro ao validar', 'err');
+        apiKeyTested = false;
+    } finally {
+        btn.disabled = false;
+        updateFooter(currentStep);
+    }
+}
+
+/* ── Validate License ───────────────────────────────────────────── */
+
+async function validateLicense() {
+    var key    = document.getElementById('license-input').value.trim();
+    var btn    = document.getElementById('validate-license-btn');
+    var status = document.getElementById('license-status');
+
+    if (!key) {
+        setStatus(status, 'Cole sua chave de licenca', 'err');
+        return;
+    }
+
+    btn.disabled = true;
+    setStatus(status, '<span class="spinner"></span>Validando...', 'wait', true);
+
+    try {
+        var res = await api.validate_license(key);
+        if (res.valid) {
+            setStatus(status, res.message || 'Licenca valida', 'ok');
+        } else {
+            setStatus(status, res.message || 'Licenca invalida', 'err');
+        }
+    } catch (e) {
+        setStatus(status, 'Erro ao validar', 'err');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+/* ── Finish ─────────────────────────────────────────────────────── */
+
+async function finish() {
+    var apiKey     = getActiveApiKey();
+    var licenseKey = (document.getElementById('license-input') || {}).value || '';
+    var btn        = document.getElementById('btn-next');
+
+    btn.disabled = true;
+    btn.textContent = 'Iniciando...';
+
+    try {
+        await api.finish_onboarding(apiKey, licenseKey.trim(), selectedProvider);
+        await api.close_window();
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = 'Comecar a usar';
+    }
+}
+
+/* ── Helpers ────────────────────────────────────────────────────── */
+
+function setStatus(el, msg, type, html) {
+    el.className = 'status-label status-' + type;
+    if (html) {
+        el.innerHTML = msg;
+    } else {
+        el.textContent = msg;
+    }
+}
+</script>
+</body>
+</html>
