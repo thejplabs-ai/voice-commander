@@ -18,7 +18,7 @@ def _make_test_key(expiry_str: str) -> str:
     """Produce a well-formed HMAC-signed key for a given expiry date string."""
     secret = "jp-labs-vc-secret-2026"
     expiry_b64 = base64.urlsafe_b64encode(expiry_str.encode()).decode().rstrip("=")
-    sig = hmac.new(secret.encode(), expiry_str.encode(), hashlib.sha256).hexdigest()[:12]
+    sig = hmac.HMAC(secret.encode(), expiry_str.encode(), hashlib.sha256).hexdigest()[:12]
     return f"vc-{expiry_b64}-{sig}"
 
 
@@ -78,7 +78,7 @@ def test_formato_invalido_prefix_errado():
     # Build valid structure but wrong prefix
     expiry_str = "2099-12-31"
     expiry_b64 = base64.urlsafe_b64encode(expiry_str.encode()).decode().rstrip("=")
-    sig = hmac.new("jp-labs-vc-secret-2026".encode(), expiry_str.encode(), hashlib.sha256).hexdigest()[:12]
+    sig = hmac.HMAC("jp-labs-vc-secret-2026".encode(), expiry_str.encode(), hashlib.sha256).hexdigest()[:12]
     bad_key = f"xx-{expiry_b64}-{sig}"
 
     ok, msg = voice.validate_license_key(bad_key)

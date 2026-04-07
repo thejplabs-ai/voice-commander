@@ -25,28 +25,40 @@ _STATE_COLORS = {
 }
 
 
+# V-Wave bar layouts at 16x16 (from tray SVGs) — each tuple: (x, y, w, h)
+_TRAY_BARS = {
+    "idle": [
+        (1, 3, 2, 4), (4, 1, 2, 9), (7, 5, 2, 8), (10, 1, 2, 9), (13, 3, 2, 4),
+    ],
+    "recording": [
+        (1, 4, 2, 3), (4, 1, 2, 9), (7, 2, 2, 11), (10, 1, 2, 9), (13, 4, 2, 3),
+    ],
+    "processing": [
+        (1, 4, 2, 3), (4, 3, 2, 7), (7, 5, 2, 8), (10, 3, 2, 7), (13, 4, 2, 3),
+    ],
+}
+
+
 def _make_tray_icon(tray_state: str = "idle") -> "Image.Image":
     """
-    Gera icone 64x64 RGBA com circulo + waveform abstrata:
-    - idle:       amber quente (#C4956A)
-    - recording:  rose (#D4626E)
-    - processing: steel blue (#6B8EBF)
+    Gera icone 64x64 RGBA com V-Wave (5 barras formando V + waveform):
+    - idle:       amber quente (#C4956A) — balanced
+    - recording:  rose (#D4626E) — center bar taller (active capture)
+    - processing: steel blue (#6B8EBF) — equalized bars (processing)
     """
     color = _STATE_COLORS.get(tray_state, theme.TRAY_IDLE)
     img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Circle background
-    draw.ellipse([4, 4, 60, 60], fill=color)
-    # Abstract waveform — 3 arcs (white, varying opacity)
-    bar_bright = (255, 255, 255, 220)
-    bar_mid = (255, 255, 255, 180)
-    bar_dim = (255, 255, 255, 140)
-    # Center arc (tallest)
-    draw.rounded_rectangle([29, 16, 35, 48], radius=3, fill=bar_bright)
-    # Left arc (medium)
-    draw.rounded_rectangle([19, 22, 25, 42], radius=3, fill=bar_mid)
-    # Right arc (short)
-    draw.rounded_rectangle([39, 26, 45, 38], radius=3, fill=bar_dim)
+    bars = _TRAY_BARS.get(tray_state, _TRAY_BARS["idle"])
+    scale = 64 / 16.0  # scale from 16x16 SVG to 64x64
+
+    for (bx, by, bw, bh) in bars:
+        x0 = int(bx * scale)
+        y0 = int(by * scale)
+        x1 = int((bx + bw) * scale)
+        y1 = int((by + bh) * scale)
+        draw.rounded_rectangle([x0, y0, x1, y1], radius=3, fill=color)
+
     return img
 
 
@@ -131,104 +143,32 @@ def _set_mode(mode: str) -> None:
 
 
 def _tray_show_status(icon, item) -> None:  # type: ignore[type-arg]
-    """Menu item 'Status' — abre popup CTk (ou MessageBox fallback) com info atual."""
+    """Menu item 'Status' — MessageBox nativa em thread separada (nao bloqueia pystray)."""
     import ctypes
-    from voice.paths import _resource_path
-    from voice.ui import _apply_taskbar_icon
+    import threading
 
     state_labels = {
         "idle":       "Idle (aguardando hotkey)",
         "recording":  "Gravando...",
         "processing": "Processando transcrição...",
     }
-    mode_labels = {
-        "transcribe": "Transcrever",
-        "simple":     "Prompt Simples",
-        "prompt":     "Prompt COSTAR",
-        "query":      "Query AI",
-        "bullet":     "Bullet Dump",
-        "email":      "Email Draft",
-        "translate":  "Traduzir",
-        "—":          "—",
-    }
     gemini_status = "Ativo" if state._GEMINI_API_KEY else "Desativado"
     state_label = state_labels.get(state._tray_state, state._tray_state)
-    mode_label  = mode_labels.get(state._tray_last_mode, state._tray_last_mode)
+    mode_label  = _MODE_NAMES_PT.get(state.selected_mode, state.selected_mode)
 
-    if state._ctk_available:
-        # Popup CTk com botão Fechar e protocolo WM_DELETE_WINDOW — fecha corretamente
-        def _show_ctk_status():
-            try:
-                import customtkinter as _ctk
-                _ctk.set_appearance_mode("dark")
-                _ctk.set_default_color_theme("dark-blue")
-                win = _ctk.CTk()
-                win.title("Voice Commander — Status")
-                win.attributes("-topmost", True)
-                win.configure(fg_color=theme.BG_ABYSS)
-                win.resizable(False, False)
-                _icon = _resource_path("icon.ico")
-                if _icon.exists():
-                    win.iconbitmap(str(_icon))
-                    _apply_taskbar_icon(win, _icon)
-                # Protocolo de fechamento — garante que o X fecha a janela
-                win.protocol("WM_DELETE_WINDOW", win.destroy)
-
-                pad_x, pad_y = 28, 12
-                _ctk.CTkLabel(win, text="Voice Commander",
-                              font=theme.FONT_HEADING_SM(),
-                              text_color=theme.TEXT_PRIMARY).pack(anchor="w", padx=pad_x, pady=(20, 2))
-                _ctk.CTkFrame(win, height=1, fg_color=theme.BORDER_DEFAULT,
-                              corner_radius=0).pack(fill="x", padx=pad_x, pady=(0, 12))
-
-                rows = [
-                    ("Estado",       state_label),
-                    ("Último modo",  mode_label),
-                    ("Gemini",       gemini_status),
-                    ("Whisper",      state._CONFIG.get("WHISPER_MODEL", "small")),
-                    ("Log",          state._log_path),
-                ]
-                for label, value in rows:
-                    row = _ctk.CTkFrame(win, fg_color="transparent")
-                    row.pack(fill="x", padx=pad_x, pady=(0, pad_y))
-                    _ctk.CTkLabel(row, text=f"{label}:",
-                                  font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED,
-                                  width=90, anchor="w").pack(side="left")
-                    _ctk.CTkLabel(row, text=value,
-                                  font=theme.FONT_BODY_BOLD(), text_color=theme.TEXT_PRIMARY,
-                                  anchor="w", wraplength=240, justify="left").pack(
-                        side="left", padx=(4, 0))
-
-                _ctk.CTkButton(win, text="Fechar", width=180, height=theme.BTN_HEIGHT,
-                               corner_radius=theme.CORNER_MD, fg_color=theme.PURPLE,
-                               hover_color=theme.PURPLE_HOVER,
-                               font=theme.FONT_BODY_BOLD(),
-                               command=win.destroy).pack(pady=(8, 20))
-
-                win.update_idletasks()
-                sw = win.winfo_screenwidth()
-                sh = win.winfo_screenheight()
-                w  = win.winfo_reqwidth()  + 16
-                h  = win.winfo_reqheight() + 16
-                x  = (sw - w) // 2
-                y  = (sh - h) // 2
-                win.geometry(f"{w}x{h}+{x}+{y}")
-                win.mainloop()
-            except Exception as exc:
-                print(f"[WARN] Falha ao abrir popup de status: {exc}")
-
-        threading.Thread(target=_show_ctk_status, daemon=True).start()
-    else:
-        # Fallback: MessageBox nativa (só um botão OK — fecha ao clicar OK)
-        msg = (
-            f"Voice Commander — JP Labs\n\n"
-            f"Estado:      {state_label}\n"
-            f"Último modo: {mode_label}\n"
-            f"Gemini:      {gemini_status}\n"
-            f"Whisper:     {state._CONFIG.get('WHISPER_MODEL', 'small')}\n"
-            f"Log:         {state._log_path}"
-        )
-        ctypes.windll.user32.MessageBoxW(0, msg, "Voice Commander — Status", 0x40)
+    msg = (
+        f"Voice Commander — JP Labs\n\n"
+        f"Estado:      {state_label}\n"
+        f"Modo ativo:  {mode_label}\n"
+        f"Gemini:      {gemini_status}\n"
+        f"Whisper:     {state._CONFIG.get('WHISPER_MODEL', 'small')}\n"
+        f"Log:         {state._log_path}"
+    )
+    # MB_ICONINFORMATION | MB_SYSTEMMODAL — thread separada, sempre no topo
+    threading.Thread(
+        target=lambda: ctypes.windll.user32.MessageBoxW(0, msg, "Voice Commander — Status", 0x1040),
+        daemon=True,
+    ).start()
 
 
 def _start_tray(quit_callback=None) -> None:
@@ -257,8 +197,7 @@ def _start_tray(quit_callback=None) -> None:
         _os._exit(0)
 
     def _open_settings_from_tray():
-        from voice.ui import _open_settings
-        _open_settings()
+        state._settings_requested.set()
 
     try:
         def _make_mode_item(mode, label):
@@ -280,7 +219,7 @@ def _start_tray(quit_callback=None) -> None:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Selecionar Modo", pystray.Menu(*mode_items)),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Configuracoes", lambda icon, item: _open_settings_from_tray()),
+            pystray.MenuItem("Configurações", lambda icon, item: _open_settings_from_tray()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Status", _tray_show_status),
             pystray.Menu.SEPARATOR,
