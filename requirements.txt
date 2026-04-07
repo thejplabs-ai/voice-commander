@@ -13,10 +13,18 @@ keyboard==0.13.5
 google-genai==1.63.0
 pystray==0.19.5
 Pillow==11.1.0
+pywebview==5.3.2
 customtkinter==5.2.2
+rapidfuzz==3.14.3
 
 # AI alternativo — requerido no build machine para bundling no .exe
 openai==2.24.0
+
+# CUDA runtime — necessário para WHISPER_DEVICE=cuda (RTX 4060 Ti etc.)
+# ctranslate2 requer cublas64_12.dll e cudnn64_9.dll para inference GPU.
+# Sem estes pacotes, modelo carrega mas transcricao falha com "cublas64_12.dll not found".
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.20.0.48
 
 # Wake word — opcional, requerido somente se WAKE_WORD_ENABLED=true
 # openwakeword==0.6.0

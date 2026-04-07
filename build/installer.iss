@@ -18,6 +18,8 @@ SolidCompression=yes
 ; Não requer admin — instala em Program Files mas funciona sem UAC se necessário
 PrivilegesRequired=admin
 ArchitecturesInstallIn64BitMode=x64compatible
+SetupIconFile=icon.ico
+UninstallDisplayIcon={app}\VoiceCommander.exe
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"

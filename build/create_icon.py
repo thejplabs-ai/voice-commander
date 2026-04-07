@@ -1,56 +1,45 @@
 """
-Gera build/icon.ico com ícone de microfone nas cores JP Labs.
-Design: fundo roxo sólido + microfone branco grosso — legível em 16x16.
+Gera build/icon.ico com o logo V-Wave do Voice Commander.
+Design: 10 barras verticais cujos bottoms formam V, tops formam waveform.
 Uso: python build/create_icon.py
 """
 from PIL import Image, ImageDraw
 
-JP_PURPLE = (107, 47, 248)  # #6B2FF8
+# V-Wave bar definitions at 512x512 base (from logo.svg)
+# Each tuple: (x, y, width, height)
+_BARS_512 = [
+    (52,  88,  30, 132),
+    (94,  56,  30, 211),
+    (136, 112, 30, 202),
+    (178, 48,  30, 313),
+    (220, 144, 30, 264),
+    (262, 144, 30, 264),
+    (304, 48,  30, 313),
+    (346, 112, 30, 202),
+    (388, 56,  30, 211),
+    (430, 88,  30, 132),
+]
+
+JP_AMBER = (196, 149, 106)  # #C4956A
 
 
-def make_icon(size: int) -> Image.Image:
-    s = size
-    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+def make_icon(size: int, color: tuple = JP_AMBER) -> Image.Image:
+    """Generate V-Wave icon at given size with given bar color."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
+    scale = size / 512.0
+    radius = max(1, int(5 * scale))
 
-    # Fundo: quadrado arredondado roxo sólido (sem transparência)
-    radius = max(3, s // 6)
-    d.rounded_rectangle([0, 0, s - 1, s - 1], radius=radius, fill=(*JP_PURPLE, 255))
-
-    # Escala: tudo relativo ao tamanho
-    cx = s // 2
-
-    # Corpo do microfone (retângulo arredondado branco, mais largo e visível)
-    mic_w  = max(3, s * 3 // 10)
-    mic_h  = max(4, s * 9 // 20)
-    mic_x0 = cx - mic_w // 2
-    mic_y0 = max(2, s // 10)
-    mic_x1 = cx + mic_w // 2
-    mic_y1 = mic_y0 + mic_h
-    mic_r  = mic_w // 2
-    d.rounded_rectangle([mic_x0, mic_y0, mic_x1, mic_y1], radius=mic_r, fill="white")
-
-    # Arco inferior (headset)
-    lw     = max(2, s // 14)
-    arc_r  = max(3, s * 3 // 10)
-    arc_cx = cx
-    arc_cy = mic_y1 - mic_h // 4
-    d.arc(
-        [arc_cx - arc_r, arc_cy, arc_cx + arc_r, arc_cy + arc_r * 2],
-        start=0, end=180, fill="white", width=lw,
-    )
-
-    # Haste
-    stem_top = arc_cy + arc_r
-    stem_bot = stem_top + max(2, s // 9)
-    d.line([(cx, stem_top), (cx, stem_bot)], fill="white", width=lw)
-
-    # Base horizontal
-    base_w = max(3, s // 4)
-    d.line(
-        [(cx - base_w // 2, stem_bot), (cx + base_w // 2, stem_bot)],
-        fill="white", width=lw,
-    )
+    for (bx, by, bw, bh) in _BARS_512:
+        x0 = int(bx * scale)
+        y0 = int(by * scale)
+        x1 = int((bx + bw) * scale)
+        y1 = int((by + bh) * scale)
+        if x1 - x0 < 1:
+            x1 = x0 + 1
+        if y1 - y0 < 1:
+            y1 = y0 + 1
+        d.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=(*color, 255))
 
     return img
 
@@ -62,7 +51,6 @@ def main():
     img_256.save(out, format="ICO", sizes=[(s, s) for s in sizes])
     print(f"Gerado: {out}  ({len(sizes)} tamanhos: {sizes})")
 
-    # Preview rápido dos tamanhos críticos
     for sz in [16, 32, 48]:
         preview = make_icon(sz)
         preview.save(f"build/icon_preview_{sz}.png")
