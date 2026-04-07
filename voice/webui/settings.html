@@ -1102,6 +1102,123 @@
     .sidebar { display: none; }
     :root { --sidebar-width: 0px; }
   }
+
+  /* ── Vocabulary tags ────────────────────────────────────────────────────── */
+  .vocab-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .vocab-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 10px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    transition: border-color var(--motion-instant) ease-out;
+  }
+  .vocab-tag:hover { border-color: var(--border-hover); }
+  .vocab-tag-remove {
+    width: 14px; height: 14px;
+    color: var(--text-disabled);
+    cursor: pointer;
+    transition: color var(--motion-instant) ease-out;
+    flex-shrink: 0;
+  }
+  .vocab-tag-remove:hover { color: var(--status-error); }
+
+  /* ── Snippet list ───────────────────────────────────────────────────────── */
+  .snippet-item {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-default);
+  }
+  .snippet-item:last-child { border-bottom: none; }
+  .snippet-trigger {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .snippet-trigger-text {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent-primary);
+  }
+  .snippet-expansion {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.4;
+    word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .snippet-remove {
+    color: var(--text-disabled);
+    cursor: pointer;
+    transition: color var(--motion-instant) ease-out;
+    flex-shrink: 0;
+    padding: 4px;
+  }
+  .snippet-remove:hover { color: var(--status-error); }
+
+  /* ── Shared: inline input + button row ──────────────────────────────────── */
+  .input-action-row { display: flex; gap: 8px; align-items: center; }
+  .input-action-row .input { flex: 1; }
+
+  .empty-state {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 8px 0;
+  }
+
+  /* ── Segmented control ──────────────────────────────────────────────────── */
+  .segmented-control {
+    display: inline-flex;
+    background: var(--bg-deep);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 2px;
+    gap: 2px;
+  }
+  .segmented-btn {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-family: var(--font-body);
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all var(--motion-fast) ease-out;
+    white-space: nowrap;
+  }
+  .segmented-btn:hover:not(.active) { color: var(--text-primary); }
+  .segmented-btn.active {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-sm);
+  }
+  .snippet-mode-badge {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--accent-secondary);
+    background: rgba(107,142,191,0.1);
+    border: 1px solid rgba(107,142,191,0.2);
+    border-radius: var(--radius-sm);
+    padding: 2px 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-left: 8px;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -1150,6 +1267,16 @@
         <span class="nav-indicator"></span>
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>
         Traducao
+      </button>
+      <button class="nav-item" data-section="vocabulario">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        Vocabulario
+      </button>
+      <button class="nav-item" data-section="snippets">
+        <span class="nav-indicator"></span>
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+        Snippets
       </button>
 
       <div class="sidebar-separator"></div>
@@ -1474,6 +1601,99 @@
               </select>
             </div>
             <div class="field-hint">O texto falado sera traduzido para este idioma no modo Traduzir.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VOCABULARIO -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-vocabulario">
+        <div class="section-title">Vocabulario</div>
+        <div class="section-desc">Adicione nomes, siglas e termos tecnicos que o Whisper costuma errar. Essas palavras sao injetadas como contexto na transcricao para melhorar a precisao.</div>
+
+        <div class="card">
+          <div class="card-title">ADICIONAR PALAVRA</div>
+          <div class="input-action-row">
+            <input class="input" type="text" id="vocab-input" placeholder="Ex: JP Labs, OpenRouter, Supabase...">
+            <button class="btn btn-primary" id="btn-add-vocab">Adicionar</button>
+          </div>
+          <div class="field-hint">Termos tecnicos, nomes proprios, siglas que o Whisper erra.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+            PALAVRAS CUSTOMIZADAS
+            <span class="badge" id="vocab-count">0 palavras</span>
+          </div>
+          <div class="vocab-tags" id="vocab-list"></div>
+          <div class="empty-state" id="vocab-empty">Nenhuma palavra adicionada.</div>
+        </div>
+
+        <div class="card">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Vocabulario habilitado</div>
+              <div class="toggle-desc">Ativa a injecao de palavras customizadas no Whisper.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="vocabulary-enabled">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SNIPPETS -->
+      <!-- ============================================================== -->
+      <section class="section" id="section-snippets">
+        <div class="section-title">Snippets</div>
+        <div class="section-desc">Crie atalhos de voz. Ao falar uma frase-trigger durante a gravacao, o texto completo e colado automaticamente sem passar pela IA.</div>
+
+        <div class="card">
+          <div class="card-title">NOVO SNIPPET</div>
+          <div class="field-group">
+            <label class="field-label" for="snippet-trigger">Trigger</label>
+            <input class="input" type="text" id="snippet-trigger" placeholder="Ex: meu email, endereco, assinatura...">
+            <div class="field-hint">Frase curta que voce fala para ativar o snippet.</div>
+          </div>
+          <div class="field-group" style="margin-top:12px;">
+            <label class="field-label" for="snippet-expansion">Expansao</label>
+            <textarea class="input" id="snippet-expansion" rows="2" style="resize:vertical;min-height:60px;" placeholder="Texto que sera colado ao falar o trigger"></textarea>
+          </div>
+          <div class="field-group" style="margin-top:12px;">
+            <label class="field-label">Modo de expansao</label>
+            <div class="segmented-control" id="snippet-mode-control">
+              <button type="button" class="segmented-btn active" data-value="replace">Substituir tudo</button>
+              <button type="button" class="segmented-btn" data-value="inline">Inline</button>
+            </div>
+            <div class="field-hint" id="snippet-mode-hint">Ao falar o trigger, toda a transcricao e substituida pela expansao.</div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+            <button class="btn btn-primary" id="btn-add-snippet">Adicionar</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+            SNIPPETS ATIVOS
+            <span class="badge" id="snippet-count">0 snippets</span>
+          </div>
+          <div id="snippet-list"></div>
+          <div class="empty-state" id="snippet-empty">Nenhum snippet configurado.</div>
+        </div>
+
+        <div class="card">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-label">Snippets habilitados</div>
+              <div class="toggle-desc">Ativa a expansao automatica por voz.</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="snippets-enabled">
+              <span class="toggle-track"></span>
+            </label>
           </div>
         </div>
       </section>
@@ -2116,10 +2336,12 @@
     if (vadDisplay) vadDisplay.textContent = parseFloat(vadVal).toFixed(2);
 
     // Toggles
-    sc('gemini-correct',   parseBool(cfg.GEMINI_CORRECT, true));
-    sc('overlay-enabled',  parseBool(cfg.OVERLAY_ENABLED, true));
-    sc('debug-perf',       parseBool(cfg.DEBUG_PERF, false));
-    sc('clipboard-context',parseBool(cfg.CLIPBOARD_CONTEXT_ENABLED, true));
+    sc('gemini-correct',      parseBool(cfg.GEMINI_CORRECT, true));
+    sc('overlay-enabled',     parseBool(cfg.OVERLAY_ENABLED, true));
+    sc('debug-perf',          parseBool(cfg.DEBUG_PERF, false));
+    sc('clipboard-context',   parseBool(cfg.CLIPBOARD_CONTEXT_ENABLED, true));
+    sc('vocabulary-enabled',  parseBool(cfg.VOCABULARY_ENABLED, true));
+    sc('snippets-enabled',    parseBool(cfg.SNIPPETS_ENABLED, true));
 
     // Debug / limits
     sv('clipboard-max-chars', cfg.CLIPBOARD_CONTEXT_MAX_CHARS || 2000);
@@ -2192,6 +2414,8 @@
       OVERLAY_ENABLED:           gv('overlay-enabled'),
       DEBUG_PERF:                gv('debug-perf'),
       CLIPBOARD_CONTEXT_ENABLED: gv('clipboard-context'),
+      VOCABULARY_ENABLED:        gv('vocabulary-enabled'),
+      SNIPPETS_ENABLED:          gv('snippets-enabled'),
       CLIPBOARD_CONTEXT_MAX_CHARS: $v('clipboard-max-chars'),
       HISTORY_MAX_ENTRIES:       $v('history-max-entries'),
       LOG_KEEP_SESSIONS:         $v('log-keep-sessions'),
@@ -2409,6 +2633,165 @@
 
   window.addEventListener('beforeunload', stopPolling);
 
+  // ── Vocabulary CRUD ────────────────────────────────────────────────────────
+  async function loadVocabulary() {
+    try {
+      const data = await window.pywebview.api.get_vocabulary();
+      const words = data && data.words ? data.words : [];
+      renderVocabulary(words);
+    } catch (e) {
+      console.error('loadVocabulary failed', e);
+    }
+  }
+
+  function renderVocabulary(words) {
+    const list = $('vocab-list');
+    const empty = $('vocab-empty');
+    const count = $('vocab-count');
+    if (!list) return;
+    list.innerHTML = '';
+    if (count) count.textContent = words.length + (words.length === 1 ? ' palavra' : ' palavras');
+    if (empty) empty.style.display = words.length ? 'none' : 'block';
+    words.forEach(w => {
+      const tag = document.createElement('span');
+      tag.className = 'vocab-tag';
+      tag.innerHTML = escHtml(w) +
+        '<svg class="vocab-tag-remove" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+      tag.querySelector('.vocab-tag-remove').addEventListener('click', () => removeVocabWord(w));
+      list.appendChild(tag);
+    });
+  }
+
+  function escHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  async function addVocabWord() {
+    const input = $('vocab-input');
+    if (!input) return;
+    const word = input.value.trim();
+    if (!word) return;
+    try {
+      const r = await window.pywebview.api.add_vocabulary_word(word);
+      if (r && r.ok) {
+        input.value = '';
+        loadVocabulary();
+      } else {
+        input.style.borderColor = 'var(--status-warning)';
+        setTimeout(() => { input.style.borderColor = ''; }, 1500);
+      }
+    } catch (e) { console.error('addVocabWord failed', e); }
+  }
+
+  async function removeVocabWord(word) {
+    try {
+      await window.pywebview.api.remove_vocabulary_word(word);
+      loadVocabulary();
+    } catch (e) { console.error('removeVocabWord failed', e); }
+  }
+
+  function initVocabulary() {
+    const btn = $('btn-add-vocab');
+    const input = $('vocab-input');
+    if (btn) btn.addEventListener('click', addVocabWord);
+    if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') addVocabWord(); });
+  }
+
+  // ── Snippets CRUD ─────────────────────────────────────────────────────────
+  async function loadSnippets() {
+    try {
+      const data = await window.pywebview.api.get_snippets();
+      renderSnippets(data || {});
+    } catch (e) {
+      console.error('loadSnippets failed', e);
+    }
+  }
+
+  function renderSnippets(snippets) {
+    const list = $('snippet-list');
+    const empty = $('snippet-empty');
+    const count = $('snippet-count');
+    if (!list) return;
+    list.innerHTML = '';
+    const entries = Object.entries(snippets);
+    if (count) count.textContent = entries.length + (entries.length === 1 ? ' snippet' : ' snippets');
+    if (empty) empty.style.display = entries.length ? 'none' : 'block';
+    entries.forEach(([trigger, val]) => {
+      const expansion = typeof val === 'string' ? val : (val.text || '');
+      const mode = typeof val === 'string' ? 'replace' : (val.mode || 'replace');
+      const modeTag = mode === 'inline' ? '<span class="snippet-mode-badge">inline</span>' : '';
+      const item = document.createElement('div');
+      item.className = 'snippet-item';
+      item.innerHTML =
+        '<div class="snippet-trigger">' +
+          '<span class="snippet-trigger-text">"' + escHtml(trigger) + '"</span>' +
+          modeTag +
+          '<svg class="snippet-remove" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>' +
+        '</div>' +
+        '<div class="snippet-expansion">' + escHtml(expansion) + '</div>';
+      item.querySelector('.snippet-remove').addEventListener('click', () => removeSnippet(trigger));
+      list.appendChild(item);
+    });
+  }
+
+  async function addSnippet() {
+    const triggerInput = $('snippet-trigger');
+    const expansionInput = $('snippet-expansion');
+    if (!triggerInput || !expansionInput) return;
+    const trigger = triggerInput.value.trim();
+    const expansion = expansionInput.value.trim();
+    if (!trigger || !expansion) {
+      if (!trigger) { triggerInput.style.borderColor = 'var(--status-warning)'; setTimeout(() => { triggerInput.style.borderColor = ''; }, 1500); }
+      if (!expansion) { expansionInput.style.borderColor = 'var(--status-warning)'; setTimeout(() => { expansionInput.style.borderColor = ''; }, 1500); }
+      return;
+    }
+    const modeBtn = document.querySelector('#snippet-mode-control .segmented-btn.active');
+    const mode = modeBtn ? modeBtn.dataset.value : 'replace';
+    try {
+      const r = await window.pywebview.api.add_snippet(trigger, expansion, mode);
+      if (r && r.ok) {
+        triggerInput.value = '';
+        expansionInput.value = '';
+        // Reset mode to default
+        document.querySelectorAll('#snippet-mode-control .segmented-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('#snippet-mode-control .segmented-btn[data-value="replace"]').classList.add('active');
+        $('snippet-mode-hint').textContent = 'Ao falar o trigger, toda a transcricao e substituida pela expansao.';
+        loadSnippets();
+      } else if (r && r.error) {
+        triggerInput.style.borderColor = 'var(--status-warning)';
+        setTimeout(() => { triggerInput.style.borderColor = ''; }, 1500);
+      }
+    } catch (e) { console.error('addSnippet failed', e); }
+  }
+
+  async function removeSnippet(trigger) {
+    try {
+      await window.pywebview.api.remove_snippet(trigger);
+      loadSnippets();
+    } catch (e) { console.error('removeSnippet failed', e); }
+  }
+
+  function initSnippets() {
+    const btn = $('btn-add-snippet');
+    if (btn) btn.addEventListener('click', addSnippet);
+
+    // Segmented control for snippet mode
+    const hints = {
+      replace: 'Ao falar o trigger, toda a transcricao e substituida pela expansao.',
+      inline: 'O trigger e substituido dentro da frase, mantendo o restante do texto.'
+    };
+    document.querySelectorAll('#snippet-mode-control .segmented-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        document.querySelectorAll('#snippet-mode-control .segmented-btn').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        const hint = $('snippet-mode-hint');
+        if (hint) hint.textContent = hints[b.dataset.value] || '';
+      });
+    });
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
     initNav();
@@ -2420,6 +2803,8 @@
     initSoundBrowse();
     initVadSlider();
     initLicenseValidation();
+    initVocabulary();
+    initSnippets();
 
     // Save / Cancel buttons
     const btnSave = $('btn-save');
@@ -2439,6 +2824,10 @@
     } catch (e) {
       console.error('init load failed', e);
     }
+
+    // Load CRUD data (independent of .env config)
+    loadVocabulary();
+    loadSnippets();
 
     // Setup dirty detection after form is populated
     initChangeDetection();

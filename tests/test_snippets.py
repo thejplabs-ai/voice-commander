@@ -63,7 +63,8 @@ class TestLoadSnippets:
         result = snippets.load_snippets()
         assert "assinatura" in result
         assert "link reuniao" in result
-        assert result["assinatura"] == "Atenciosamente,\nJoao Pedro\nJP Labs"
+        assert result["assinatura"]["text"] == "Atenciosamente,\nJoao Pedro\nJP Labs"
+        assert result["assinatura"]["mode"] == "replace"
 
     def test_load_snippets_normalizes_triggers_to_lowercase(self, base_dir):
         """Triggers são normalizados para lowercase na carga."""
@@ -111,7 +112,7 @@ class TestSaveSnippets:
 
     def test_save_and_reload(self, base_dir):
         """save_snippets + load_snippets retornam os mesmos dados."""
-        data = {"chave": "valor", "outra chave": "outro valor"}
+        data = {"chave": {"text": "valor", "mode": "replace"}, "outra chave": {"text": "outro valor", "mode": "inline"}}
         snippets.save_snippets(data)
         result = snippets.load_snippets()
         assert result == data
@@ -127,7 +128,7 @@ class TestSaveSnippets:
         data = {"saudação": "Olá, João! Ação concluída com êxito."}
         snippets.save_snippets(data)
         result = snippets.load_snippets()
-        assert result["saudação"] == "Olá, João! Ação concluída com êxito."
+        assert result["saudação"]["text"] == "Olá, João! Ação concluída com êxito."
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,8 @@ class TestAddSnippet:
         """add_snippet adiciona nova entrada."""
         snippets.add_snippet("meu trigger", "meu texto expandido")
         result = snippets.load_snippets()
-        assert result["meu trigger"] == "meu texto expandido"
+        assert result["meu trigger"]["text"] == "meu texto expandido"
+        assert result["meu trigger"]["mode"] == "replace"
 
     def test_add_snippet_normalizes_trigger_lowercase(self, base_dir):
         """Trigger é normalizado para lowercase ao adicionar."""
@@ -153,7 +155,7 @@ class TestAddSnippet:
         snippets.add_snippet("trigger", "texto original")
         snippets.add_snippet("trigger", "texto atualizado")
         result = snippets.load_snippets()
-        assert result["trigger"] == "texto atualizado"
+        assert result["trigger"]["text"] == "texto atualizado"
         assert len(result) == 1
 
     def test_add_snippet_preserves_existing_entries(self, snippets_file):
@@ -293,7 +295,8 @@ class TestSnippetsDisabled:
         monkeypatch.setattr(state, "_CONFIG", cfg)
         snippets.add_snippet("x", "y")
         result = snippets.load_snippets()
-        assert result == {"x": "y"}
+        assert result["x"]["text"] == "y"
+        assert result["x"]["mode"] == "replace"
 
 
 # ---------------------------------------------------------------------------

@@ -117,9 +117,10 @@ def get_hotwords_string() -> str:
 
 
 def get_initial_prompt_suffix() -> str:
-    """Retorna sufixo para append ao initial_prompt com palavras custom.
+    """Retorna sufixo em frase natural para append ao initial_prompt.
 
-    Formato: ', JP Labs, OpenRouter, pywebview'
+    Formato: ' Também menciono: JP Labs, OpenRouter e pywebview.'
+    Whisper responde melhor a frases naturais do que a listas secas.
     Se vocabulário vazio ou desabilitado, retorna ''.
     """
     if not _is_enabled():
@@ -127,7 +128,11 @@ def get_initial_prompt_suffix() -> str:
     words = get_words()
     if not words:
         return ""
-    return ", " + ", ".join(words)
+    if len(words) == 1:
+        joined = words[0]
+    else:
+        joined = ", ".join(words[:-1]) + " e " + words[-1]
+    return f" Também menciono: {joined}."
 
 
 def learn_from_correction(raw_text: str, corrected_text: str) -> list[str]:
