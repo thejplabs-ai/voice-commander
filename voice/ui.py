@@ -65,8 +65,6 @@ class OnboardingWindow:
         ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos"),
         ("email",      "Email Draft",    "Voz → email profissional"),
         ("translate",  "Traduzir",       "Traduz para EN/PT"),
-        ("visual",     "Visual Query",   "Screenshot + voz → Gemini"),
-        ("pipeline",   "Pipeline",       "Clipboard + instrução de voz"),
     ]
 
     def __init__(self, done_callback=None):
@@ -546,8 +544,6 @@ class SettingsWindow:
         ("bullet",     "Bullet Points",  "Lista hierárquica"),
         ("email",      "Email",          "Profissional"),
         ("translate",  "Traduzir",       "EN/PT"),
-        ("visual",     "Visual",         "Screenshot+Voz"),
-        ("pipeline",   "Pipeline",       "Clipboard"),
     ]
 
     # Mantida para compatibilidade com OnboardingWindow e step_5
@@ -559,8 +555,6 @@ class SettingsWindow:
         ("bullet",     "Bullet Dump",    "Voz → bullets hierárquicos"),
         ("email",      "Email Draft",    "Voz → email profissional"),
         ("translate",  "Traduzir",       "Traduz para EN/PT"),
-        ("visual",     "Visual Query",   "Screenshot + voz → Gemini"),
-        ("pipeline",   "Pipeline",       "Clipboard + instrução de voz"),
     ]
 
     def __init__(self):
@@ -577,7 +571,6 @@ class SettingsWindow:
         self._eye_btn = None
         self._show_key = False
         self._show_openai_key = False
-        self._show_groq_key = False
         self._show_openrouter_key = False
         self._openrouter_key_entry = None
         # New fields
@@ -586,13 +579,8 @@ class SettingsWindow:
         self._openai_key_entry = None
         self._openai_eye_btn = None
         self._openai_key_frame = None
-        self._groq_key_entry = None
-        self._groq_eye_btn = None
         self._device_var = None
         self._translate_lang_var = None
-        self._wake_enabled_var = None
-        self._wake_keyword_var = None
-        self._wake_status_label = None
         self._sound_entries: dict = {}
         self._mode_card_refs: dict = {}
         self._speed_var = None
@@ -770,8 +758,6 @@ class SettingsWindow:
             "simple":           "Prompt Simples",
             "prompt":           "Prompt COSTAR",
             "query":            "Perguntar ao Gemini",
-            "visual":           "Screenshot + Voz",
-            "pipeline":         "Pipeline",
             "clipboard_context": "Contexto do Clipboard",
             "bullet":           "Bullet Points",
             "translate":        "Traduzir",
@@ -1150,33 +1136,6 @@ class SettingsWindow:
         self._openai_eye_btn.pack(side="left", padx=(6, 0))
         self._update_openai_visibility(ac)
 
-        # Groq API Key
-        groq_frame = ctk.CTkFrame(ac, fg_color="transparent")
-        groq_frame.pack(fill="x", pady=(8, 0))
-        ctk.CTkLabel(groq_frame, text="Groq API Key (Llama 4 Scout)",
-                     font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(
-            anchor="w", pady=(0, 2))
-        ctk.CTkLabel(groq_frame,
-                     text="Modos rapidos (transcribe, email, bullet, translate) usam Groq quando disponivel",
-                     font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED).pack(
-            anchor="w", pady=(0, 4))
-        groq_row = ctk.CTkFrame(groq_frame, fg_color="transparent")
-        groq_row.pack(fill="x", pady=(0, 4))
-        self._groq_key_entry = ctk.CTkEntry(
-            groq_row, height=theme.INPUT_HEIGHT, show="*",
-            font=theme.FONT_MONO(), fg_color=theme.BG_ABYSS,
-            border_color=theme.BORDER_DEFAULT, border_width=1, text_color=theme.TEXT_PRIMARY,
-            corner_radius=theme.CORNER_MD, placeholder_text="gsk_...")
-        self._groq_key_entry.pack(side="left", fill="x", expand=True)
-        if state._CONFIG.get("GROQ_API_KEY"):
-            self._groq_key_entry.insert(0, state._CONFIG.get("GROQ_API_KEY"))
-        self._groq_eye_btn = ctk.CTkButton(
-            groq_row, text="***", width=theme.INPUT_HEIGHT, height=theme.INPUT_HEIGHT,
-            fg_color=theme.BG_ABYSS, hover_color=theme.BG_NIGHT,
-            border_color=theme.BORDER_DEFAULT, border_width=1, corner_radius=theme.CORNER_MD,
-            command=self._toggle_groq_key_visibility)
-        self._groq_eye_btn.pack(side="left", padx=(6, 0))
-
         ctk.CTkFrame(ac, height=4, fg_color="transparent").pack()
 
     def _build_license_section(self, parent) -> None:
@@ -1213,103 +1172,6 @@ class SettingsWindow:
             kc, text="", font=theme.FONT_CAPTION(), text_color=theme.TEXT_MUTED)
         self._license_status_label.pack(anchor="w", padx=16, pady=(0, 12))
         self._refresh_license_status()
-
-    def _build_wakeword_section(self, parent) -> None:
-        """Seção de configuração do wake word."""
-        wc = ctk.CTkFrame(parent, fg_color=theme.BG_DEEP, corner_radius=theme.CORNER_LG,
-                          border_width=1, border_color=theme.BORDER_DEFAULT)
-        wc.pack(fill="x", padx=20, pady=(0, 8))
-        ctk.CTkLabel(wc, text="WAKE WORD",
-                     font=theme.FONT_OVERLINE(), text_color=theme.TEXT_MUTED).pack(
-            anchor="w", padx=16, pady=(12, 4))
-
-        ww_enabled = state._CONFIG.get("WAKE_WORD_ENABLED", False) is True
-        self._wake_enabled_var = ctk.BooleanVar(value=ww_enabled)
-        ctk.CTkCheckBox(wc, text="Ativar wake word",
-                        variable=self._wake_enabled_var,
-                        font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY,
-                        fg_color=theme.PURPLE, hover_color=theme.PURPLE_DARK,
-                        checkmark_color=theme.TEXT_PRIMARY,
-                        command=self._on_wakeword_toggle).pack(
-            anchor="w", padx=16, pady=(0, 6))
-
-        self._wake_status_label = ctk.CTkLabel(
-            wc, text="", font=theme.FONT_CAPTION(), text_color=theme.TEXT_DISABLED)
-        self._wake_status_label.pack(anchor="w", padx=16, pady=(0, 8))
-
-        ctk.CTkLabel(wc, text="Keyword",
-                     font=theme.FONT_BODY(), text_color=theme.TEXT_SECONDARY).pack(
-            anchor="w", padx=16, pady=(0, 2))
-        self._wake_keyword_var = ctk.StringVar(
-            value=state._CONFIG.get("WAKE_WORD_KEYWORD", "hey_jarvis"))
-        ctk.CTkOptionMenu(wc, variable=self._wake_keyword_var,
-                          values=["hey_jarvis", "hey_mycroft", "alexa"],
-                          height=theme.INPUT_HEIGHT, corner_radius=theme.CORNER_MD,
-                          fg_color=theme.BG_ABYSS, button_color=theme.PURPLE,
-                          button_hover_color=theme.PURPLE_DARK,
-                          text_color=theme.TEXT_PRIMARY).pack(fill="x", padx=16, pady=(0, 12))
-
-        # Show current install status on open
-        self._refresh_wakeword_status()
-
-    def _refresh_wakeword_status(self) -> None:
-        """Atualiza label de status baseado se openwakeword está instalado."""
-        if self._wake_status_label is None:
-            return
-        try:
-            import openwakeword  # noqa: F401
-            import onnxruntime   # noqa: F401
-            self._wake_status_label.configure(
-                text="✓ Dependências instaladas", text_color=theme.SUCCESS)
-        except ImportError:
-            self._wake_status_label.configure(
-                text="Dependências não instaladas — ative para instalar automaticamente",
-                text_color=theme.TEXT_DISABLED)
-
-    def _on_wakeword_toggle(self) -> None:
-        """Chamado quando o checkbox Wake Word é clicado."""
-        if not self._wake_enabled_var.get():
-            return  # Desativando — nada a fazer
-
-        # Verificar se dependências já estão instaladas
-        try:
-            import openwakeword  # noqa: F401
-            import onnxruntime   # noqa: F401
-            self._wake_status_label.configure(
-                text="✓ Dependências instaladas", text_color=theme.SUCCESS)
-            return  # Já instalado — pode ativar normalmente
-        except ImportError:
-            pass
-
-        # Dependências ausentes — instalar automaticamente
-        self._wake_enabled_var.set(False)  # Desmarcar enquanto instala
-        self._wake_status_label.configure(
-            text="⟳ Instalando openwakeword + onnxruntime...", text_color=theme.WARNING)
-
-        def _install():
-            import subprocess
-            import sys as _sys
-            try:
-                subprocess.check_call(
-                    [_sys.executable, "-m", "pip", "install", "openwakeword", "onnxruntime"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                def _on_success():
-                    self._wake_enabled_var.set(True)
-                    self._wake_status_label.configure(
-                        text="✓ Instalado! Salve e reinicie o Voice Commander.",
-                        text_color=theme.SUCCESS)
-                self._root.after(0, _on_success)
-            except Exception as exc:
-                _err_msg = str(exc)
-                def _on_error(_msg=_err_msg):
-                    self._wake_status_label.configure(
-                        text=f"✗ Falha na instalação: {_msg}",
-                        text_color=theme.ERROR)
-                self._root.after(0, _on_error)
-
-        threading.Thread(target=_install, daemon=True).start()
 
     def _build_sounds_section(self, parent) -> None:
         """Seção de sons customizados."""
@@ -1427,7 +1289,6 @@ class SettingsWindow:
 
         self._build_hotkey_section(f)
         self._build_model_section(f)
-        self._build_wakeword_section(f)
         self._build_sounds_section(f)
 
     def _build_section_about(self):
@@ -1501,11 +1362,6 @@ class SettingsWindow:
         if self._openai_key_entry:
             self._openai_key_entry.configure(show="" if self._show_openai_key else "*")
 
-    def _toggle_groq_key_visibility(self):
-        self._show_groq_key = not self._show_groq_key
-        if self._groq_key_entry:
-            self._groq_key_entry.configure(show="" if self._show_groq_key else "*")
-
     def _toggle_openrouter_key_visibility(self):
         self._show_openrouter_key = not self._show_openrouter_key
         if self._openrouter_key_entry:
@@ -1570,10 +1426,6 @@ class SettingsWindow:
             oai_key = self._openai_key_entry.get().strip()
             if oai_key:
                 new_values["OPENAI_API_KEY"] = oai_key
-        if self._groq_key_entry:
-            groq_key = self._groq_key_entry.get().strip()
-            if groq_key:
-                new_values["GROQ_API_KEY"] = groq_key
         if self._openrouter_key_entry:
             or_key = self._openrouter_key_entry.get().strip()
             if or_key:
@@ -1582,10 +1434,6 @@ class SettingsWindow:
             new_values["WHISPER_DEVICE"] = self._device_var.get()
         if self._translate_lang_var:
             new_values["TRANSLATE_TARGET_LANG"] = self._translate_lang_var.get()
-        if self._wake_enabled_var is not None:
-            new_values["WAKE_WORD_ENABLED"] = "true" if self._wake_enabled_var.get() else "false"
-        if self._wake_keyword_var:
-            new_values["WAKE_WORD_KEYWORD"] = self._wake_keyword_var.get()
         for key, entry in self._sound_entries.items():
             new_values[key] = entry.get().strip()
         new_values["SELECTED_MODE"] = state.selected_mode
@@ -1614,14 +1462,3 @@ class SettingsWindow:
             pass
 
 
-def _open_settings() -> None:
-    """Abre janela de Settings (singleton — foca se já aberta)."""
-    if not state._ctk_available:
-        ctypes.windll.user32.MessageBoxW(
-            0,
-            "customtkinter não instalado.\nInstale com: pip install customtkinter==5.2.2",
-            "Voice Commander — Configurações",
-            0x40,
-        )
-        return
-    SettingsWindow().open()

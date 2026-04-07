@@ -1,15 +1,15 @@
 # Voice Commander — Roadmap
 
-**Versao:** 1.0.14
-**Data:** 2026-03-02
-**Status:** Epic 4 concluido | Epic 4.5 DONE (6/7) | Epic 4.6 EM EXECUCAO | Epic 5 BLOQUEADO
-**Branch atual:** feature/epic-4.6-polish
+**Versao:** 1.0.15
+**Data:** 2026-03-26
+**Status:** Epic 4 concluido | Epic 4.5 DONE (6/7) | Epic 4.6 DONE (6/7) | Melhoria continua
+**Branch atual:** master
 
 ---
 
 ## Estado Real do Projeto (2026-03-02)
 
-Epic 4 foi entregue e superado. Epic 4.5 concluido (6/7 stories). Branch `feature/SM-3-gemini-model` mergeado em `master` (2026-03-02). Epic 4.6 em execucao.
+Epic 4 foi entregue e superado. Epic 4.5 concluido (6/7 stories). Branch `feature/SM-3-gemini-model` mergeado em `master` (2026-03-02). Epic 4.6 concluido (6/7 stories) — Story 4.6.7 pendente (smoke test QUINN, processo nao tecnico).
 
 | Entregue | Status |
 |----------|--------|
@@ -216,10 +216,10 @@ Todos os quick wins foram entregues. Referencia: `eee3857 feat(ux): Quick Wins Q
 
 ---
 
-## Epic 4.6 — Polish & Estabilidade [EM EXECUCAO]
+## Epic 4.6 — Polish & Estabilidade [6/7 DONE]
 
 **Objetivo:** Transformar o Voice Commander de "funciona mas incomoda" para "ferramenta que confio e gosto de usar."
-**Branch:** `feature/epic-4.6-polish`
+**Branch:** `master` (mergeado em 2026-03-13)
 **Iniciado:** 2026-03-02
 **Agentes:** DEX (todas as stories), NEXUS (spec 4.6.3), QUINN (smoke test 4.6.7)
 
@@ -237,17 +237,17 @@ Todos os quick wins foram entregues. Referencia: `eee3857 feat(ux): Quick Wins Q
 
 | Story | Descricao | Prioridade | Agente | Estimativa | Status |
 |-------|-----------|------------|--------|------------|--------|
-| 4.6.1 | Whisper tiny + beam_size=1 por padrao — latencia <5s | P1 | DEX | 0.5d | PENDENTE |
-| 4.6.2 | Indicador de modo ativo no tray + overlay ao ciclar | P1 | DEX | 0.5d | PENDENTE |
-| 4.6.3 | Redesign da janela Settings (NEXUS spec + DEX implementa) | P1 | NEXUS+DEX | 4-5d | PENDENTE |
-| 4.6.4 | Ciclo reduzido para 5 modos (CYCLE_MODES configuravel) | P1 | DEX | 0.5d | PENDENTE |
-| 4.6.5 | Defaults limpos — desativar features de nicho | P2 | DEX | 0.5d | PENDENTE |
-| 4.6.6 | Log de timing por fase [PERF] | P2 | DEX | 0.5d | PENDENTE |
+| 4.6.1 | Whisper tiny + beam_size=1 por padrao — latencia <5s | P1 | DEX | 0.5d | DONE |
+| 4.6.2 | Indicador de modo ativo no tray + overlay ao ciclar | P1 | DEX | 0.5d | DONE |
+| 4.6.3 | Redesign da janela Settings (sidebar lateral — ver nota) | P1 | NEXUS+DEX | 4-5d | DONE |
+| 4.6.4 | Ciclo reduzido para 5 modos (CYCLE_MODES configuravel) | P1 | DEX | 0.5d | DONE |
+| 4.6.5 | Defaults limpos — desativar features de nicho | P2 | DEX | 0.5d | DONE |
+| 4.6.6 | Log de timing por fase [PERF] | P2 | DEX | 0.5d | DONE |
 | 4.6.7 | Smoke test 5 modos + corrigir bugs recorrentes | P2 | QUINN+DEX | 1-2d | PENDENTE |
 
 **Estimativa total:** 7-10 dias
 
-### Story 4.6.1 — Whisper tiny + beam_size=1 por padrao [PENDENTE]
+### Story 4.6.1 — Whisper tiny + beam_size=1 por padrao [DONE]
 
 **Prioridade:** P1
 **Estimativa:** 0.5 dia
@@ -261,7 +261,7 @@ Todos os quick wins foram entregues. Referencia: `eee3857 feat(ux): Quick Wins Q
 
 ---
 
-### Story 4.6.2 — Indicador de modo ativo no tray + overlay ao ciclar [PENDENTE]
+### Story 4.6.2 — Indicador de modo ativo no tray + overlay ao ciclar [DONE]
 
 **Prioridade:** P1
 **Estimativa:** 0.5 dia
@@ -274,23 +274,22 @@ Todos os quick wins foram entregues. Referencia: `eee3857 feat(ux): Quick Wins Q
 
 ---
 
-### Story 4.6.3 — Redesign da janela Settings [PENDENTE]
+### Story 4.6.3 — Redesign da janela Settings [DONE]
 
 **Prioridade:** P1
 **Estimativa:** 4-5 dias
 **Agentes:** NEXUS (spec) + DEX (implementacao)
-**Dependencias:** spec NEXUS aprovado antes da implementacao DEX
 
-**AC:**
-- Spec NEXUS entregue: wireframe com abas ou grupos
-- Abas sugeridas: Geral | Modos | Avancado | Perfil
-- `CTkTabview` do customtkinter
+**Nota:** Implementacao usou sidebar lateral ao inves de `CTkTabview`. Resultado equivalente — secoes Geral | Modos | Avancado | Perfil, salvar com feedback "Salvo!" por 2s. Divergencia de spec aceita.
+
+**AC entregues:**
+- Sidebar lateral com secoes: Geral | Modos | Avancado | Perfil
 - Salvar com feedback visual ("Salvo!" por 2s)
 - Zero regressao nos testes
 
 ---
 
-### Story 4.6.4 — Ciclo reduzido para 5 modos [PENDENTE]
+### Story 4.6.4 — Ciclo reduzido para 5 modos [DONE]
 
 **Prioridade:** P1
 **Estimativa:** 0.5 dia
@@ -304,7 +303,7 @@ Todos os quick wins foram entregues. Referencia: `eee3857 feat(ux): Quick Wins Q
 
 ---
 
-### Story 4.6.5 — Defaults limpos [PENDENTE]
+### Story 4.6.5 — Defaults limpos [DONE]
 
 **Prioridade:** P2
 **Estimativa:** 0.5 dia
@@ -316,7 +315,7 @@ Todos os quick wins foram entregues. Referencia: `eee3857 feat(ux): Quick Wins Q
 
 ---
 
-### Story 4.6.6 — Log de timing por fase [PERF] [PENDENTE]
+### Story 4.6.6 — Log de timing por fase [PERF] [DONE]
 
 **Prioridade:** P2
 **Estimativa:** 0.5 dia
@@ -347,88 +346,15 @@ Todos os quick wins foram entregues. Referencia: `eee3857 feat(ux): Quick Wins Q
 
 ---
 
-## Epic 5 — Comercializacao [BLOQUEADO — aguardando Epic 4.6]
+## Epic 5 — Comercializacao [ARQUIVADO — 2026-03-26]
 
-**Prerequisito inegociavel:** Epic 4.6 concluido e mergeado em master.
-**Justificativa:** Distribuir antes do Epic 4.6 = produto com latencia ~30s e UX degradada para usuarios pagantes.
-**Estimativa total:** 12-16 dias
-**Agentes:** @dev (DEX), @architect (design de API), @devops (GAGE para infra)
+Epic 5 foi removido do horizonte de planejamento. O produto esta em modo de melhoria continua — sem prazo ou intencao de distribuicao comercial no momento. Historico das stories (5.1-5.4) preservado no git para referencia futura.
 
 ---
 
-### Story 5.1 — Server-side license validation (LT-1)
+## Backlog
 
-**Prioridade:** P1 — bloqueante para comercializacao
-**Estimativa:** 5-8 dias
-**Agentes:** @dev + @architect
-**Dependencias:** endpoint `voice.jplabs.ai` operacional (infra GAGE)
-
-**AC (mantido do PRD original):**
-- Endpoint `POST /validate` em `voice.jplabs.ai` — recebe chave, retorna `{valid, expires_at, plan}`
-- HMAC local vira fallback offline (timeout 72h — atual)
-- Diagrama de estados documentado: online-valid / online-invalid / offline-grace / offline-expired
-- Chave como identificador de sessao (zero dados pessoais no payload)
-- Retry com backoff exponencial (3 tentativas, timeout 5s por tentativa)
-- Log: `[OK] Licenca validada (server) | expira em X dias`
-
-**Nota de arquitetura:** @architect deve definir o schema do endpoint antes do DEX implementar o cliente. Dependencia de sequencia: design primeiro.
-
----
-
-### Story 5.2 — Auto-update simplificado (version.txt) (P1)
-
-**Prioridade:** P1 — necessario para distribuicao sustentavel
-**Estimativa:** 1-2 dias
-**Agente:** @dev
-**Dependencias:** Story 5.1 concluida (reusa endpoint `voice.jplabs.ai`)
-
-**Contexto (revisao ATLAS):** Auto-update via `version.txt` publico e mais simples do que o plano original (que dependia totalmente da API de licenca). As duas abordagens podem coexistir.
-
-**AC:**
-- `GET https://voice.jplabs.ai/version.txt` no startup — retorna ultima versao disponivel
-- Comparacao com `__version__` local
-- Se nova versao: notificacao nao-intrusiva via tray balloon ou menu item "Atualizacao disponivel (vX.Y.Z)"
-- Timeout da verificacao: 3s — nao bloqueia startup
-- `AUTO_UPDATE_CHECK=true` no `.env.example` (pode desativar)
-- Sem auto-instalacao — usuario clica e e redirecionado para pagina de download
-
----
-
-### Story 5.3 — Instalador Inno Setup atualizado (P1)
-
-**Prioridade:** P1 — prerequisito para distribuicao
-**Estimativa:** 1 dia
-**Agentes:** @dev + @devops
-**Dependencias:** Epic 4.6 concluido e mergeado em master
-
-**AC:**
-- `AppVersion` em `build/installer.iss` sincronizado com `__version__` (processo documentado — nao e automatico)
-- Build PyInstaller inclui pacote `voice/` completo (~26 modulos)
-- Instalador testado em Windows 10 e Windows 11 limpo (sem Python instalado)
-- `VoiceCommanderSetup.exe` gerado e testado end-to-end com os 5 modos canonicos do Epic 4.6
-
----
-
-### Story 5.4 — ui.py: separar Onboarding e Settings (P2)
-
-**Prioridade:** P2 — qualidade de codigo, facilita manutencao futura
-**Estimativa:** 1 dia
-**Agente:** @dev
-**Dependencias:** Epic 4.6 concluido (base estavel — Settings redesenhada)
-
-**AC:**
-- `voice/ui.py` refatorado em:
-  - `voice/onboarding.py` — fluxo de primeiro uso (API key + licenca)
-  - `voice/settings.py` — janela de configuracoes (ja pode ser acessada pelo menu tray)
-- Imports atualizados em todos os modulos que referenciam `ui.py`
-- `python -m pytest tests/ -v` passa com zero falhas apos refactoring
-- Funcionalidade identica — zero regressao
-
----
-
-## Backlog (apos Epic 5)
-
-Itens sem sprint definida. Revisao apos Epic 5 concluido.
+Itens sem sprint definida. Revisao a cada ciclo de melhoria.
 
 | Item | Justificativa do adiamento |
 |------|--------------------------|
@@ -457,22 +383,17 @@ Itens sem sprint definida. Revisao apos Epic 5 concluido.
   4.5.6 model quality  BACKLOG P3
   4.5.7 screenshot     DONE
 
-[AGORA] Epic 4.6 — branch feature/epic-4.6-polish
-  4.6.1 (whisper tiny + beam_size=1)    ← P1, iniciar imediatamente
-  4.6.2 (modo no tray + overlay ciclar) ← P1, paralelo com 4.6.1
-  4.6.4 (ciclo 5 modos)                 ← P1, paralelo
-  4.6.5 (defaults limpos)               ← P2, rapido
-  4.6.6 (log [PERF])                    ← P2, paralelo — suporte para 4.6.7
-    ↓
-  4.6.3 (Settings redesign)             ← P1 — NEXUS spec primeiro, DEX implementa
-    ↓
-  4.6.7 (smoke test QUINN)              ← depende de 4.6.1 + 4.6.4
+[DONE] Epic 4.6 — mergeado em master (2026-03-13)
+  4.6.1 (whisper tiny + beam_size=1)    DONE
+  4.6.2 (modo no tray + overlay ciclar) DONE
+  4.6.3 (Settings redesign — sidebar)   DONE
+  4.6.4 (ciclo 5 modos)                 DONE
+  4.6.5 (defaults limpos)               DONE
+  4.6.6 (log [PERF])                    DONE
+  4.6.7 (smoke test QUINN)              PENDENTE — processo nao tecnico
 
-[DEPOIS] Epic 5 — aguarda Epic 4.6 mergeado em master
-  5.1 (server-side license)   ← design de API com @architect primeiro
-  5.2 (auto-update)           ← depende de 5.1 (reusa endpoint)
-  5.3 (instalador atualizado) ← depende de Epic 4.6 mergeado
-  5.4 (separar ui.py)         ← pode ser paralelo a 5.1/5.2
+[AGORA] Melhoria continua — identificar proximas melhorias via backlog
+  Epic 5 arquivado — sem prazo de comercializacao no horizonte
 ```
 
 ---
@@ -492,4 +413,4 @@ Itens sem sprint definida. Revisao apos Epic 5 concluido.
 ---
 
 *Voice Commander — JP Labs*
-*Analise: ATLAS | Roadmap: MORGAN | Data: 2026-03-02*
+*Analise: ATLAS | Roadmap: MORGAN | Data: 2026-03-26*

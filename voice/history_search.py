@@ -62,7 +62,9 @@ class HistorySearchWindow:
 
     def open(self) -> None:
         """Abre janela em thread daemon."""
-        if not state._ctk_available:
+        try:
+            import customtkinter  # noqa: F401
+        except ImportError:
             import ctypes
             ctypes.windll.user32.MessageBoxW(
                 0,
@@ -250,7 +252,8 @@ class HistorySearchWindow:
             print(f"[WARN] Falha ao colar do histórico: {e}")
 
     def _close(self) -> None:
-        """Fecha a janela."""
+        """Fecha a janela e libera referência global."""
+        global _history_window_ref
         if self._root is not None:
             try:
                 if self._root.winfo_exists():
@@ -258,6 +261,9 @@ class HistorySearchWindow:
             except Exception:
                 pass
             self._root = None
+        with _history_window_lock:
+            if _history_window_ref is self:
+                _history_window_ref = None
 
 
 _history_window_ref: HistorySearchWindow | None = None

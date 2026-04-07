@@ -145,6 +145,61 @@ class WebBridge:
         """Called when window is closed via X button."""
         pass
 
+    # ── Vocabulary CRUD ───────────────────────────────────────────────────────
+
+    def get_vocabulary(self) -> dict:
+        from voice.vocabulary import load_vocabulary
+        return load_vocabulary()
+
+    def add_vocabulary_word(self, word: str) -> dict:
+        from voice.vocabulary import load_vocabulary, save_vocabulary
+        from datetime import datetime
+        word = (word or "").strip()
+        if not word:
+            return {"ok": False, "error": "Palavra vazia"}
+        vocab = load_vocabulary()
+        if word in vocab["words"]:
+            return {"ok": False, "error": "Palavra ja existe"}
+        vocab["words"].append(word)
+        vocab["updated"] = datetime.now().replace(microsecond=0).isoformat()
+        save_vocabulary(vocab)
+        return {"ok": True}
+
+    def remove_vocabulary_word(self, word: str) -> dict:
+        from voice.vocabulary import load_vocabulary, save_vocabulary
+        from datetime import datetime
+        word = (word or "").strip()
+        vocab = load_vocabulary()
+        if word not in vocab["words"]:
+            return {"ok": False}
+        vocab["words"].remove(word)
+        vocab["updated"] = datetime.now().replace(microsecond=0).isoformat()
+        save_vocabulary(vocab)
+        return {"ok": True}
+
+    # ── Snippets CRUD ─────────────────────────────────────────────────────────
+
+    def get_snippets(self) -> dict:
+        from voice.snippets import get_snippets
+        return get_snippets()
+
+    def add_snippet(self, trigger: str, text: str, mode: str = "replace") -> dict:
+        if not trigger or not trigger.strip():
+            return {"ok": False, "error": "Trigger vazio"}
+        if not text or not text.strip():
+            return {"ok": False, "error": "Expansao vazia"}
+        trigger = trigger.strip()
+        if mode == "inline" and len(trigger.split()) < 2 and len(trigger) < 6:
+            return {"ok": False, "error": "Trigger inline precisa ter pelo menos 2 palavras ou 6 caracteres"}
+        from voice.snippets import add_snippet
+        add_snippet(trigger, text, mode)
+        return {"ok": True}
+
+    def remove_snippet(self, trigger: str) -> dict:
+        from voice.snippets import remove_snippet
+        ok = remove_snippet(trigger)
+        return {"ok": ok}
+
     # ── File dialogs ────────────────────────────────────────────────────────
 
     def pick_sound_file(self) -> str:

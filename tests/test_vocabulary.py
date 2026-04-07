@@ -249,7 +249,7 @@ class TestGetInitialPromptSuffix:
         assert result == ""
 
     def test_get_initial_prompt_suffix_format(self, tmp_path, monkeypatch):
-        """Formato correto: ', palavra1, palavra2'."""
+        """Formato correto: frase natural com 'Também menciono:'."""
         monkeypatch.setattr(state, "_BASE_DIR", str(tmp_path))
         monkeypatch.setattr(state, "_CONFIG", {"VOCABULARY_ENABLED": True})
 
@@ -259,9 +259,9 @@ class TestGetInitialPromptSuffix:
         vocabulary.add_word("OpenRouter")
         result = vocabulary.get_initial_prompt_suffix()
 
-        assert result.startswith(", ")
         assert "JP Labs" in result
         assert "OpenRouter" in result
+        assert result.endswith(".")
 
 
 class TestLearnFromCorrection:

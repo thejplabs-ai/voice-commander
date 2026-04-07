@@ -1,8 +1,8 @@
 {
   "aios_version": "2.0",
-  "core_sha": "05e918b",
-  "locked_at": "2026-02-26T18:24:24.918Z",
+  "core_sha": "c0af681",
+  "locked_at": "2026-03-13T17:53:10.048Z",
   "aios_home": "C:\\Users\\joaop\\AIOS JP Labs",
-  "agents_count": 43,
-  "skills_count": 13
+  "agents_count": 54,
+  "skills_count": 23
 }
