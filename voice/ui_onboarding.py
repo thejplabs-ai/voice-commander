@@ -10,7 +10,6 @@ from voice import theme
 from voice.paths import _resource_path
 from voice.config import validate_license_key, _test_gemini_key
 from voice.config import _save_env
-from voice import __version__
 from voice.ui_helpers import _apply_taskbar_icon
 
 # Tentar importar customtkinter — fallback silencioso
