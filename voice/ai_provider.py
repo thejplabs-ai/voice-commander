@@ -7,6 +7,7 @@
 #   Modos complexos (simple, prompt, query) → Gemini 2.5 Flash
 
 import time
+from dataclasses import dataclass, field
 from typing import Callable
 
 from voice import state
@@ -59,31 +60,37 @@ def retry_api_call(
     raise last_exc  # pragma: no cover
 
 
+@dataclass
+class CallOptions:
+    """Opções acessórias para call_with_fallback."""
+    rate_limit_msg: Callable[[], str]
+    rate_limit_log: str
+    error_log_prefix: str
+    max_retries: int = field(default=2)
+
+
 def call_with_fallback(
     fn: Callable[[], str | None],
     fallback: str,
     is_rate_limit: Callable[[Exception], bool],
-    rate_limit_msg: Callable[[], str],
-    rate_limit_log: str,
-    error_log_prefix: str,
-    max_retries: int = 2,
+    options: CallOptions,
 ) -> str:
     """
     Executa fn() com retry + tratamento padronizado:
-    - Rate limit exaurido após retries → loga rate_limit_log e retorna rate_limit_msg()
-    - Outra exceção → loga error_log_prefix + erro e retorna fallback
+    - Rate limit exaurido após retries → loga options.rate_limit_log e retorna options.rate_limit_msg()
+    - Outra exceção → loga options.error_log_prefix + erro e retorna fallback
     - fn() retorna falsy → retorna fallback
     - fn() retorna str → retorna resultado
     """
     try:
-        result = retry_api_call(fn, is_rate_limit, max_retries=max_retries)
+        result = retry_api_call(fn, is_rate_limit, max_retries=options.max_retries)
         if result:
             return result
     except Exception as e:
         if is_rate_limit(e):
-            print(rate_limit_log)
-            return rate_limit_msg()
-        print(f"{error_log_prefix} ({e})")
+            print(options.rate_limit_log)
+            return options.rate_limit_msg()
+        print(f"{options.error_log_prefix} ({e})")
     return fallback
 
 
