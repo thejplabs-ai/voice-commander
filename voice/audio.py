@@ -1,7 +1,6 @@
 # voice/audio.py — recording, transcription, toggle_recording, on_hotkey, validate_microphone
 
 import os
-import sys
 import tempfile
 import threading
 import time
@@ -14,54 +13,25 @@ from voice.logging_ import _append_history
 from voice.clipboard import copy_to_clipboard, paste_via_sendinput
 from voice.modes import MODE_ACTIONS as _MODE_ACTIONS
 
-
-# ── CUDA DLL discovery ───────────────────────────────────────────────────────
-# ctranslate2 requer cublas64_12.dll e cudnn64_9.dll no DLL search path.
-# Quando instalados via pip (nvidia-cublas-cu12, nvidia-cudnn-cu12), ficam
-# em site-packages/nvidia/*/bin/ — fora do PATH do sistema.
-# Registrar ANTES de qualquer import do faster_whisper/ctranslate2.
-def _register_cuda_dlls() -> None:
-    if sys.platform != "win32" or not hasattr(os, "add_dll_directory"):
-        return
-    # PyInstaller: DLLs ficam no _MEIPASS (mesma pasta do exe)
-    if getattr(sys, "frozen", False):
-        meipass = getattr(sys, "_MEIPASS", "")
-        if meipass and os.path.isdir(meipass):
-            os.add_dll_directory(meipass)
-        return
-    # Dev: DLLs nos pacotes nvidia pip (site-packages/nvidia/*/bin/)
-    try:
-        import nvidia.cublas
-        import nvidia.cudnn
-        for pkg in (nvidia.cublas, nvidia.cudnn):
-            bin_dir = os.path.join(os.path.dirname(pkg.__path__[0]), pkg.__name__.split(".")[-1], "bin")
-            if os.path.isdir(bin_dir):
-                os.add_dll_directory(bin_dir)
-    except (ImportError, Exception):
-        pass  # pacotes nvidia não instalados — CUDA via toolkit ou indisponível
-
-_register_cuda_dlls()
+# Re-exports from whisper module for backward compatibility.
+# Tests patch voice.audio.get_whisper_model and voice.audio._do_transcription, so both
+# names must exist in this module's namespace. get_whisper_model is imported from
+# voice.whisper and re-bound here — monkeypatch.setattr(audio, "get_whisper_model", mock)
+# replaces this binding, and _do_transcription (defined below) calls it via the global
+# namespace of this module, so patches are correctly intercepted.
+from voice.whisper import (  # noqa: F401
+    get_whisper_model,
+    _FAST_MODES,
+    _QUALITY_MODES,
+    _HOTWORDS,
+    _DEFAULT_INITIAL_PROMPT,
+    _register_cuda_dlls,
+    _resolve_hf_model_path,
+    _resolve_symlinks_in_dir,
+)
 
 SAMPLE_RATE = 16000
 CHANNELS    = 1
-
-_FAST_MODES    = {"transcribe", "bullet", "email", "translate"}
-_QUALITY_MODES = {"simple", "prompt", "query"}
-
-_HOTWORDS = (
-    "deploy, build, pipeline, debounce, commit, branch, merge, "
-    "webhook, script, frontend, backend, API, token, workflow, "
-    "debug, SOP, prompt, buffer, cache, endpoint, payload, query"
-)
-
-_DEFAULT_INITIAL_PROMPT = (
-    "Falo português brasileiro com termos técnicos em inglês. "
-    "Exemplos: 'o build falhou', 'faz o deploy', 'testa o pipeline', "
-    "'o debounce não funciona', 'criar um SOP', 'estruturar o prompt', "
-    "'o webhook está caindo', 'revisar o script', 'o frontend quebrou', "
-    "'configurar a API', 'commitar as mudanças', 'fazer o merge', "
-    "'o token expirou', 'rodar o workflow', 'debug do backend'."
-)
 
 try:
     import sounddevice as sd
@@ -102,147 +72,6 @@ def play_sound(event: str) -> None:
         except Exception as e:
             print(f"[WARN] Sound file error ({wav}): {e}")
     _default_beep(event)
-
-
-# ── Whisper model ─────────────────────────────────────────────────────────────
-
-def _resolve_hf_model_path(model_name: str) -> str | None:
-    """Resolve o path real de um modelo HuggingFace, resolvendo symlinks.
-
-    ctranslate2 (C++) não segue symlinks do HuggingFace no Windows em certos
-    contextos (pós-install do Inno Setup, UAC elevation). Esta função encontra
-    o snapshot directory e resolve model.bin para o blob real.
-    Retorna o path do diretório com arquivos reais, ou None se não encontrar.
-    """
-    hf_cache = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-    model_dir = os.path.join(hf_cache, f"models--Systran--faster-whisper-{model_name}", "snapshots")
-    if not os.path.isdir(model_dir):
-        return None
-    # Pegar o snapshot mais recente
-    try:
-        snapshots = [d for d in os.listdir(model_dir) if os.path.isdir(os.path.join(model_dir, d))]
-    except OSError:
-        return None
-    if not snapshots:
-        return None
-    snapshot = os.path.join(model_dir, snapshots[-1])
-    model_bin = os.path.join(snapshot, "model.bin")
-    # Se model.bin é symlink, resolver para o path real
-    if os.path.islink(model_bin):
-        real_path = os.path.realpath(model_bin)
-        if os.path.exists(real_path):
-            # Retornar o diretório do snapshot — ctranslate2 espera um diretório
-            # com model.bin, config.json, etc. Precisamos criar um temp dir com
-            # os arquivos resolvidos? Não — mais simples: substituir symlinks por hardlinks.
-            _resolve_symlinks_in_dir(snapshot)
-            return snapshot
-    elif os.path.exists(model_bin):
-        return snapshot  # Arquivo real, sem symlink
-    return None
-
-
-def _resolve_symlinks_in_dir(directory: str) -> None:
-    """Substitui symlinks por hardlinks no diretório (Windows-safe).
-
-    Hardlinks funcionam sem privilégios especiais no mesmo filesystem.
-    Se hardlink falhar (cross-device), faz copy.
-    """
-    import shutil
-    for entry in os.listdir(directory):
-        full_path = os.path.join(directory, entry)
-        if os.path.islink(full_path):
-            real_target = os.path.realpath(full_path)
-            if os.path.exists(real_target):
-                try:
-                    os.remove(full_path)
-                    os.link(real_target, full_path)
-                except OSError:
-                    # Cross-device ou sem permissão para hardlink — copiar
-                    try:
-                        os.remove(full_path) if os.path.exists(full_path) else None
-                        shutil.copy2(real_target, full_path)
-                    except Exception as e:
-                        print(f"[WARN] Falha ao resolver symlink {entry}: {e}")
-
-
-def get_whisper_model(mode: str = "transcribe"):
-    """Lazy-load Whisper. Seleciona modelo e device com base no modo.
-
-    Fallback chain: configured model/cuda → configured model/cpu → tiny/cpu.
-    Se ctranslate2 falhar com 'Unable to open file' (symlinks do HuggingFace no
-    Windows), resolve symlinks para hardlinks e tenta novamente.
-    """
-    device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
-    if device == "auto":
-        try:
-            import torch
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        except ImportError:
-            device = "cpu"
-
-    if mode in _FAST_MODES:
-        model_name = state._CONFIG.get("WHISPER_MODEL_FAST") or state._CONFIG.get("WHISPER_MODEL", "tiny")
-    elif mode in _QUALITY_MODES:
-        model_name = state._CONFIG.get("WHISPER_MODEL_QUALITY") or state._CONFIG.get("WHISPER_MODEL", "tiny")
-    else:
-        model_name = state._CONFIG.get("WHISPER_MODEL", "tiny")
-
-    cache_key = (model_name, device)
-    if state._whisper_model is not None and state._whisper_cache_key == cache_key:
-        return state._whisper_model
-
-    if state._whisper_model is not None:
-        print(f"[INFO] Whisper reconfigurando: {state._whisper_cache_key} → {cache_key}")
-    else:
-        print(f"[...] Carregando Whisper {model_name} em {device} (modo: {mode})...")
-
-    from faster_whisper import WhisperModel
-    try:
-        state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
-        state._whisper_cache_key = cache_key
-        print(f"[OK]  Whisper {model_name}/{device} pronto (PT-BR âncora + termos EN via hotwords)")
-    except Exception as _err:
-        err_msg = str(_err).lower()
-        # Symlink issue: ctranslate2 não segue symlinks do HuggingFace no Windows
-        if "unable to open" in err_msg and "model.bin" in err_msg:
-            resolved = _resolve_hf_model_path(model_name)
-            if resolved:
-                print("[INFO] Symlinks HuggingFace resolvidos — tentando novamente...")
-                try:
-                    state._whisper_model = WhisperModel(resolved, device=device, compute_type="int8")
-                    state._whisper_cache_key = cache_key
-                    print(f"[OK]  Whisper {model_name}/{device} pronto (symlinks resolvidos)")
-                    return state._whisper_model
-                except Exception as _resolved_err:
-                    print(f"[WARN] Ainda falhou após resolver symlinks: {_resolved_err}")
-                    _err = _resolved_err
-
-        # Fallback 1: CUDA → CPU com mesmo modelo
-        if device == "cuda":
-            print(f"[WARN] CUDA indisponível ({type(_err).__name__}: {_err}) — fallback para CPU")
-            device = "cpu"
-            try:
-                state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
-                state._whisper_cache_key = (model_name, device)
-                print(f"[OK]  Whisper {model_name}/cpu pronto (fallback CPU)")
-                return state._whisper_model
-            except Exception as _cpu_err:
-                print(f"[WARN] Modelo {model_name}/cpu também falhou ({_cpu_err})")
-                # Continua para fallback 2
-
-        # Fallback 2: modelo de emergência tiny/cpu (sempre disponível, ~75MB)
-        if model_name != "tiny":
-            print("[WARN] Fallback emergencial: tiny/cpu")
-            try:
-                state._whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
-                state._whisper_cache_key = ("tiny", "cpu")
-                print("[OK]  Whisper tiny/cpu pronto (fallback emergencial)")
-                return state._whisper_model
-            except Exception as _tiny_err:
-                print(f"[ERRO] Fallback tiny/cpu falhou: {_tiny_err}")
-                raise
-        raise
-    return state._whisper_model
 
 
 # ── Recording ─────────────────────────────────────────────────────────────────
@@ -286,8 +115,126 @@ def record() -> None:
         print(f"[ERRO gravação] {e}")
 
 
-# ── Transcription ─────────────────────────────────────────────────────────────
+# ── Transcription helpers ─────────────────────────────────────────────────────
 
+def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
+    """Monta transcribe_kwargs e vad_params para model.transcribe.
+
+    Retorna (transcribe_kwargs, vad_params).
+    """
+    import inspect as _inspect
+    from voice.whisper import _DEFAULT_INITIAL_PROMPT as _PROMPT, _HOTWORDS as _HW
+
+    lang_hint = state._CONFIG.get("WHISPER_LANGUAGE") or None
+    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
+    beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)
+
+    initial_prompt = state._CONFIG.get("WHISPER_INITIAL_PROMPT") or _PROMPT
+    try:
+        from voice import vocabulary as _vocab
+        initial_prompt += _vocab.get_initial_prompt_suffix()
+    except Exception:
+        pass  # vocabulário nunca deve crashar a transcrição
+
+    _transcribe_sig = _inspect.signature(model.transcribe)
+    _supports_hotwords = "hotwords" in _transcribe_sig.parameters
+
+    kwargs: dict = dict(
+        language=lang_hint,
+        task="transcribe",
+        initial_prompt=initial_prompt,
+        condition_on_previous_text=False,
+        temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        beam_size=beam_size,
+    )
+    if _supports_hotwords:
+        try:
+            from voice import vocabulary as _vocab
+            kwargs["hotwords"] = _vocab.get_hotwords_string()
+        except Exception:
+            kwargs["hotwords"] = _HW
+
+    vad_params = dict(
+        threshold=vad_threshold,
+        min_silence_duration_ms=500,
+        speech_pad_ms=200,
+    )
+    return kwargs, vad_params
+
+
+def _transcribe_no_vad_fallback(model, temp_path: str, kwargs: dict, err: Exception) -> tuple[str, object]:
+    """Fallback: transcreve sem VAD quando silero/onnx indisponível.
+
+    Retorna (raw_text, info).
+    """
+    print(f"[WARN]  VAD model indisponível ({type(err).__name__}) — usando transcrição sem VAD")
+    segments, info = model.transcribe(temp_path, vad_filter=False, **kwargs)
+    return " ".join(s.text for s in segments).strip(), info
+
+
+def _transcribe_cpu_fallback(mode: str, temp_path: str, kwargs: dict, vad_params: dict, err: Exception) -> tuple[str, object]:
+    """Fallback CUDA → CPU quando DLLs CUDA ausentes.
+
+    Retorna (raw_text, info).
+    """
+    print(f"[WARN]  CUDA indisponível durante transcrição ({type(err).__name__}) — fallback CPU")
+    print("[WARN]  Configure WHISPER_DEVICE=cpu em Configurações para evitar este fallback.")
+    state._whisper_model = None
+    state._whisper_cache_key = ()
+    state._CONFIG["WHISPER_DEVICE"] = "cpu"
+    model_cpu = get_whisper_model(mode)
+    segments, info = model_cpu.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
+    return " ".join(s.text for s in segments).strip(), info
+
+
+def _transcribe_model_fallback(mode: str, temp_path: str, kwargs: dict, vad_params: dict, err: Exception) -> tuple[str, object]:
+    """Fallback quando modelo não encontrado no disco (symlink quebrado, download incompleto).
+
+    Retorna (raw_text, info).
+    """
+    print(f"[WARN]  Modelo indisponível ({type(err).__name__}: {err})")
+    state._whisper_model = None
+    state._whisper_cache_key = ()
+    state._CONFIG["WHISPER_DEVICE"] = "cpu"
+    model_fallback = get_whisper_model(mode)
+    segments, info = model_fallback.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
+    return " ".join(s.text for s in segments).strip(), info
+
+
+def _transcribe_without_vad_on_empty(model, temp_path: str, kwargs: dict, info, audio_data, vad_threshold: float) -> str:
+    """Fallback sem VAD quando VAD descartou o áudio.
+
+    Chamado apenas quando raw_text vazio e audio_duration >= 2s com vad_duration == 0.
+    Retorna raw_text (pode ser vazio se fallback retornar conteúdo suspeito).
+    """
+    audio_duration = len(audio_data) / SAMPLE_RATE
+    vad_duration = getattr(info, "duration_after_vad", 0.0) or 0.0
+    print(
+        f"[WARN]  VAD descartou áudio (threshold={vad_threshold:.1f}, "
+        f"gravação={audio_duration:.1f}s, fala_detectada={vad_duration:.1f}s)"
+    )
+    if audio_duration < 2.0 or vad_duration != 0.0:
+        return ""
+
+    print("[...]  Tentando sem filtro VAD (fallback)...")
+    segments_fallback, _ = model.transcribe(temp_path, vad_filter=False, **kwargs)
+    raw_text_fallback = " ".join(s.text for s in segments_fallback).strip()
+    has_real_content = (
+        len(raw_text_fallback) >= 8
+        and any(c.isalpha() for c in raw_text_fallback)
+        and raw_text_fallback.lower() not in {
+            "you", "thank you", "thank you.", "thanks.",
+            "gracias.", "obrigado.", "obrigado",
+        }
+    )
+    if has_real_content:
+        print(f"[OK]   Fallback VAD: {raw_text_fallback}")
+        return raw_text_fallback
+    print(f"[WARN]  Fallback retornou conteúdo suspeito — descartado: [{raw_text_fallback}]")
+    return ""
+
+
+# ── Transcription ─────────────────────────────────────────────────────────────
 
 def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
     """Executa transcrição no arquivo WAV e retorna o texto transcrito.
@@ -312,133 +259,100 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
         # Continua para Whisper abaixo
 
     model = get_whisper_model(mode)
-    lang_hint = state._CONFIG.get("WHISPER_LANGUAGE") or None
     vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
+    kwargs, vad_params = _build_transcribe_kwargs(model, mode)
     info = None
 
-    initial_prompt = state._CONFIG.get("WHISPER_INITIAL_PROMPT") or _DEFAULT_INITIAL_PROMPT
     try:
-        from voice import vocabulary as _vocab
-        initial_prompt += _vocab.get_initial_prompt_suffix()
-    except Exception:
-        pass  # vocabulário nunca deve crashar a transcrição
-
-    # Detectar se faster-whisper suporta o parâmetro hotwords (introduzido em ≥1.0).
-    # Se não suportado, omitir silenciosamente para manter compatibilidade.
-    import inspect as _inspect
-    _transcribe_sig = _inspect.signature(model.transcribe)
-    _supports_hotwords = "hotwords" in _transcribe_sig.parameters
-
-    beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)
-
-    _transcribe_kwargs: dict = dict(
-        language=lang_hint,
-        task="transcribe",
-        initial_prompt=initial_prompt,
-        condition_on_previous_text=False,
-        temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
-        beam_size=beam_size,
-    )
-    if _supports_hotwords:
-        try:
-            from voice import vocabulary as _vocab
-            _transcribe_kwargs["hotwords"] = _vocab.get_hotwords_string()
-        except Exception:
-            _transcribe_kwargs["hotwords"] = _HOTWORDS
-
-    _vad_params = dict(
-        threshold=vad_threshold,
-        min_silence_duration_ms=500,
-        speech_pad_ms=200,
-    )
-
-    try:
-        segments, info = model.transcribe(
-            temp_path,
-            vad_filter=True,
-            vad_parameters=_vad_params,
-            **_transcribe_kwargs,
-        )
+        segments, info = model.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
         raw_text = " ".join(s.text for s in segments).strip()
     except Exception as _vad_err:
         err_msg = str(_vad_err).lower()
         if "silero" in err_msg or "onnx" in err_msg or "nosuchfile" in err_msg:
-            print(f"[WARN]  VAD model indisponível ({type(_vad_err).__name__}) — usando transcrição sem VAD")
-            segments_novad, info = model.transcribe(
-                temp_path,
-                vad_filter=False,
-                **_transcribe_kwargs,
-            )
-            raw_text = " ".join(s.text for s in segments_novad).strip()
+            raw_text, info = _transcribe_no_vad_fallback(model, temp_path, kwargs, _vad_err)
         elif "cublas" in err_msg or "cuda" in err_msg or "cudnn" in err_msg or "library" in err_msg:
-            # Fallback automático CUDA → CPU quando DLLs CUDA ausentes no ambiente.
-            # Acontece quando WHISPER_DEVICE=cuda mas cublas64_12.dll/cudart não
-            # está no PATH do sistema (PyInstaller, CUDA desatualizado, etc.).
-            # WhisperModel.__init__ pode ter sucesso com cuda mas model.transcribe()
-            # falha ao carregar o modelo na GPU para processamento real.
-            print(f"[WARN]  CUDA indisponível durante transcrição ({type(_vad_err).__name__}) — fallback CPU")
-            print("[WARN]  Configure WHISPER_DEVICE=cpu em Configurações para evitar este fallback.")
-            # Forçar reload do modelo em CPU (invalida o cache)
-            # Usa tiny/cpu como fallback rápido (evita reload de modelo grande)
-            state._whisper_model = None
-            state._whisper_cache_key = ()
-            state._CONFIG["WHISPER_DEVICE"] = "cpu"  # override para esta sessão
-            model_cpu = get_whisper_model(mode)
-            segments_cpu, info = model_cpu.transcribe(
-                temp_path,
-                vad_filter=True,
-                vad_parameters=_vad_params,
-                **_transcribe_kwargs,
-            )
-            raw_text = " ".join(s.text for s in segments_cpu).strip()
+            raw_text, info = _transcribe_cpu_fallback(mode, temp_path, kwargs, vad_params, _vad_err)
         elif "unable to open" in err_msg or "model.bin" in err_msg or "no such file" in err_msg:
-            # Modelo não encontrado no disco (download incompleto, symlink quebrado)
-            print(f"[WARN]  Modelo indisponível ({type(_vad_err).__name__}: {_vad_err})")
-            state._whisper_model = None
-            state._whisper_cache_key = ()
-            state._CONFIG["WHISPER_DEVICE"] = "cpu"
-            model_fallback = get_whisper_model(mode)  # get_whisper_model tem fallback chain
-            segments_fb, info = model_fallback.transcribe(
-                temp_path,
-                vad_filter=True,
-                vad_parameters=_vad_params,
-                **_transcribe_kwargs,
-            )
-            raw_text = " ".join(s.text for s in segments_fb).strip()
+            raw_text, info = _transcribe_model_fallback(mode, temp_path, kwargs, vad_params, _vad_err)
         else:
             raise
 
     if not raw_text and info is not None:
-        # VAD descartou o áudio — calcular duração a partir do audio_data já em memória
-        audio_duration = len(audio_data) / SAMPLE_RATE
-        vad_duration = getattr(info, "duration_after_vad", 0.0) or 0.0
-        print(
-            f"[WARN]  VAD descartou áudio (threshold={vad_threshold:.1f}, "
-            f"gravação={audio_duration:.1f}s, fala_detectada={vad_duration:.1f}s)"
-        )
-        if audio_duration >= 2.0 and vad_duration == 0.0:
-            print("[...]  Tentando sem filtro VAD (fallback)...")
-            segments_fallback, _ = model.transcribe(
-                temp_path,
-                vad_filter=False,
-                **_transcribe_kwargs,
-            )
-            raw_text_fallback = " ".join(s.text for s in segments_fallback).strip()
-            has_real_content = (
-                len(raw_text_fallback) >= 8
-                and any(c.isalpha() for c in raw_text_fallback)
-                and raw_text_fallback.lower() not in {
-                    "you", "thank you", "thank you.", "thanks.",
-                    "gracias.", "obrigado.", "obrigado",
-                }
-            )
-            if has_real_content:
-                print(f"[OK]   Fallback VAD: {raw_text_fallback}")
-                raw_text = raw_text_fallback
-            else:
-                print(f"[WARN]  Fallback retornou conteúdo suspeito — descartado: [{raw_text_fallback}]")
+        raw_text = _transcribe_without_vad_on_empty(model, temp_path, kwargs, info, audio_data, vad_threshold)
 
     return raw_text
+
+
+# ── Transcribe helpers ────────────────────────────────────────────────────────
+
+def _write_audio_to_wav(frames: list, temp_path: str) -> object:
+    """Escreve frames no arquivo WAV em temp_path.
+
+    Retorna audio_data (numpy array concatenado).
+    """
+    audio_data = np.concatenate(frames, axis=0)
+    with wave.open(temp_path, "wb") as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(2)
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes((audio_data * 32767).astype(np.int16).tobytes())
+    return audio_data
+
+
+def _try_snippet_match(raw_text: str, mode: str, t_start: float) -> bool:
+    """Tenta match de snippet. Se encontrado, cola e registra history.
+
+    Retorna True se snippet foi expandido (caller deve fazer early return).
+    """
+    try:
+        from voice import snippets as _snippets
+        snippet_text = _snippets.match_snippet(raw_text)
+        if snippet_text is None:
+            return False
+        copy_to_clipboard(snippet_text)
+        play_sound("success")
+        paste_delay_ms = state._CONFIG.get("PASTE_DELAY_MS", 50)
+        time.sleep(max(0, paste_delay_ms) / 1000.0 + 0.1)
+        paste_via_sendinput()
+        print(f"[OK]   Snippet expandido ({len(snippet_text)} chars)")
+        try:
+            from voice import overlay as _overlay
+            _overlay.show_done(snippet_text)
+        except Exception:
+            pass
+        duration = time.time() - t_start
+        _append_history(mode, raw_text, snippet_text, duration)
+        return True
+    except Exception:
+        return False  # snippets nunca devem crashar a transcrição
+
+
+def _build_timing_and_log(recording_ms: int, whisper_ms: int, gemini_ms: int, paste_ms: int, t_mono_start: float) -> dict:
+    """Monta timing dict e emite log [PERF] se DEBUG_PERF=true.
+
+    Retorna timing dict.
+    """
+    total_ms = int((time.monotonic() - t_mono_start) * 1000)
+    timing: dict = {
+        "recording": recording_ms,
+        "whisper": whisper_ms,
+        "total": total_ms,
+    }
+    if gemini_ms > 0:
+        timing["gemini"] = gemini_ms
+    if paste_ms > 0:
+        timing["paste"] = paste_ms
+
+    if state._CONFIG.get("DEBUG_PERF", False) is True:
+        parts = [f"Gravação: {recording_ms/1000:.1f}s", f"Whisper: {whisper_ms/1000:.1f}s"]
+        if gemini_ms > 0:
+            parts.append(f"Gemini: {gemini_ms/1000:.1f}s")
+        if paste_ms > 0:
+            parts.append(f"Paste: {paste_ms/1000:.1f}s")
+        parts.append(f"Total: {total_ms/1000:.1f}s")
+        print(f"[PERF] {' | '.join(parts)}")
+
+    return timing
 
 
 def _post_process_and_paste(raw_text: str, mode: str) -> tuple:
@@ -498,16 +412,11 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
 
         stt_provider = state._CONFIG.get("STT_PROVIDER", "whisper").title()
         print(f"[...]  Transcrevendo ({stt_provider})...")
-        audio_data = np.concatenate(frames, axis=0)
 
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             temp_path = f.name
 
-        with wave.open(temp_path, "wb") as wf:
-            wf.setnchannels(CHANNELS)
-            wf.setsampwidth(2)
-            wf.setframerate(SAMPLE_RATE)
-            wf.writeframes((audio_data * 32767).astype(np.int16).tobytes())
+        audio_data = _write_audio_to_wav(frames, temp_path)
 
         # Story 4.6.6: medir fase Whisper
         t_whisper_start = time.monotonic()
@@ -527,26 +436,8 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
         print(f"[OK]   {stt_provider}: {raw_text}")
 
         # Epic 5.2: Snippet matching — expandir antes do processamento AI
-        try:
-            from voice import snippets as _snippets
-            snippet_text = _snippets.match_snippet(raw_text)
-            if snippet_text is not None:
-                copy_to_clipboard(snippet_text)
-                play_sound("success")
-                paste_delay_ms = state._CONFIG.get("PASTE_DELAY_MS", 50)
-                time.sleep(max(0, paste_delay_ms) / 1000.0 + 0.1)
-                paste_via_sendinput()
-                print(f"[OK]   Snippet expandido ({len(snippet_text)} chars)")
-                try:
-                    from voice import overlay as _overlay
-                    _overlay.show_done(snippet_text)
-                except Exception:
-                    pass
-                duration = time.time() - t_start
-                _append_history(mode, raw_text, snippet_text, duration)
-                return
-        except Exception:
-            pass  # snippets nunca devem crashar a transcrição
+        if _try_snippet_match(raw_text, mode, t_start):
+            return
 
         text, gemini_ms, paste_ms = _post_process_and_paste(raw_text, mode)
 
@@ -562,29 +453,7 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
             state._query_cooldown_until = time.time() + state._QUERY_HOTKEY_COOLDOWN
 
         duration = time.time() - t_start
-        total_ms = int((time.monotonic() - t_mono_start) * 1000)
-
-        # Story 4.6.6: montar timing breakdown
-        timing: dict = {
-            "recording": recording_ms,
-            "whisper": whisper_ms,
-            "total": total_ms,
-        }
-        if gemini_ms > 0:
-            timing["gemini"] = gemini_ms
-        if paste_ms > 0:
-            timing["paste"] = paste_ms
-
-        # Story 4.6.6: log de performance (controlado por DEBUG_PERF)
-        if state._CONFIG.get("DEBUG_PERF", False) is True:
-            parts = [f"Gravação: {recording_ms/1000:.1f}s", f"Whisper: {whisper_ms/1000:.1f}s"]
-            if gemini_ms > 0:
-                parts.append(f"Gemini: {gemini_ms/1000:.1f}s")
-            if paste_ms > 0:
-                parts.append(f"Paste: {paste_ms/1000:.1f}s")
-            parts.append(f"Total: {total_ms/1000:.1f}s")
-            print(f"[PERF] {' | '.join(parts)}")
-
+        timing = _build_timing_and_log(recording_ms, whisper_ms, gemini_ms, paste_ms, t_mono_start)
         _append_history(mode, raw_text, text, duration, timing_ms=timing)
 
     except Exception as e:
@@ -610,6 +479,83 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
                 _overlay.hide()
         except Exception:
             pass
+
+
+# ── Toggle helpers ────────────────────────────────────────────────────────────
+
+def _start_recording(mode: str) -> None:
+    """Executa o path START da gravação (chamado com _toggle_lock adquirido)."""
+    state.current_mode = mode
+    state.is_recording = True
+    state.frames_buf = []
+    state.stop_event.clear()
+    state.record_start_time = time.time()
+
+    # Story 4.5.4: capturar clipboard context no início da gravação
+    state._clipboard_context = ""
+    if state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", True) is True:
+        try:
+            from voice.clipboard import read_clipboard
+            max_chars = state._CONFIG.get("CLIPBOARD_CONTEXT_MAX_CHARS", 2000)
+            raw_clip = read_clipboard(max_chars=max_chars)
+            if raw_clip and max_chars > 0 and len(raw_clip) == max_chars:
+                print(f"[INFO] Clipboard truncado para {max_chars} chars")
+            state._clipboard_context = raw_clip or ""
+        except Exception as _e:
+            print(f"[WARN] Falha ao ler clipboard: {_e}")
+
+    # Epic 5.5: capturar window context no início da gravação
+    state._window_context = {}
+    if state._CONFIG.get("WINDOW_CONTEXT_ENABLED", False) is True:
+        try:
+            from voice.window_context import get_foreground_window_info
+            state._window_context = get_foreground_window_info()
+            if state._window_context.get("process"):
+                print(f"[INFO] Contexto: {state._window_context['process']} ({state._window_context['category']})")
+        except Exception as _wc_e:
+            print(f"[WARN] Falha ao capturar window context: {_wc_e}")
+
+    _update_tray_state("recording", mode)
+
+    label = _MODE_LOG_LABELS.get(mode, mode.upper())
+    play_sound("start")
+    print(f"[REC]  Gravando para {label}... (mesmo hotkey para parar)\n")
+
+    try:
+        from voice import overlay as _overlay
+        clip_chars = len(state._clipboard_context) if hasattr(state, "_clipboard_context") else 0
+        _overlay.show_recording(clipboard_chars=clip_chars)
+    except Exception:
+        pass  # overlay nunca deve crashar o recording
+
+    state.record_thread = threading.Thread(target=record, daemon=True)
+    state.record_thread.start()
+
+
+def _stop_recording_snapshot() -> tuple[object, str] | tuple[None, None]:
+    """Executa o path STOP da gravação (chamado com _toggle_lock adquirido).
+
+    Retorna (record_thread, current_mode) se STOP for executado, ou (None, None)
+    se a gravação for muito curta (guard de 500ms).
+    """
+    elapsed = time.time() - state.record_start_time
+    if elapsed < 0.5:
+        print(f"[SKIP] STOP ignorado — gravação muito curta ({elapsed*1000:.0f}ms < 500ms)\n")
+        return None, None
+
+    state.is_recording = False
+    state.is_transcribing = True
+    state.stop_event.set()
+    # Capturar refs locais antes de soltar o lock — join e transcribe
+    # executam FORA do lock para não bloquear toggles subsequentes.
+    _stop_thread = state.record_thread
+    _stop_mode = state.current_mode
+    print("[STOP] Parando gravação...\n")
+    # Nota: frames são capturados APÓS o join (fora do lock) para
+    # incluir os últimos frames gravados. Como o debounce atômico de
+    # on_hotkey() garante ≥1000ms antes do próximo START, não há
+    # risco de frames_buf ser zerado durante o join.
+    return _stop_thread, _stop_mode
 
 
 # ── Toggle / hotkey ───────────────────────────────────────────────────────────
@@ -647,73 +593,11 @@ def toggle_recording(mode: str = "transcribe") -> None:
                 return
 
         if not state.is_recording:
-            state.current_mode = mode
-            state.is_recording = True
-            state.frames_buf = []
-            state.stop_event.clear()
-            state.record_start_time = time.time()
-
-            # Story 4.5.4: capturar clipboard context no início da gravação
-            state._clipboard_context = ""
-            if state._CONFIG.get("CLIPBOARD_CONTEXT_ENABLED", True) is True:
-                try:
-                    from voice.clipboard import read_clipboard
-                    max_chars = state._CONFIG.get("CLIPBOARD_CONTEXT_MAX_CHARS", 2000)
-                    raw_clip = read_clipboard(max_chars=max_chars)
-                    if raw_clip and max_chars > 0 and len(raw_clip) == max_chars:
-                        print(f"[INFO] Clipboard truncado para {max_chars} chars")
-                    state._clipboard_context = raw_clip or ""
-                except Exception as _e:
-                    print(f"[WARN] Falha ao ler clipboard: {_e}")
-
-            # Epic 5.5: capturar window context no início da gravação
-            state._window_context = {}
-            if state._CONFIG.get("WINDOW_CONTEXT_ENABLED", False) is True:
-                try:
-                    from voice.window_context import get_foreground_window_info
-                    state._window_context = get_foreground_window_info()
-                    if state._window_context.get("process"):
-                        print(f"[INFO] Contexto: {state._window_context['process']} ({state._window_context['category']})")
-                except Exception as _wc_e:
-                    print(f"[WARN] Falha ao capturar window context: {_wc_e}")
-
-            _update_tray_state("recording", mode)
-
-            label = _MODE_LOG_LABELS.get(mode, mode.upper())
-            play_sound("start")
-            print(f"[REC]  Gravando para {label}... (mesmo hotkey para parar)\n")
-
-            # Story 4.5.1: overlay de feedback
-            try:
-                from voice import overlay as _overlay
-                clip_chars = len(state._clipboard_context) if hasattr(state, "_clipboard_context") else 0
-                _overlay.show_recording(clipboard_chars=clip_chars)
-            except Exception as _ov_e:
-                pass  # overlay nunca deve crashar o recording
-
-            state.record_thread = threading.Thread(target=record, daemon=True)
-            state.record_thread.start()
+            _start_recording(mode)
         else:
-            # Minimum recording time guard: ignore STOP if < 500ms from START.
-            # Prevents the keyboard library double-fire (key-down + key-up ~350-400ms apart)
-            # from triggering a premature STOP with frames=[] → error beep.
-            elapsed = time.time() - state.record_start_time
-            if elapsed < 0.5:
-                print(f"[SKIP] STOP ignorado — gravação muito curta ({elapsed*1000:.0f}ms < 500ms)\n")
+            _stop_thread, _stop_mode = _stop_recording_snapshot()
+            if _stop_thread is None:
                 return
-
-            state.is_recording = False
-            state.is_transcribing = True
-            state.stop_event.set()
-            # Capturar refs locais antes de soltar o lock — join e transcribe
-            # executam FORA do lock para não bloquear toggles subsequentes.
-            _stop_thread = state.record_thread
-            _stop_mode = state.current_mode
-            print("[STOP] Parando gravação...\n")
-            # Nota: frames são capturados APÓS o join (fora do lock) para
-            # incluir os últimos frames gravados. Como o debounce atômico de
-            # on_hotkey() garante ≥1000ms antes do próximo START, não há
-            # risco de frames_buf ser zerado durante o join.
 
     # ── Fora do lock: join e launch da transcrição ──────────────────────────
     # O join NÃO está dentro do with-block. Isso é intencional: manter o join
@@ -906,40 +790,5 @@ def hands_free_loop() -> None:
 
 
 # ── Microphone validation ─────────────────────────────────────────────────────
-
-def validate_microphone() -> None:
-    """Testa o sd.InputStream com o dispositivo configurado. Timeout: 3s."""
-    device_index = state._CONFIG.get("AUDIO_DEVICE_INDEX")
-    device_display = str(device_index) if device_index is not None else "padrão"
-
-    mic_ok_flag = [False]
-    mic_error: list = []
-
-    def _test_mic():
-        try:
-            stream_kwargs: dict = {
-                "samplerate": SAMPLE_RATE,
-                "channels": CHANNELS,
-                "dtype": "float32",
-            }
-            if device_index is not None:
-                stream_kwargs["device"] = device_index
-
-            with sd.InputStream(**stream_kwargs) as stream:
-                stream.read(64)
-            mic_ok_flag[0] = True
-        except Exception as e:
-            mic_error.append(str(e))
-
-    t = threading.Thread(target=_test_mic, daemon=True)
-    t.start()
-    t.join(timeout=3)
-
-    if mic_ok_flag[0]:
-        print(f"[OK]   Microfone validado (dispositivo: {device_display})")
-    else:
-        error_detail = mic_error[0] if mic_error else "timeout"
-        print(
-            f"[WARN] Microfone não acessível (dispositivo: {device_display}) "
-            f"— verifique permissões de áudio ({error_detail})"
-        )
+# Movido para voice/mic.py. Re-exportado aqui para backward compat com app.py.
+from voice.mic import validate_microphone  # noqa: F401, E402
