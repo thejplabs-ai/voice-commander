@@ -1,0 +1,20 @@
+# SENTINEL ignore — Voice Commander
+node_modules/
+dist/
+build/
+.claude/
+__pycache__/
+.venv/
+docs/
+tests/
+
+# Scripts (utility, not production)
+scripts/
+
+# Config/data files
+*.json
+*.log
+*.bat
+*.vbs
+*.ps1
+*.spec
