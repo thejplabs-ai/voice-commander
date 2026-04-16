@@ -159,6 +159,65 @@ def _apply_inline(original_text: str, trigger: str, expansion: str) -> str | Non
     return original_text[:m.start()] + expansion + original_text[m.end():]
 
 
+def _exact_match(norm_text: str, original_text: str, entries) -> str | None:
+    """Estágio 1: match exato normalizado. Para inline, aplica _apply_inline."""
+    for trigger, norm_trigger, expansion, mode in entries:
+        if norm_text == norm_trigger:
+            if mode == "inline":
+                return _apply_inline(original_text, trigger, expansion) or expansion
+            return expansion
+    return None
+
+
+def _inline_match(original_text: str, entries) -> str | None:
+    """Estágio 2a: inline via regex tolerante (len>=2, mode='inline' only)."""
+    for trigger, norm_trigger, expansion, mode in entries:
+        if mode != "inline":
+            continue
+        if len(norm_trigger) < 2:
+            continue
+        result = _apply_inline(original_text, trigger, expansion)
+        if result is not None:
+            return result
+    return None
+
+
+def _replace_containment_match(norm_text: str, entries) -> str | None:
+    """Estágio 2b: replace via word boundary (len>=2, mode='replace' only)."""
+    for trigger, norm_trigger, expansion, mode in entries:
+        if mode != "replace":
+            continue
+        if len(norm_trigger) < 2:
+            continue
+        pattern = r"\b" + re.escape(norm_trigger) + r"\b"
+        if re.search(pattern, norm_text):
+            return expansion
+    return None
+
+
+def _fuzzy_match(norm_text: str, entries) -> str | None:
+    """Estágio 3: fuzzy via rapidfuzz (len>=3, mode='replace', threshold 82).
+
+    Retorna None se rapidfuzz não estiver disponível (ImportError).
+    """
+    try:
+        from rapidfuzz import fuzz
+        best_match = None
+        best_score = 0
+        for trigger, norm_trigger, expansion, mode in entries:
+            if mode == "inline":
+                continue
+            if len(norm_trigger) < 3:
+                continue
+            score = fuzz.partial_ratio(norm_trigger, norm_text)
+            if score >= _FUZZY_THRESHOLD and score > best_score:
+                best_score = score
+                best_match = expansion
+        return best_match
+    except ImportError:
+        return None
+
+
 def match_snippet(transcribed_text: str) -> str | None:
     """Verifica se o texto transcrito corresponde a um snippet.
 
@@ -188,49 +247,16 @@ def match_snippet(transcribed_text: str) -> str | None:
         for trigger, entry in snippets.items()
     ]
 
-    # 1. Match exato normalizado
-    for trigger, norm_trigger, expansion, mode in entries:
-        if norm_text == norm_trigger:
-            if mode == "inline":
-                return _apply_inline(transcribed_text, trigger, expansion) or expansion
-            return expansion
+    result = _exact_match(norm_text, transcribed_text, entries)
+    if result is not None:
+        return result
 
-    # 2a. Inline: regex tolerante direto no texto original (cobre hifens, acentos)
-    for trigger, norm_trigger, expansion, mode in entries:
-        if mode != "inline":
-            continue
-        if len(norm_trigger) < 2:
-            continue
-        result = _apply_inline(transcribed_text, trigger, expansion)
-        if result is not None:
-            return result
+    result = _inline_match(transcribed_text, entries)
+    if result is not None:
+        return result
 
-    # 2b. Replace: containment normalizado com word boundary
-    for trigger, norm_trigger, expansion, mode in entries:
-        if mode != "replace":
-            continue
-        if len(norm_trigger) < 2:
-            continue
-        pattern = r"\b" + re.escape(norm_trigger) + r"\b"
-        if re.search(pattern, norm_text):
-            return expansion
+    result = _replace_containment_match(norm_text, entries)
+    if result is not None:
+        return result
 
-    # 3. Fuzzy matching via rapidfuzz (somente replace — inline sem fuzzy)
-    try:
-        from rapidfuzz import fuzz
-        best_match = None
-        best_score = 0
-        for trigger, norm_trigger, expansion, mode in entries:
-            if mode == "inline":
-                continue
-            if len(norm_trigger) < 3:
-                continue
-            score = fuzz.partial_ratio(norm_trigger, norm_text)
-            if score >= _FUZZY_THRESHOLD and score > best_score:
-                best_score = score
-                best_match = expansion
-        return best_match
-    except ImportError:
-        pass
-
-    return None
+    return _fuzzy_match(norm_text, entries)
