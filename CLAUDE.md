@@ -25,7 +25,8 @@ Voice Commander e uma ferramenta voice-to-text pessoal para Windows. Captura aud
 | `numpy` | 2.4.2 | Processamento de frames de audio |
 | `pystray` | 0.19.5 | System tray icon (3 estados visuais) |
 | `Pillow` | 11.1.0 | Geracao de icones para o tray |
-| `customtkinter` | 5.2.2 | Dialog de onboarding (janela de licenca) |
+| `customtkinter` | 5.2.2 | Busca de historico (`history_search.py`) e briefing matinal |
+| `pywebview` | 5.3.2 | Settings + Onboarding (UI primaria via HTML/CSS, Epic 5) |
 
 Versoes em `requirements.txt`. Atualizar somente com intencao explicita e novo pin.
 
@@ -62,28 +63,33 @@ python -c "import sounddevice; print(sounddevice.query_devices())"
 
 ```
 voice-commander/
-├── voice/                      <- Pacote principal (17 modulos)
+├── voice/                      <- Pacote principal
 │   ├── app.py                  <- Entry point — main(), hotkey loop, startup
 │   ├── config.py               <- load_config(), _save_env(), _reload_config(), license validation
 │   ├── state.py                <- Estado global (recording, mode, buffers)
 │   ├── audio.py                <- Gravacao sounddevice, toggle, beeps
+│   ├── mic.py                  <- Captura raw do microfone (sounddevice wrapper)
+│   ├── whisper.py              <- Transcricao local (faster-whisper)
 │   ├── gemini.py               <- Cliente Gemini, modos de processamento
 │   ├── ai_provider.py          <- Facade routing + retry utils (OpenRouter > Gemini > OpenAI)
 │   ├── openrouter.py           <- OpenRouter gateway (OpenAI-compatible, smart routing)
 │   ├── openai_.py              <- Implementacao OpenAI (provider legacy)
 │   ├── modes.py                <- Nomes, labels e acoes centralizados de todos os modos
 │   ├── tray.py                 <- System tray, 3 estados visuais, menu
-│   ├── ui.py                   <- Settings dialog (customtkinter) com sidebar lateral
+│   ├── webui/                  <- Settings + Onboarding (pywebview + HTML, Epic 5)
 │   ├── overlay.py              <- Toast/feedback visual (tkinter puro)
-│   ├── history_search.py       <- Busca em history.jsonl (overlay)
+│   ├── history_search.py       <- Busca em history.jsonl (usa customtkinter direto)
 │   ├── clipboard.py            <- Leitura/escrita de clipboard via ctypes
 │   ├── paths.py                <- Resolucao de paths (_BASE_DIR)
 │   ├── mutex.py                <- Named Mutex Win32 (instancia unica)
 │   ├── logging_.py             <- Setup de log e rotacao de sessao
 │   ├── shutdown.py             <- graceful_shutdown, release mutex
 │   ├── theme.py                <- Design tokens JP Labs (cores, fontes, espacamento)
+│   ├── snippets.py             <- Snippets/templates de texto
+│   ├── vocabulary.py           <- Vocabulario custom do Whisper
+│   ├── window_context.py       <- Contexto da janela ativa (foreground window)
 │   └── __init__.py             <- __version__ = "1.0.15"
-├── tests/                      <- 250 testes em 19 arquivos
+├── tests/                      <- 365+ testes
 ├── requirements.txt            <- Dependencias pinadas (Python 3.13)
 ├── .env.example                <- Template de configuracao
 ├── .env                        <- Configuracao local (NUNCA commitar)
@@ -384,7 +390,7 @@ O modo e capturado no momento do toggle de inicio, nao no momento de parar a gra
 
 ### Onboarding antes do mutex
 
-O dialog de onboarding (customtkinter) e chamado antes de `_acquire_named_mutex()`. Nao mover esta ordem.
+O onboarding (pywebview, `voice/webui/`) e chamado antes de `_acquire_named_mutex()`. Nao mover esta ordem.
 
 ### `build/installer.iss` tem `AppVersion` hardcoded
 
