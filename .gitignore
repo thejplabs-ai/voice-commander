@@ -39,3 +39,7 @@ desktop.ini
 # AIOS local cache
 .aios-local/cache/
 .aios-local/knowledge/
+
+# aios-sync (ADR-036 / FU-03) — state file per-target, backups pre-merge
+.aios-sync-state.json
+*.bak
