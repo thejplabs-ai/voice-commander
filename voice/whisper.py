@@ -118,8 +118,22 @@ def _resolve_symlinks_in_dir(directory: str) -> None:
 
 # ── Whisper model loader ───────────────────────────────────────────────────────
 
+def _is_oom_error(err_msg: str) -> bool:
+    """Detecta erros de OOM no texto de uma exception (string já em lowercase)."""
+    return (
+        "out of memory" in err_msg
+        or "oom" in err_msg
+        or "cuda failed" in err_msg
+    )
+
+
 def get_whisper_model(mode: str = "transcribe"):
     """Lazy-load Whisper. Seleciona modelo e device com base no modo.
+
+    Thread-safe: protegido por state._whisper_model_lock (double-check pattern)
+    para evitar race entre _preload_whisper() e primeira transcrição — sem o
+    lock, ambos podem disparar WhisperModel(...) em paralelo, duplicando VRAM
+    (OOM com large-v3).
 
     Fallback chain: configured model/cuda → configured model/cpu → tiny/cpu.
     Se ctranslate2 falhar com 'Unable to open file' (symlinks do HuggingFace no
@@ -141,60 +155,76 @@ def get_whisper_model(mode: str = "transcribe"):
         model_name = state._CONFIG.get("WHISPER_MODEL", "tiny")
 
     cache_key = (model_name, device)
+    # Fast path sem lock — cache hit comum, evita contenção
     if state._whisper_model is not None and state._whisper_cache_key == cache_key:
         return state._whisper_model
 
-    if state._whisper_model is not None:
-        print(f"[INFO] Whisper reconfigurando: {state._whisper_cache_key} → {cache_key}")
-    else:
-        print(f"[...] Carregando Whisper {model_name} em {device} (modo: {mode})...")
+    with state._whisper_model_lock:
+        # Double-check dentro do lock — outra thread pode ter carregado enquanto
+        # esperávamos o lock.
+        if state._whisper_model is not None and state._whisper_cache_key == cache_key:
+            return state._whisper_model
 
-    from faster_whisper import WhisperModel
-    try:
-        state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
-        state._whisper_cache_key = cache_key
-        print(f"[OK]  Whisper {model_name}/{device} pronto (PT-BR âncora + termos EN via hotwords)")
-    except Exception as _err:
-        err_msg = str(_err).lower()
-        # Symlink issue: ctranslate2 não segue symlinks do HuggingFace no Windows
-        if "unable to open" in err_msg and "model.bin" in err_msg:
-            resolved = _resolve_hf_model_path(model_name)
-            if resolved:
-                print("[INFO] Symlinks HuggingFace resolvidos — tentando novamente...")
+        if state._whisper_model is not None:
+            print(f"[INFO] Whisper reconfigurando: {state._whisper_cache_key} → {cache_key}")
+        else:
+            print(f"[...] Carregando Whisper {model_name} em {device} (modo: {mode})...")
+
+        # int8_float16 em CUDA: menor pegada de VRAM + menos fragmentação que int8 puro.
+        # int8 em CPU: mantém o comportamento original.
+        compute = "int8_float16" if device == "cuda" else "int8"
+
+        from faster_whisper import WhisperModel
+        try:
+            state._whisper_model = WhisperModel(model_name, device=device, compute_type=compute)
+            state._whisper_cache_key = cache_key
+            print(f"[OK]  Whisper {model_name}/{device} pronto (PT-BR âncora + termos EN via hotwords)")
+        except Exception as _err:
+            err_msg = str(_err).lower()
+            # Symlink issue: ctranslate2 não segue symlinks do HuggingFace no Windows
+            if "unable to open" in err_msg and "model.bin" in err_msg:
+                resolved = _resolve_hf_model_path(model_name)
+                if resolved:
+                    print("[INFO] Symlinks HuggingFace resolvidos — tentando novamente...")
+                    try:
+                        state._whisper_model = WhisperModel(resolved, device=device, compute_type=compute)
+                        state._whisper_cache_key = cache_key
+                        print(f"[OK]  Whisper {model_name}/{device} pronto (symlinks resolvidos)")
+                        return state._whisper_model
+                    except Exception as _resolved_err:
+                        print(f"[WARN] Ainda falhou após resolver symlinks: {_resolved_err}")
+                        _err = _resolved_err
+                        err_msg = str(_resolved_err).lower()
+
+            # OOM explícito — log claro ANTES do fallback (observabilidade Bug #2)
+            if _is_oom_error(err_msg):
+                print(f"[ERRO] VRAM insuficiente carregando {model_name} em {device}. Fallback acionado.")
+
+            # Fallback 1: CUDA → CPU com mesmo modelo
+            if device == "cuda":
+                print(f"[WARN] CUDA indisponível ({type(_err).__name__}: {_err}) — fallback para CPU")
+                device = "cpu"
                 try:
-                    state._whisper_model = WhisperModel(resolved, device=device, compute_type="int8")
-                    state._whisper_cache_key = cache_key
-                    print(f"[OK]  Whisper {model_name}/{device} pronto (symlinks resolvidos)")
+                    state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
+                    state._whisper_cache_key = (model_name, device)
+                    print(f"[OK]  Whisper {model_name}/cpu pronto (fallback CPU)")
                     return state._whisper_model
-                except Exception as _resolved_err:
-                    print(f"[WARN] Ainda falhou após resolver symlinks: {_resolved_err}")
-                    _err = _resolved_err
+                except Exception as _cpu_err:
+                    print(f"[WARN] Modelo {model_name}/cpu também falhou ({_cpu_err})")
+                    # Continua para fallback 2
 
-        # Fallback 1: CUDA → CPU com mesmo modelo
-        if device == "cuda":
-            print(f"[WARN] CUDA indisponível ({type(_err).__name__}: {_err}) — fallback para CPU")
-            device = "cpu"
-            try:
-                state._whisper_model = WhisperModel(model_name, device=device, compute_type="int8")
-                state._whisper_cache_key = (model_name, device)
-                print(f"[OK]  Whisper {model_name}/cpu pronto (fallback CPU)")
-                return state._whisper_model
-            except Exception as _cpu_err:
-                print(f"[WARN] Modelo {model_name}/cpu também falhou ({_cpu_err})")
-                # Continua para fallback 2
-
-        # Fallback 2: modelo de emergência tiny/cpu (sempre disponível, ~75MB)
-        if model_name != "tiny":
-            print("[WARN] Fallback emergencial: tiny/cpu")
-            try:
-                state._whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
-                state._whisper_cache_key = ("tiny", "cpu")
-                print("[OK]  Whisper tiny/cpu pronto (fallback emergencial)")
-                return state._whisper_model
-            except Exception as _tiny_err:
-                print(f"[ERRO] Fallback tiny/cpu falhou: {_tiny_err}")
-                raise
-        raise
-    return state._whisper_model
+            # Fallback 2: modelo de emergência tiny/cpu (sempre disponível, ~75MB)
+            if model_name != "tiny":
+                print("[WARN] Fallback emergencial: tiny/cpu")
+                try:
+                    state._whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
+                    state._whisper_cache_key = ("tiny", "cpu")
+                    print("[OK]  Whisper tiny/cpu pronto (fallback emergencial)")
+                    return state._whisper_model
+                except Exception as _tiny_err:
+                    print(f"[ERRO] Fallback tiny/cpu falhou: {_tiny_err}")
+                    raise
+            raise
+        return state._whisper_model
 
 
