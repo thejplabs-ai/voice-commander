@@ -1,0 +1,9 @@
+{
+  "findings": [],
+  "metadata": {
+    "lastScan": "2026-04-17T03:39:45.706Z",
+    "rollingWindowDays": 90,
+    "aggregation": "by-pattern",
+    "version": 1
+  }
+}
