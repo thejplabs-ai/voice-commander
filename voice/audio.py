@@ -268,9 +268,19 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
         raw_text = " ".join(s.text for s in segments).strip()
     except Exception as _vad_err:
         err_msg = str(_vad_err).lower()
+        # Bug #2: OOM durante transcrição — log claro ANTES do fallback CUDA→CPU.
+        # Check explícito antes do matcher genérico "cuda" para melhor diagnóstico.
+        is_oom = (
+            "out of memory" in err_msg
+            or "oom" in err_msg
+            or "cuda failed" in err_msg
+        )
+        if is_oom:
+            current_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
+            print(f"[ERRO] VRAM insuficiente durante transcrição em {current_device}. Fallback acionado.")
         if "silero" in err_msg or "onnx" in err_msg or "nosuchfile" in err_msg:
             raw_text, info = _transcribe_no_vad_fallback(model, temp_path, kwargs, _vad_err)
-        elif "cublas" in err_msg or "cuda" in err_msg or "cudnn" in err_msg or "library" in err_msg:
+        elif is_oom or "cublas" in err_msg or "cuda" in err_msg or "cudnn" in err_msg or "library" in err_msg:
             raw_text, info = _transcribe_cpu_fallback(mode, temp_path, kwargs, vad_params, _vad_err)
         elif "unable to open" in err_msg or "model.bin" in err_msg or "no such file" in err_msg:
             raw_text, info = _transcribe_model_fallback(mode, temp_path, kwargs, vad_params, _vad_err)
@@ -383,6 +393,31 @@ def _post_process_and_paste(raw_text: str, mode: str) -> tuple:
     return text, gemini_ms, paste_ms
 
 
+def _release_vram_if_cuda() -> None:
+    """Libera VRAM fragmentada pós-transcrição em CUDA.
+
+    Só executa se o device atual é CUDA — evita custo no hot path de CPU.
+    Silencioso: é otimização, não crítico. Fallback para gc.collect() quando
+    torch não está instalado (faster-whisper traz ctranslate2, não torch).
+    """
+    device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
+    if device != "cuda":
+        return
+    try:
+        import torch  # noqa: PLC0415 — lazy, torch é opcional
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            return
+    except Exception:
+        pass
+    # Fallback: sem torch instalado, ao menos provoca coleta de objetos ctranslate2
+    try:
+        import gc
+        gc.collect()
+    except Exception:
+        pass
+
+
 def transcribe(frames: list, mode: str = "transcribe") -> None:
     import traceback as _tb
     t_start = time.time()
@@ -471,6 +506,10 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
                 os.unlink(temp_path)
             except Exception as e:
                 print(f"[WARN] Falha ao deletar arquivo temporário {temp_path}: {e}")
+        # Bug #2: limpar VRAM fragmentada entre transcrições. Só executa em CUDA
+        # — evita custo desnecessário no hot path de CPU. Silencioso porque é
+        # otimização, não crítico.
+        _release_vram_if_cuda()
         _update_tray_state("idle")
         # Story 4.5.1: esconder overlay se não foi para "done" (erro path)
         try:

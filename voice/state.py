@@ -41,6 +41,11 @@ selected_mode: str = "transcribe"
 _gemini_client = None
 _whisper_model = None
 _whisper_cache_key: tuple = ()
+# Lock que protege o check-and-load de _whisper_model. Evita race entre
+# _preload_whisper() (daemon em app.py) e a primeira transcrição real,
+# que sem este lock podem ambas disparar WhisperModel(...) em paralelo e
+# duplicar VRAM (OOM com large-v3).
+_whisper_model_lock = threading.Lock()
 _openai_client = None
 _OPENAI_API_KEY: str | None = None
 
