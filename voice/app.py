@@ -187,10 +187,24 @@ def _cycle_mode() -> None:
         pass
 
 
+# Intervalo de re-registro defensivo de hotkeys.
+# Windows pode remover LowLevelKeyboardProc silenciosamente após transições de
+# sleep/standby/UAC, sem disparar exception. Sem esse re-registro periódico, o
+# app trava (hotkeys "morrem" mas processo continua vivo).
+_REREGISTER_INTERVAL = 300  # 5 min — cobre transições típicas de sleep/standby
+
+
 def _hotkey_loop() -> None:
-    """Loop resiliente de hotkeys — re-registra se keyboard.wait() crashar."""
+    """Loop resiliente de hotkeys.
+
+    Duas camadas de resiliência:
+    1. REATIVA — try/except externo re-registra se ocorrer exception.
+    2. PROATIVA — heartbeat a cada _REREGISTER_INTERVAL segundos re-registra
+       defensivamente (cobre casos onde Windows remove o hook silenciosamente,
+       sem exception, e keyboard.wait() ficaria pendurado para sempre).
+    """
     _restart_count = 0
-    while True:
+    while not state._shutdown_event.is_set():
         try:
             keyboard.unhook_all()
         except Exception as e:
@@ -227,10 +241,19 @@ def _hotkey_loop() -> None:
             else:
                 print(f"[OK]   Hotkey re-registrado (restart #{_restart_count}). Aguardando...\n")
 
-            keyboard.wait()
+            # Aguarda shutdown OU timeout. Se timeout expirar, re-registra
+            # defensivamente os hotkeys (heartbeat). keyboard.wait() foi
+            # substituído porque ele bloqueia indefinidamente mesmo quando
+            # o Windows remove o hook silenciosamente — ver Bug #1.
+            shutdown_requested = state._shutdown_event.wait(timeout=_REREGISTER_INTERVAL)
+            if shutdown_requested:
+                # Saída limpa — shutdown sinalizado (tray quit / Ctrl+C)
+                break
 
-            # keyboard.wait() retornou sem exceção — saída limpa
-            break
+            # Timeout expirou sem shutdown — heartbeat defensivo
+            _restart_count += 1
+            print("[INFO] Heartbeat hotkeys — re-registrando")
+            continue
 
         except KeyboardInterrupt:
             break
@@ -242,7 +265,8 @@ def _hotkey_loop() -> None:
             time.sleep(3)
             continue
 
-    # Signal main thread to exit
+    print("[INFO] Hotkey loop encerrado")
+    # Signal main thread to exit (idempotente — .set() em evento já setado é no-op)
     state._shutdown_event.set()
 
 
