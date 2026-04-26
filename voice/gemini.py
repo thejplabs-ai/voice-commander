@@ -187,34 +187,6 @@ def transcribe_audio_with_gemini(wav_path: str) -> str:
     return retry_api_call(_api_call, _is_rate_limit)
 
 
-_PROMPT_MINIMAL = (
-    "Você é um corretor MINIMALISTA de transcrição de voz para texto.\n"
-    "REGRAS ABSOLUTAS:\n"
-    "- NÃO traduza nada. Se a palavra está em inglês, deixe em inglês.\n"
-    "- NÃO mude o sentido ou reorganize frases.\n"
-    "- NÃO expanda abreviações ou siglas.\n"
-    "- Preserve code-switching (mistura PT+EN) exatamente como está.\n"
-    "- Em caso de dúvida, preserve o texto original.\n"
-    "- Retorne APENAS o texto corrigido, sem explicações.\n\n"
-    "Texto: {text}"
-)
-
-_PROMPT_SMART = (
-    "Você é um corretor inteligente de transcrição de voz para texto.\n"
-    "REGRAS:\n"
-    "- Adicione pontuação automaticamente (pontos finais, vírgulas, interrogações, exclamações).\n"
-    "- Capitalize o início de frases.\n"
-    "- Formate números naturalmente (ex: 'duzentos e cinquenta' -> '250').\n"
-    "- Corrija erros ortográficos óbvios da transcrição.\n"
-    "- NÃO traduza nada. Se a palavra está em inglês, deixe em inglês.\n"
-    "- NÃO mude o sentido ou reorganize frases.\n"
-    "- NÃO expanda abreviações ou siglas.\n"
-    "- Preserve code-switching (mistura PT+EN) exatamente como está.\n"
-    "- Retorne APENAS o texto corrigido, sem explicações.\n\n"
-    "Texto: {text}"
-)
-
-
 def correct_with_gemini(text: str) -> str:
     correction_style = state._CONFIG.get("CORRECTION_STYLE", "smart")
 
@@ -228,7 +200,7 @@ def correct_with_gemini(text: str) -> str:
         return text
     try:
         client = _get_gemini_client()
-        template = _PROMPT_MINIMAL if correction_style == "minimal" else _PROMPT_SMART
+        template = _gp.CORRECT_MINIMAL if correction_style == "minimal" else _gp.CORRECT_SMART
         prompt = template.format(text=text)
 
         def _api_call():
