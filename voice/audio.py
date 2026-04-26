@@ -4,6 +4,9 @@
 # sibling modules:
 #   - voice/recording.py       record(), _start_recording(), _stop_recording_snapshot()
 #   - voice/transcription.py   transcribe() + helpers (this module's previous core)
+#   - voice/hotkey.py          toggle_recording(), on_hotkey(), on_command_hotkey()
+#                              + _last_hotkey_time, _hotkey_debounce_lock,
+#                                _command_debounce_lock, _last_command_hotkey_time
 #   - voice/hands_free.py      hands_free_loop()
 #   - voice/sound.py           play_sound(), _default_beep()
 #   - voice/whisper.py         get_whisper_model() + fallback chain
@@ -13,16 +16,18 @@
 # voice.audio, monkeypatch.setattr targets attributes on this module
 # (e.g. patch("voice.audio.sd"), patch("voice.audio.np"),
 # patch("voice.audio._do_transcription"), patch.object(audio, "play_sound"),
-# patch.object(audio, "_update_tray_state"), etc.).
+# patch.object(audio, "_update_tray_state"),
+# patch("voice.audio.toggle_recording"),
+# patch.object(audio, "_last_hotkey_time", 0.0), etc.).
 #
 # Each sibling module performs **lazy lookup via voice.audio** for symbols
 # that tests patch. That is why the re-exports below are sufficient: when a
 # test does `monkeypatch.setattr("voice.audio.np", mock)`, the patched
-# binding lives on this module's namespace, and recording/transcription
-# resolve `_audio.np` against this module — so the patch is honored.
+# binding lives on this module's namespace, and recording/transcription/
+# hotkey resolve `_audio.np` against this module — so the patch is honored.
 
 # Imports below are part of the public facade — voice/transcription.py +
-# voice/recording.py + voice/hands_free.py resolve these via
+# voice/recording.py + voice/hotkey.py + voice/hands_free.py resolve these via
 # `from voice import audio as _audio` + `_audio.<name>` at call time, so tests
 # can monkeypatch them on this module (patch("voice.audio.np"),
 # patch("voice.audio.tempfile"), patch.object(audio, "_update_tray_state"),
@@ -30,7 +35,7 @@
 # contract. Hence the F401 noqa on every line.
 import os  # noqa: F401 — facade re-export (tests patch voice.audio.os)
 import tempfile  # noqa: F401 — facade re-export (tests patch voice.audio.tempfile)
-import threading
+import threading  # noqa: F401 — facade re-export (tests patch voice.audio.threading.Thread)
 import time  # noqa: F401 — preserved for downstream tests/imports
 import wave  # noqa: F401 — facade re-export (tests patch voice.audio.wave)
 
@@ -74,7 +79,7 @@ except Exception as _e:
 # Tests patch `voice.audio.play_sound` (test_command_mode.py), so we re-bind
 # play_sound + _default_beep here at module level. monkeypatch.setattr on
 # voice.audio.play_sound replaces this binding; every internal call (snippets,
-# transcribe helpers, recording) resolves play_sound via the voice.audio
+# transcribe helpers, recording, hotkey) resolves play_sound via the voice.audio
 # namespace, so patches still intercept correctly.
 from voice.sound import play_sound, _default_beep  # noqa: F401, E402
 
@@ -118,147 +123,39 @@ from voice.transcription import (  # noqa: F401, E402
 )
 
 
-# ── Toggle / hotkey ───────────────────────────────────────────────────────────
-
-def toggle_recording(mode: str = "transcribe") -> None:
-    # Captura snapshot das variáveis STOP fora do lock para o join posterior.
-    # Inicializados como None — só preenchidos no path STOP.
-    _stop_thread = None
-    _stop_mode = None
-
-    with state._toggle_lock:
-        if state.is_transcribing:
-            print("[SKIP] Aguardando transcrição anterior terminar...\n")
-            play_sound("skip")
-            return
-
-        # QW-1: cooldown de 2s após processamento de modo query
-        if not state.is_recording and mode == "query":
-            now = time.time()
-            if now < state._query_cooldown_until:
-                remaining = state._query_cooldown_until - now
-                print(f"[SKIP] Cooldown ativo — ignorando hotkey ({remaining:.1f}s restantes)\n")
-                return
-
-        if not state.is_recording:
-            _start_recording(mode)
-        else:
-            _stop_thread, _stop_mode = _stop_recording_snapshot()
-            if _stop_thread is None:
-                return
-
-    # ── Fora do lock: join e launch da transcrição ──────────────────────────
-    # O join NÃO está dentro do with-block. Isso é intencional: manter o join
-    # dentro do lock bloquearia _toggle_lock por até 5s. Qualquer on_hotkey()
-    # que chegasse durante esse tempo teria seu thread de toggle_recording()
-    # enfileirado e executaria imediatamente após o lock ser liberado —
-    # disparando um START espúrio logo após o STOP.
-    # Com o debounce atômico de on_hotkey() (1000ms), o lock já está livre
-    # durante o join E nenhum novo toggle entra na fila.
-    if _stop_thread is not None:
-        _stop_thread.join(timeout=5)
-        threading.Thread(
-            target=transcribe,
-            args=(list(state.frames_buf), _stop_mode),
-            daemon=True,
-        ).start()
-
-
-_last_hotkey_time: float = 0.0
-_hotkey_debounce_lock = threading.Lock()
-
-
-def on_hotkey() -> None:
-    """Hotkey único — usa state.selected_mode para determinar o modo.
-
-    Debounce atômico: o check-and-set de _last_hotkey_time é protegido por um
-    Lock para evitar race condition quando o keyboard library dispara o callback
-    em múltiplas threads quase simultaneamente (key-down + key-up + bounce do OS
-    chegam em ~1-5ms de diferença). Sem o lock, duas threads podem ler
-    _last_hotkey_time ao mesmo tempo, ambas passam pelo check, e lançam dois
-    toggle_recording() — causando START duplicado ou START+STOP imediatos.
-    """
-    global _last_hotkey_time
-    now = time.time()
-    # Lock atômico: apenas uma thread por vez pode ler+atualizar _last_hotkey_time.
-    # non-blocking tryacquire: se o lock estiver ocupado (outra thread está passando
-    # pelo debounce agora), este fire é descartado imediatamente — é bounce.
-    if not _hotkey_debounce_lock.acquire(blocking=False):
-        return
-    try:
-        if now - _last_hotkey_time < 1.0:
-            return
-        _last_hotkey_time = now
-    finally:
-        _hotkey_debounce_lock.release()
-    threading.Thread(target=toggle_recording, args=(state.selected_mode,), daemon=True).start()
-
-
-_command_debounce_lock = threading.Lock()
-_last_command_hotkey_time: float = 0.0
-
-
-def on_command_hotkey() -> None:
-    """Epic 5.0: Hotkey do Command Mode.
-
-    1. Simula Ctrl+C para capturar texto selecionado
-    2. Lê o clipboard e salva em state._command_selected_text
-    3. Se seleção vazia, toca erro e retorna (sem gravar)
-    4. Exibe overlay de comando com contagem de chars
-    5. Inicia gravação no modo "command" (fluxo normal de transcrição)
-    """
-    global _last_command_hotkey_time
-
-    now = time.time()
-    if not _command_debounce_lock.acquire(blocking=False):
-        return
-    try:
-        if now - _last_command_hotkey_time < 1.0:
-            return
-        _last_command_hotkey_time = now
-    finally:
-        _command_debounce_lock.release()
-
-    def _run():
-        from voice.clipboard import simulate_copy, read_clipboard
-
-        # Capturar texto selecionado
-        simulate_copy()
-        selected = read_clipboard()
-
-        if not selected.strip():
-            print("[SKIP] Nenhum texto selecionado para o Comando de Voz\n")
-            play_sound("error")
-            return
-
-        state._command_selected_text = selected
-        print(f"[INFO] Texto selecionado capturado ({len(selected)} chars) — fale a instrução\n")
-
-        # Overlay de comando (mostra chars capturados)
-        try:
-            from voice import overlay as _overlay
-            _overlay.show_command(len(selected))
-        except Exception:
-            pass
-
-        # Iniciar gravação no modo "command"
-        toggle_recording("command")
-
-    threading.Thread(target=_run, daemon=True).start()
-
-
 # ── Recording (extracted to voice/recording.py — re-exported below) ─────────
 # Tests call audio.record() and patch voice.audio.sd / voice.audio.threading.Thread
 # / voice.audio.play_sound / voice.audio._update_tray_state. The recording
 # module resolves all those via the voice.audio namespace lazily at call time
 # (same lazy-lookup pattern validated in voice/hands_free.py). Re-exporting
-# here preserves backward compat for tests + audio.toggle_recording above,
-# which calls _start_recording / _stop_recording_snapshot from this module's
-# globals.
+# here preserves backward compat for tests + voice.hotkey.toggle_recording,
+# which calls _start_recording / _stop_recording_snapshot via the audio facade.
 from voice.recording import (  # noqa: F401, E402
     record,
     _start_recording,
     _stop_recording_snapshot,
+)
+
+
+# ── Toggle / hotkey (extracted to voice/hotkey.py — re-exported below) ──────
+# Tests patch voice.audio.toggle_recording (test_command_mode.py:232,257),
+# voice.audio.threading.Thread (test_audio.py:293,323,361,451,462),
+# voice.audio._last_hotkey_time / voice.audio._last_command_hotkey_time
+# (test_audio.py:450,461; test_command_mode.py:237,260),
+# and voice.audio.play_sound (test_command_mode.py:233; test_audio.py:268,290).
+# The hotkey module resolves all cross-module symbols (toggle_recording,
+# transcribe, _start_recording, _stop_recording_snapshot, play_sound,
+# threading, _last_hotkey_time, _hotkey_debounce_lock, _last_command_hotkey_time,
+# _command_debounce_lock) via the voice.audio facade lazily at call time, so
+# monkeypatches on those symbols are honored.
+from voice.hotkey import (  # noqa: F401, E402
+    toggle_recording,
+    on_hotkey,
+    on_command_hotkey,
+    _last_hotkey_time,
+    _hotkey_debounce_lock,
+    _command_debounce_lock,
+    _last_command_hotkey_time,
 )
 
 
