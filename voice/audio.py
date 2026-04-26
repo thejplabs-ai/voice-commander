@@ -36,42 +36,19 @@ CHANNELS    = 1
 try:
     import sounddevice as sd
     import numpy as np
-    import winsound
 except Exception as _e:
     print(f"[ERRO IMPORT] {_e}")
     import sys
     sys.exit(1)
 
 
-# ── Sound helpers ─────────────────────────────────────────────────────────────
-
-def _default_beep(event: str) -> None:
-    beeps = {
-        "start":   [(880, 200)],
-        "success": [(440, 100), (440, 100)],
-        "error":   [(200, 300)],
-        "warning": [(600, 200)],
-        "skip":    [(300, 150)],
-    }
-    sequence = beeps.get(event, [])
-
-    def _beep_thread():
-        for freq, dur in sequence:
-            winsound.Beep(freq, dur)
-
-    threading.Thread(target=_beep_thread, daemon=True).start()
-
-
-def play_sound(event: str) -> None:
-    """Toca custom .wav ou fallback para beep padrão."""
-    wav = state._CONFIG.get(f"SOUND_{event.upper()}", "")
-    if wav and os.path.exists(wav):
-        try:
-            winsound.PlaySound(wav, winsound.SND_FILENAME | winsound.SND_ASYNC)
-            return
-        except Exception as e:
-            print(f"[WARN] Sound file error ({wav}): {e}")
-    _default_beep(event)
+# ── Sound helpers (extracted to voice/sound.py — re-exported below) ─────────
+# Tests patch `voice.audio.play_sound` (test_command_mode.py), so we re-bind
+# play_sound + _default_beep here at module level. monkeypatch.setattr on
+# voice.audio.play_sound replaces this binding; every internal call inside
+# audio.py resolves play_sound from this module's globals, so patches still
+# intercept correctly.
+from voice.sound import play_sound, _default_beep  # noqa: F401, E402
 
 
 # ── Recording ─────────────────────────────────────────────────────────────────
@@ -738,94 +715,12 @@ def on_command_hotkey() -> None:
     threading.Thread(target=_run, daemon=True).start()
 
 
-# ── Hands-Free (VAD Auto-Start/Stop) ─────────────────────────────────────────
-
-def hands_free_loop() -> None:
-    """Background loop que monitora o microfone via VAD e auto-start/stop a gravação.
-
-    Usa RMS como proxy simples de energia (sem dependência de Silero para este loop).
-    Só executa se HANDS_FREE_ENABLED=true no .env.
-    Thread daemon=True — nunca bloqueia o encerramento do app.
-    """
-    if state._CONFIG.get("HANDS_FREE_ENABLED", False) is not True:
-        return
-
-    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
-    speech_ms = state._CONFIG.get("HANDS_FREE_SPEECH_MS", 500)
-    silence_ms = state._CONFIG.get("HANDS_FREE_SILENCE_MS", 2000)
-    device_index = state._CONFIG.get("AUDIO_DEVICE_INDEX")
-
-    # Intervalo de amostragem para detecção de voz
-    chunk_ms = 50  # 50ms por chunk
-    chunk_samples = int(SAMPLE_RATE * chunk_ms / 1000)
-
-    speech_frames_needed = int(speech_ms / chunk_ms)    # chunks consecutivos para confirmar fala
-    silence_frames_needed = int(silence_ms / chunk_ms)  # chunks consecutivos para confirmar silêncio
-
-    speech_frame_count = 0
-    silence_frame_count = 0
-
-    # Escalar threshold VAD (config) para RMS — VAD Silero usa 0-1 em outro domínio;
-    # aqui usamos 10% do valor configurado como limite de energia RMS (float32 normalizado).
-    rms_threshold = vad_threshold * 0.1
-
-    print("[INFO] Hands-free ativo — monitorando microfone...")
-
-    try:
-        stream_kwargs: dict = {
-            "samplerate": SAMPLE_RATE,
-            "channels": CHANNELS,
-            "dtype": "float32",
-        }
-        if device_index is not None:
-            stream_kwargs["device"] = device_index
-
-        with sd.InputStream(**stream_kwargs) as stream:
-            while not state._shutdown_event.is_set():
-                data, _ = stream.read(chunk_samples)
-
-                # RMS do chunk como proxy de energia de fala
-                rms = float(np.sqrt(np.mean(data ** 2)))
-                is_speech = rms > rms_threshold
-
-                if is_speech:
-                    speech_frame_count += 1
-                    silence_frame_count = 0
-
-                    # Fala detectada por tempo suficiente — disparar auto-start
-                    if (
-                        speech_frame_count >= speech_frames_needed
-                        and not state.is_recording
-                        and not state.is_transcribing
-                    ):
-                        print("[INFO] Hands-free: fala detectada — auto-start")
-                        threading.Thread(
-                            target=toggle_recording,
-                            args=(state.selected_mode,),
-                            daemon=True,
-                        ).start()
-                        # Aguardar gravação iniciar e estabilizar antes do próximo ciclo
-                        time.sleep(1.0)
-                        speech_frame_count = 0
-                        silence_frame_count = 0
-                else:
-                    silence_frame_count += 1
-                    speech_frame_count = 0
-
-                    # Silêncio prolongado durante gravação — disparar auto-stop
-                    if silence_frame_count >= silence_frames_needed and state.is_recording:
-                        print("[INFO] Hands-free: silêncio detectado — auto-stop")
-                        threading.Thread(
-                            target=toggle_recording,
-                            args=(state.selected_mode,),
-                            daemon=True,
-                        ).start()
-                        time.sleep(1.0)
-                        speech_frame_count = 0
-                        silence_frame_count = 0
-
-    except Exception as e:
-        print(f"[ERRO] Hands-free loop: {e}")
+# ── Hands-Free (extracted to voice/hands_free.py — re-exported below) ───────
+# app.py imports `from voice.audio import hands_free_loop`, so the re-export
+# preserves backward compat. The hands_free module reads voice.audio.np /
+# voice.audio.sd / voice.audio.toggle_recording lazily at call time, so test
+# monkeypatches on those symbols are honored.
+from voice.hands_free import hands_free_loop  # noqa: F401, E402
 
 
 # ── Microphone validation ─────────────────────────────────────────────────────
