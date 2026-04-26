@@ -142,7 +142,7 @@ def test_correction_style_smart_gemini():
 # ---------------------------------------------------------------------------
 
 def test_correction_style_minimal_openrouter():
-    """CORRECTION_STYLE=minimal deve passar o system prompt MINIMALIST ao _call."""
+    """CORRECTION_STYLE=minimal deve passar o system prompt MINIMALISTA ao _call."""
     state._CONFIG = _set_config(CORRECTION_STYLE="minimal")
 
     captured_system: list[str] = []
@@ -157,7 +157,8 @@ def test_correction_style_minimal_openrouter():
 
     assert result == "texto corrigido"
     assert captured_system, "_call não foi chamado"
-    assert "MINIMALIST" in captured_system[0]
+    # FP-4 R2: openrouter agora consome SYSTEM_CORRECT_MINIMAL (PT-BR) de gemini_prompts.
+    assert "MINIMALISTA" in captured_system[0]
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +181,6 @@ def test_correction_style_smart_openrouter():
 
     assert result == "Texto com pontuação."
     assert captured_system, "_call não foi chamado"
-    # Verifica marcadores do prompt smart
+    # Verifica marcadores do prompt smart (FP-4 R2: agora PT-BR via gemini_prompts).
     system_text = captured_system[0]
-    assert "smart" in system_text.lower() or "punctuation automatically" in system_text.lower()
+    assert "inteligente" in system_text.lower() or "pontuação automaticamente" in system_text.lower()
