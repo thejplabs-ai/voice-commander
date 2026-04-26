@@ -269,121 +269,26 @@ def simplify_as_prompt(text: str) -> str:
     word_count = len(text.split())
     print(f"[...]  Input: {word_count} palavras → modo prompt simples (fidelidade total)")
 
-    context_prefix = _build_context_prefix()
-    meta_prompt = f"""{context_prefix}Você é especialista em prompt engineering.
-O texto abaixo é transcrição de voz informal (pode misturar PT e EN).
-Transforme-o em um prompt limpo e direto para usar em qualquer LLM.
-
-PRIORIDADE ABSOLUTA: Preservar CADA detalhe, contexto e nuance que o usuário mencionou.
-Não comprima, não resuma, não omita nenhuma informação do input.
-Se o input for longo e detalhado, o output também deve ser longo e detalhado.
-
-ESTRUTURA:
-1. Um ou mais parágrafos explicando o contexto e o que se quer — sem label, só texto corrido
-2. Requisitos, detalhes específicos ou etapas listados como bullet points logo abaixo
-
-REGRAS:
-- Sem XML, sem seções SYSTEM/USER, sem headers, sem labels como "Contexto:" ou "Objetivo:"
-- Os bullet points devem ser frases completas, não palavras soltas
-- Preserve a intenção original completamente — não invente nem omita nada do input
-- A quantidade de linhas e bullets deve ser proporcional à riqueza do input
-- Retorne APENAS o prompt, sem explicações adicionais
-
-Transcrição: {text}"""
-
-    try:
-        from google import genai
-        client = _get_gemini_client()
-
-        def _api_call():
-            return _safe_text(client.models.generate_content(
-                model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
-                contents=meta_prompt,
-                config=genai.types.GenerateContentConfig(temperature=0.1),
-            ))
-
-        simplified = retry_api_call(_api_call, _is_rate_limit)
-        if simplified:
-            print(f"[OK]   Prompt simplificado ({len(simplified)} chars)")
-            return simplified
-    except Exception as e:
-        if _is_rate_limit(e):
-            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
-            return _rate_limit_msg()
-        print(f"[WARN] Gemini indisponível ({e}), retornando texto original")
-    return text
+    prompt = _gp.build_simplify(text, _build_context_prefix())
+    return _call_gemini(
+        prompt,
+        fallback=text,
+        temperature=0.1,
+        success_log="Prompt simplificado",
+    )
 
 
 def structure_as_prompt(text: str) -> str:
+    """COSTAR XML structured prompt (SYSTEM + USER). No config (temperature=None)."""
     if not state._GEMINI_API_KEY:
         print("[WARN] Gemini sem chave — retornando texto original")
         return text
-
-    meta_prompt = f"""Você é especialista em prompt engineering para LLMs (Claude, GPT-4, Gemini).
-O texto abaixo é transcrição de voz informal (pode misturar PT e EN).
-Transforme-o em prompt estruturado profissional usando o framework COSTAR com XML tags.
-
-Siga EXATAMENTE este formato (substitua os colchetes pelo conteúdo):
-
-═══════════════════════════════════════
-SYSTEM PROMPT
-═══════════════════════════════════════
-<role>
-[Papel e persona ideal para executar esta tarefa]
-</role>
-
-<behavior>
-[2-4 diretrizes comportamentais específicas e relevantes]
-</behavior>
-
-<output_format>
-[Formato exato do output: markdown, JSON, lista, prosa, etc.]
-</output_format>
-
-═══════════════════════════════════════
-USER PROMPT
-═══════════════════════════════════════
-<context>
-[Background, situação atual, dados relevantes]
-</context>
-
-<objective>
-[Tarefa específica e clara — o que exatamente deve ser feito]
-</objective>
-
-<style_and_tone>
-[Estilo de escrita, tom (formal/direto/técnico) e audiência-alvo]
-</style_and_tone>
-
-<response>
-[Formato e constraints da resposta: tamanho, idioma, estrutura]
-</response>
-
-REGRAS:
-- Infira o papel ideal com base na natureza da tarefa
-- Seja específico em todas as seções (nunca deixe vago)
-- Preserve a intenção original do usuário
-- Retorne APENAS o prompt estruturado, sem explicações adicionais
-
-Transcrição: {text}"""
-
-    try:
-        client = _get_gemini_client()
-
-        def _api_call():
-            return _safe_text(client.models.generate_content(
-                model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"), contents=meta_prompt))
-
-        structured = retry_api_call(_api_call, _is_rate_limit)
-        if structured:
-            print(f"[OK]   Prompt estruturado ({len(structured)} chars)")
-            return structured
-    except Exception as e:
-        if _is_rate_limit(e):
-            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
-            return _rate_limit_msg()
-        print(f"[WARN] Gemini indisponível ({e}), retornando texto original")
-    return text
+    prompt = _gp.build_structure(text)
+    return _call_gemini(
+        prompt,
+        fallback=text,
+        success_log="Prompt estruturado",
+    )
 
 
 def query_with_gemini(text: str) -> str:
@@ -391,9 +296,11 @@ def query_with_gemini(text: str) -> str:
     Envia a transcrição diretamente ao Gemini como pergunta/query e retorna a resposta.
     Fallback sem Gemini: retorna texto original com prefixo informativo.
     """
+    sentinel = f"[SEM RESPOSTA GEMINI] {text}"
+
     if not state._GEMINI_API_KEY:
         print("[WARN] Gemini sem chave — retornando transcrição com prefixo")
-        return f"[SEM RESPOSTA GEMINI] {text}"
+        return sentinel
 
     system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
     if not system_prompt:
@@ -405,30 +312,14 @@ def query_with_gemini(text: str) -> str:
 
     print(f"[...]  Query Gemini ({len(text)} chars)...")
 
-    try:
-        from google import genai
-        client = _get_gemini_client()
-
-        full_prompt = f"{system_prompt}\n\n{text}"
-
-        def _api_call():
-            return _safe_text(client.models.generate_content(
-                model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
-                contents=full_prompt,
-                config=genai.types.GenerateContentConfig(temperature=0.3),
-            ))
-
-        answer = retry_api_call(_api_call, _is_rate_limit)
-        if answer:
-            print(f"[OK]   Resposta Gemini ({len(answer)} chars)")
-            return answer
-    except Exception as e:
-        if _is_rate_limit(e):
-            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
-            return _rate_limit_msg()
-        print(f"[WARN] Gemini indisponível ({e}), retornando transcrição com prefixo")
-
-    return f"[SEM RESPOSTA GEMINI] {text}"
+    prompt = _gp.build_query(system_prompt, text)
+    return _call_gemini(
+        prompt,
+        fallback=sentinel,
+        temperature=0.3,
+        success_log="Resposta Gemini",
+        fallback_log="Gemini indisponível, retornando transcrição com prefixo",
+    )
 
 
 def query_with_clipboard_context(text: str, clipboard_content: str) -> str:
@@ -441,8 +332,10 @@ def query_with_clipboard_context(text: str, clipboard_content: str) -> str:
         print("[INFO] Clipboard vazio — modo query direto")
         return query_with_gemini(text)
 
+    sentinel = f"[SEM RESPOSTA GEMINI] {text}"
+
     if not state._GEMINI_API_KEY:
-        return f"[SEM RESPOSTA GEMINI] {text}"
+        return sentinel
 
     system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
     if not system_prompt:
@@ -452,35 +345,16 @@ def query_with_clipboard_context(text: str, clipboard_content: str) -> str:
     if context_prefix:
         system_prompt = context_prefix + system_prompt
 
-    full_prompt = (
-        f"{system_prompt}\n\n"
-        f"[CONTEXTO DO CLIPBOARD]\n{clipboard_content}\n\n"
-        f"[INSTRUÇÃO]\n{text}"
-    )
-
     print(f"[...]  Query com clipboard ({len(clipboard_content)} chars contexto + {len(text)} chars instrução)...")
 
-    try:
-        from google import genai
-        client = _get_gemini_client()
-        def _api_call():
-            return _safe_text(client.models.generate_content(
-                model=state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
-                contents=full_prompt,
-                config=genai.types.GenerateContentConfig(temperature=0.3),
-            ))
-
-        answer = retry_api_call(_api_call, _is_rate_limit)
-        if answer:
-            print(f"[OK]   Resposta Gemini clipboard-context ({len(answer)} chars)")
-            return answer
-    except Exception as e:
-        if _is_rate_limit(e):
-            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
-            return _rate_limit_msg()
-        print(f"[WARN] Gemini indisponível ({e}), retornando transcrição com prefixo")
-
-    return f"[SEM RESPOSTA GEMINI] {text}"
+    prompt = _gp.build_query_with_clipboard(system_prompt, clipboard_content, text)
+    return _call_gemini(
+        prompt,
+        fallback=sentinel,
+        temperature=0.3,
+        success_log="Resposta Gemini clipboard-context",
+        fallback_log="Gemini indisponível, retornando transcrição com prefixo",
+    )
 
 
 def bullet_dump_with_gemini(text: str) -> str:
