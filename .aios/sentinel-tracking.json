@@ -1,7 +1,28 @@
 {
-  "findings": [],
+  "findings": [
+    {
+      "hash": "0bf781ceb3985d13",
+      "category": "complexity",
+      "subcategory": "large-file",
+      "severity": "HIGH",
+      "file": "voice/audio.py",
+      "message": "File has 834 lines (threshold: 800)",
+      "firstSeen": "2026-04-26T04:56:10.836Z",
+      "lastSeen": "2026-04-26T13:18:53.392Z"
+    },
+    {
+      "hash": "af94ea09c5717fa0",
+      "category": "complexity",
+      "subcategory": "long-function",
+      "severity": "HIGH",
+      "file": "voice/audio.py",
+      "message": "Function 'transcribe' has 103 lines (threshold: 100)",
+      "firstSeen": "2026-04-26T04:56:10.836Z",
+      "lastSeen": "2026-04-26T13:18:53.392Z"
+    }
+  ],
   "metadata": {
-    "lastScan": "2026-04-17T03:39:45.706Z",
+    "lastScan": "2026-04-26T15:22:39.946Z",
     "rollingWindowDays": 90,
     "aggregation": "by-pattern",
     "version": 1

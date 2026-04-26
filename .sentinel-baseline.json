@@ -5,14 +5,14 @@
       "category": "code-smell",
       "file": "voice/ai_provider.py",
       "message": "[E501] Line too long (90 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "d66131b629f19c20": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/app.py",
       "message": "[E501] Line too long (102 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "7648e48161bb4b03": {
       "severity": "LOW",
@@ -40,91 +40,91 @@
       "category": "code-smell",
       "file": "voice/clipboard.py",
       "message": "[E501] Line too long (110 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "57dd14a6f5d8614c": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/config.py",
       "message": "[E501] Line too long (91 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "a4d80671e8919300": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/gemini.py",
       "message": "[E501] Line too long (96 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "da57a22c68e2f648": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/gemini.py",
       "message": "[C901] `correct_with_gemini` is too complex (11 > 10)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "42e8356ba7c4c54d": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/history_search.py",
       "message": "[E501] Line too long (94 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "c1ceb4a078837ad8": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/logging_.py",
       "message": "[E501] Line too long (104 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "368f29abd332f576": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/modes.py",
       "message": "[E501] Line too long (102 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "6c18767b1212d62f": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/openai_.py",
       "message": "[E501] Line too long (92 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.516Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "b0fa9d4edbf5f117": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/openrouter.py",
       "message": "[E501] Line too long (96 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "9bc60cf8f831b2c3": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/overlay.py",
       "message": "[E501] Line too long (130 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "dc9121ede8dfb2fb": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/overlay.py",
       "message": "[C901] `_show` is too complex (14 > 10)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "5f359fc9bfb57e61": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/paths.py",
       "message": "[E501] Line too long (104 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "bd9036aaa232c091": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/shutdown.py",
       "message": "[E501] Line too long (95 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "99b03d854d4fbbbb": {
       "severity": "HIGH",
@@ -138,28 +138,28 @@
       "category": "code-smell",
       "file": "voice/state.py",
       "message": "[E501] Line too long (101 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "90456d776a0058bd": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/theme.py",
       "message": "[E501] Line too long (96 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "5661ea953227547b": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/tray.py",
       "message": "[E501] Line too long (93 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "04947c2af6cdcb08": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/tray.py",
       "message": "[C901] `_start_tray` is too complex (14 > 10)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "28e73ff14e44f2d4": {
       "severity": "LOW",
@@ -180,35 +180,35 @@
       "category": "code-smell",
       "file": "voice/vocabulary.py",
       "message": "[E501] Line too long (89 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "0952ed957ee3955c": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/webui/__init__.py",
       "message": "[E501] Line too long (89 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "6e7e3bc411eeceb9": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/webui/bridge.py",
       "message": "[E501] Line too long (109 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "d2d8446f7077e225": {
       "severity": "LOW",
       "category": "code-smell",
       "file": "voice/window_context.py",
       "message": "[E501] Line too long (95 > 88)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "db9ef6fd9b4df2d5": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/ai_provider.py",
       "message": "Function 'retry_api_call' has 7 parameters (threshold: 5)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
     },
     "438b3f1ef58cc3a9": {
       "severity": "HIGH",
@@ -278,14 +278,14 @@
       "category": "complexity",
       "file": "voice/clipboard.py",
       "message": "Function 'read_clipboard' has 54 lines (threshold: 50)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
     },
     "4541da4ee2ca2267": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/config.py",
       "message": "Function 'load_config' has 99 lines (threshold: 50)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
     },
     "9166f5ab94c02a48": {
       "severity": "MEDIUM",
@@ -313,35 +313,35 @@
       "category": "complexity",
       "file": "voice/history_search.py",
       "message": "Function '_build' has 88 lines (threshold: 50)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
     },
     "2a83f4b5124ba405": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/logging_.py",
       "message": "Function '_append_history' has 7 parameters (threshold: 5)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
     },
     "50b7e199a34d0f99": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/overlay.py",
       "message": "File has 438 lines (threshold: 400)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
     },
     "c19a89f32f8ab15b": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/overlay.py",
       "message": "Function '_build' has 72 lines (threshold: 50)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
     },
     "45656bf592eede56": {
       "severity": "MEDIUM",
       "category": "complexity",
       "file": "voice/overlay.py",
       "message": "Function '_show' has 67 lines (threshold: 50)",
-      "acceptedAt": "2026-04-16T14:23:55.517Z"
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
     },
     "877ceca6e894d68a": {
       "severity": "MEDIUM",
@@ -405,33 +405,189 @@
       "file": "voice/ui.py",
       "message": "Function '_build_section_general' has 53 lines (threshold: 50)",
       "acceptedAt": "2026-04-16T14:23:55.517Z"
+    },
+    "b2f168fe19001b84": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/app.py",
+      "message": "[C901] `_hotkey_loop` is too complex (11 > 10)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "138535d2fa0bf4fa": {
+      "severity": "LOW",
+      "category": "code-smell",
+      "file": "voice/hands_free.py",
+      "message": "[E501] Line too long (91 > 88)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "b897d51d3d15a06b": {
+      "severity": "LOW",
+      "category": "code-smell",
+      "file": "voice/hotkey.py",
+      "message": "[E501] Line too long (97 > 88)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "ae2e3200efcd8d92": {
+      "severity": "LOW",
+      "category": "code-smell",
+      "file": "voice/recording.py",
+      "message": "[E501] Line too long (94 > 88)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "8f86156f57e70c96": {
+      "severity": "LOW",
+      "category": "code-smell",
+      "file": "voice/transcription.py",
+      "message": "[E501] Line too long (95 > 88)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "516e94ea0ed06664": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/transcription.py",
+      "message": "[C408] Unnecessary `dict()` call (rewrite as a literal)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "390fb5498cdcca4f": {
+      "severity": "LOW",
+      "category": "code-smell",
+      "file": "voice/whisper.py",
+      "message": "[E501] Line too long (98 > 88)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "703ba386fdc52007": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/whisper.py",
+      "message": "[C901] `get_whisper_model` is too complex (17 > 10)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "c4023600a36e0bb2": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/ai_provider.py",
+      "message": "Function 'call_with_fallback' has 7 parameters (threshold: 5)",
+      "acceptedAt": "2026-04-26T15:22:35.611Z"
+    },
+    "f7fa1e194025ce4f": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/app.py",
+      "message": "Function '_hotkey_loop' has 74 lines (threshold: 50)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "b0501cc2da9b3808": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/gemini.py",
+      "message": "File has 574 lines (threshold: 400)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "82f0912b19403feb": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/gemini.py",
+      "message": "Function 'structure_as_prompt' has 55 lines (threshold: 50)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "7826ef1ee33b3423": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/hands_free.py",
+      "message": "Function 'hands_free_loop' has 91 lines (threshold: 50)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "2d14adc880959ccb": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/recording.py",
+      "message": "Function '_start_recording' has 52 lines (threshold: 50)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "15282f97c22ddd58": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/transcription.py",
+      "message": "File has 556 lines (threshold: 400)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "1f50718c76271d71": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/transcription.py",
+      "message": "Function '_do_transcription' has 60 lines (threshold: 50)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "149095baef321a0d": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/transcription.py",
+      "message": "Function '_transcribe_cpu_fallback' has 5 parameters (threshold: 5)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "87257e2c613645a6": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/transcription.py",
+      "message": "Function '_transcribe_model_fallback' has 5 parameters (threshold: 5)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "10125311b9cd0b3e": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/transcription.py",
+      "message": "Function '_transcribe_without_vad_on_empty' has 6 parameters (threshold: 5)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "9008eba5fdb8f38f": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/transcription.py",
+      "message": "Function '_build_timing_and_log' has 5 parameters (threshold: 5)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "00612bf70c0df361": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/transcription.py",
+      "message": "Function '_dispatch_transcribed_text' has 7 parameters (threshold: 5)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
+    },
+    "c40da4c626bdce37": {
+      "severity": "MEDIUM",
+      "category": "complexity",
+      "file": "voice/whisper.py",
+      "message": "Function 'get_whisper_model' has 99 lines (threshold: 50)",
+      "acceptedAt": "2026-04-26T15:22:35.612Z"
     }
   },
   "fileScores": {
-    "voice/ai_provider.py": 16,
-    "voice/app.py": 16,
-    "voice/audio.py": 79,
+    "voice/ai_provider.py": 14,
+    "voice/app.py": 19,
     "voice/clipboard.py": 12,
     "voice/config.py": 10,
-    "voice/gemini.py": 51,
+    "voice/gemini.py": 22,
+    "voice/hands_free.py": 7,
     "voice/history_search.py": 7,
+    "voice/hotkey.py": 4,
     "voice/logging_.py": 4,
     "voice/modes.py": 2,
     "voice/openai_.py": 10,
     "voice/openrouter.py": 13,
     "voice/overlay.py": 19,
     "voice/paths.py": 1,
+    "voice/recording.py": 5,
     "voice/shutdown.py": 2,
-    "voice/snippets.py": 7,
     "voice/state.py": 3,
     "voice/theme.py": 1,
+    "voice/transcription.py": 44,
     "voice/tray.py": 6,
-    "voice/ui.py": 126,
     "voice/vocabulary.py": 4,
     "voice/webui/__init__.py": 1,
     "voice/webui/bridge.py": 3,
+    "voice/whisper.py": 22,
     "voice/window_context.py": 3
   },
-  "acceptedAt": "2026-04-16T14:23:55.517Z",
+  "acceptedAt": "2026-04-26T15:22:35.612Z",
   "version": 1
 }
