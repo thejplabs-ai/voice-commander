@@ -27,8 +27,10 @@ def _register_cuda_dlls() -> None:
             bin_dir = os.path.join(os.path.dirname(pkg.__path__[0]), pkg.__name__.split(".")[-1], "bin")
             if os.path.isdir(bin_dir):
                 os.add_dll_directory(bin_dir)
-    except (ImportError, Exception):
-        pass  # pacotes nvidia não instalados — CUDA via toolkit ou indisponível
+    except ImportError:
+        pass  # nvidia.cublas/cudnn não instalados — CUDA via toolkit ou indisponível
+    except (AttributeError, OSError) as e:
+        print(f"[WARN] CUDA DLL discovery falhou ({type(e).__name__}: {e}) — continuando sem add_dll_directory")
 
 _register_cuda_dlls()
 

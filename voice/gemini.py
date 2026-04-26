@@ -219,8 +219,9 @@ def correct_with_gemini(text: str) -> str:
                     for word in candidates:
                         _vocab.add_word(word)
                     print(f"[INFO] Vocabulário: +{len(candidates)} palavras ({', '.join(candidates)})")
-            except Exception:
-                pass  # vocabulário nunca deve crashar a correção
+            except Exception as _vocab_e:
+                # Vocabulário nunca deve crashar a correção, mas regressões devem ser visíveis.
+                print(f"[WARN] Vocabulário falhou ({type(_vocab_e).__name__}: {_vocab_e})")
             return corrected
     except Exception as e:
         if _is_rate_limit(e):

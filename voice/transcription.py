@@ -65,8 +65,9 @@ def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
     try:
         from voice import vocabulary as _vocab
         initial_prompt += _vocab.get_initial_prompt_suffix()
-    except Exception:
-        pass  # vocabulário nunca deve crashar a transcrição
+    except Exception as _vocab_e:
+        # Vocabulário nunca deve crashar a transcrição, mas regressões devem ser visíveis.
+        print(f"[WARN] Vocabulário (initial_prompt) falhou ({type(_vocab_e).__name__}: {_vocab_e})")
 
     _transcribe_sig = _inspect.signature(model.transcribe)
     _supports_hotwords = "hotwords" in _transcribe_sig.parameters
