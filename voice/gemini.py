@@ -91,6 +91,66 @@ def _rate_limit_msg() -> str:
     )
 
 
+def _call_gemini(
+    prompt: str,
+    *,
+    fallback: str,
+    temperature: float | None = None,
+    success_log: str | None = None,
+    fallback_log: str = "Gemini indisponível",
+) -> str:
+    """
+    Centralized Gemini call with retry + rate-limit + error handling.
+
+    Returns response text on success, fallback string on any failure path.
+
+    Args:
+        prompt: Full prompt string already built by caller.
+        fallback: Text to return on any failure (no API key, generic exception,
+            empty response). Callers that need a sentinel (e.g. query_with_gemini's
+            "[SEM RESPOSTA GEMINI] ...") pass it here.
+        temperature: If None, the `config` kwarg is OMITTED from the SDK call
+            (preserves legacy default behavior of correct_with_gemini /
+            structure_as_prompt). If float, GenerateContentConfig(temperature=X)
+            is passed.
+        success_log: If provided, prints "[OK]   {success_log} ({len} chars)" on
+            success. If None, no success log (caller handles its own logging,
+            e.g. correct_with_gemini's double-print).
+        fallback_log: Message used in the "[WARN] {fallback_log} ({e})" line on
+            generic exception.
+
+    Note:
+        Rate-limit (429) is intercepted and returns _rate_limit_msg() — NOT the
+        fallback. This matches existing per-function behavior across gemini.py.
+    """
+    if not state._GEMINI_API_KEY:
+        return fallback
+    try:
+        from google import genai
+        client = _get_gemini_client()
+
+        def _api_call():
+            kwargs = {
+                "model": state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash"),
+                "contents": prompt,
+            }
+            if temperature is not None:
+                kwargs["config"] = genai.types.GenerateContentConfig(temperature=temperature)
+            return _safe_text(client.models.generate_content(**kwargs))
+
+        result = retry_api_call(_api_call, _is_rate_limit)
+        if result:
+            if success_log:
+                print(f"[OK]   {success_log} ({len(result)} chars)")
+            return result
+    except Exception as e:
+        if _is_rate_limit(e):
+            print("[WARN] Gemini: rate limit 429 — aguardar 1 min")
+            return _rate_limit_msg()
+        print(f"[WARN] {fallback_log} ({e})")
+    return fallback
+
+
 def transcribe_audio_with_gemini(wav_path: str) -> str:
     """
     Transcreve áudio diretamente via Gemini Flash (audio input).

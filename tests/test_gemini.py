@@ -93,6 +93,125 @@ def test_rate_limit_detection(msg, expected):
 
 
 # ---------------------------------------------------------------------------
+# _call_gemini() — centralized call wrapper (FP-2 R2)
+# ---------------------------------------------------------------------------
+
+class TestCallGemini:
+    """Tests for the centralized _call_gemini() helper.
+
+    Helper is isolated from public dispatchers (R3 wires them up). These tests
+    validate behavior contracts in isolation.
+    """
+
+    def test_success_returns_api_text_and_logs(self, monkeypatch, capsys):
+        """Success path: returns API text; logs '[OK]   {success_log}' when provided."""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = _make_response("response text")
+        monkeypatch.setattr(state, "_gemini_client", mock_client)
+
+        with patch("voice.gemini._get_gemini_client", return_value=mock_client):
+            result = gemini._call_gemini(
+                "test prompt",
+                fallback="FALLBACK",
+                success_log="Test op",
+            )
+
+        assert result == "response text"
+        captured = capsys.readouterr()
+        assert "[OK]   Test op" in captured.out
+        assert "(13 chars)" in captured.out  # len("response text") == 13
+
+    def test_success_no_log_when_success_log_none(self, monkeypatch, capsys):
+        """When success_log is None, no [OK] line is printed (preserves
+        correct_with_gemini's double-print pattern)."""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = _make_response("ok")
+        monkeypatch.setattr(state, "_gemini_client", mock_client)
+
+        with patch("voice.gemini._get_gemini_client", return_value=mock_client):
+            result = gemini._call_gemini("prompt", fallback="fb", success_log=None)
+
+        assert result == "ok"
+        captured = capsys.readouterr()
+        assert "[OK]" not in captured.out
+
+    def test_no_api_key_returns_fallback(self, monkeypatch):
+        """When _GEMINI_API_KEY is falsy, returns fallback without calling client."""
+        monkeypatch.setattr(state, "_GEMINI_API_KEY", None)
+        mock_client = MagicMock()
+
+        with patch("voice.gemini._get_gemini_client", return_value=mock_client):
+            result = gemini._call_gemini("prompt", fallback="MY_FALLBACK")
+
+        assert result == "MY_FALLBACK"
+        mock_client.models.generate_content.assert_not_called()
+
+    def test_rate_limit_returns_rate_limit_msg_not_fallback(self, monkeypatch):
+        """Rate-limit (429) returns _rate_limit_msg(), NOT the caller's fallback.
+
+        Matches existing per-function behavior across gemini.py.
+        """
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = Exception("429 RESOURCE_EXHAUSTED")
+        monkeypatch.setattr(state, "_gemini_client", mock_client)
+
+        with patch("voice.gemini._get_gemini_client", return_value=mock_client):
+            result = gemini._call_gemini("prompt", fallback="ORIGINAL_TEXT")
+
+        assert "[LIMITE ATINGIDO]" in result
+        assert result != "ORIGINAL_TEXT"
+
+    def test_generic_exception_returns_fallback_and_warns(self, monkeypatch, capsys):
+        """Generic exception: returns fallback, prints '[WARN] {fallback_log} ({e})'."""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = Exception("connection timeout")
+        monkeypatch.setattr(state, "_gemini_client", mock_client)
+
+        with patch("voice.gemini._get_gemini_client", return_value=mock_client):
+            result = gemini._call_gemini(
+                "prompt",
+                fallback="FALLBACK_TEXT",
+                fallback_log="Custom fallback msg",
+            )
+
+        assert result == "FALLBACK_TEXT"
+        captured = capsys.readouterr()
+        assert "[WARN] Custom fallback msg" in captured.out
+        assert "connection timeout" in captured.out
+
+    def test_temperature_none_omits_config_kwarg(self, monkeypatch):
+        """When temperature=None, the SDK call must NOT receive a `config` kwarg.
+
+        Critical: matches legacy correct_with_gemini / structure_as_prompt behavior
+        where the SDK uses its internal default instead of an explicit
+        GenerateContentConfig(temperature=None).
+        """
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = _make_response("out")
+        monkeypatch.setattr(state, "_gemini_client", mock_client)
+
+        with patch("voice.gemini._get_gemini_client", return_value=mock_client):
+            gemini._call_gemini("prompt", fallback="fb", temperature=None)
+
+        call_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert "config" not in call_kwargs
+        assert call_kwargs["contents"] == "prompt"
+        assert call_kwargs["model"] == "gemini-2.5-flash"
+
+    def test_temperature_value_passes_config_kwarg(self, monkeypatch):
+        """When temperature is a float, the SDK call receives `config` with the value."""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = _make_response("out")
+        monkeypatch.setattr(state, "_gemini_client", mock_client)
+
+        with patch("voice.gemini._get_gemini_client", return_value=mock_client):
+            gemini._call_gemini("prompt", fallback="fb", temperature=0.3)
+
+        call_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert "config" in call_kwargs
+
+
+# ---------------------------------------------------------------------------
 # correct_with_gemini()
 # ---------------------------------------------------------------------------
 
