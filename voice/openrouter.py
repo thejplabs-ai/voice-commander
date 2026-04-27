@@ -151,15 +151,9 @@ def correct(text: str) -> str:
 def simplify(text: str) -> str:
     """Organiza transcrição em prompt limpo com bullet points."""
     try:
-        system = (
-            "You are a prompt engineering specialist. "
-            "Transform the voice transcription into a clean, direct prompt for any LLM. "
-            "ABSOLUTE PRIORITY: Preserve EVERY detail, context and nuance. "
-            "No XML, no SYSTEM/USER sections, no headers, no labels like 'Context:' or 'Objective:'. "
-            "Bullet points should be complete sentences. "
-            "Return ONLY the prompt, no additional explanations."
-        )
-        result = _call(system, text, _model_for_mode("simple"), temperature=0.1)
+        system = _gp.SYSTEM_SIMPLIFY
+        user = _gp.user_simplify(text, context_prefix=_ctx_prefix())
+        result = _call(system, user, _model_for_mode("simple"), temperature=0.1)
         if result:
             print(f"[OK]   Prompt simplificado ({len(result)} chars)")
             return result
@@ -173,14 +167,9 @@ def simplify(text: str) -> str:
 def structure(text: str) -> str:
     """Estrutura transcrição em prompt COSTAR com XML tags."""
     try:
-        system = (
-            "You are a prompt engineering specialist for LLMs (Claude, GPT-4, Gemini). "
-            "Transform the voice transcription into a professional structured prompt using the COSTAR framework with XML tags. "
-            "Format: SYSTEM PROMPT section with <role>, <behavior>, <output_format> tags; "
-            "USER PROMPT section with <context>, <objective>, <style_and_tone>, <response> tags. "
-            "Be specific in all sections. Return ONLY the structured prompt, no explanations."
-        )
-        result = _call(system, text, _model_for_mode("prompt"), temperature=0.2)
+        system = _gp.SYSTEM_STRUCTURE
+        user = _gp.user_structure(text)
+        result = _call(system, user, _model_for_mode("prompt"), temperature=0.2)
         if result:
             print(f"[OK]   Prompt estruturado ({len(result)} chars)")
             return result
@@ -191,18 +180,25 @@ def structure(text: str) -> str:
     return text
 
 
+def _query_system_prompt() -> str:
+    """
+    Resolve system prompt do modo query, alinhado a gemini.query_with_gemini:
+    QUERY_SYSTEM_PROMPT custom > DEFAULT_QUERY_SYSTEM_PROMPT (PT-BR), com
+    context_prefix (User Profile + Window Context) prepended quando presente.
+    """
+    system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
+    if not system_prompt:
+        system_prompt = _gp.DEFAULT_QUERY_SYSTEM_PROMPT
+    context_prefix = _ctx_prefix()
+    if context_prefix:
+        system_prompt = context_prefix + system_prompt
+    return system_prompt
+
+
 def query(text: str) -> str:
     """Envia pergunta e retorna resposta."""
     try:
-        system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
-        if not system_prompt:
-            system_prompt = (
-                "You are a direct and precise assistant. "
-                "Answer the user's question clearly, concisely, and helpfully. "
-                "Go straight to the point without unnecessary filler. "
-                "The text may mix Portuguese and English — respond in the same language as the question."
-            )
-        system = system_prompt
+        system = _query_system_prompt()
         result = _call(system, text, _model_for_mode("query"), temperature=0.3)
         if result:
             print(f"[OK]   Resposta ({len(result)} chars)")
@@ -219,14 +215,8 @@ def query_with_clipboard(text: str, clipboard_content: str) -> str:
     if not clipboard_content.strip():
         return query(text)
     try:
-        system_prompt = state._CONFIG.get("QUERY_SYSTEM_PROMPT", "").strip()
-        if not system_prompt:
-            system_prompt = (
-                "You are a direct and precise assistant. "
-                "Answer the user's question clearly, concisely, and helpfully."
-            )
-        system = system_prompt
-        user = f"[CONTEXTO DO CLIPBOARD]\n{clipboard_content}\n\n[INSTRUCAO]\n{text}"
+        system = _query_system_prompt()
+        user = f"[CONTEXTO DO CLIPBOARD]\n{clipboard_content}\n\n[INSTRUÇÃO]\n{text}"
         result = _call(system, user, _model_for_mode("query"), temperature=0.3)
         if result:
             print(f"[OK]   Resposta clipboard-context ({len(result)} chars)")
