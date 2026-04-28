@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "_doc": "Config para /new-session, /close-session (ADR-047). Editavel por projeto.",
+  "worktree_base_dir": null,
+  "_doc_worktree_base_dir": "null = sibling do repo (<parent>/<repo-name>-worktrees). Override absoluto se nao-null.",
+  "default_branch": null,
+  "_doc_default_branch": "null = detect via 'git symbolic-ref refs/remotes/origin/HEAD'. Override (ex: 'main') se nao-null.",
+  "symlinks": [
+    ".env",
+    ".env.local",
+    ".claude/settings.local.json",
+    "node_modules"
+  ],
+  "_doc_symlinks": "Paths (relativos ao repo root) que serao symlinkados do principal -> worktree no /new-session. Skip silencioso se path nao existe."
+}

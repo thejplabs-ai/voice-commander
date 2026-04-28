@@ -1,0 +1,4 @@
+{
+  "type": "commonjs",
+  "_doc": "Override: scripts/sessions/* sao CommonJS independente do package.json raiz. Permite uso em projetos ESM (type: module) sem precisar renomear .js -> .cjs."
+}
