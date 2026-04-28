@@ -1,0 +1,44 @@
+{
+  "enabledMcpjsonServers": [
+    "context7",
+    "claude_ai_n8n",
+    "exa"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-notify.js\"",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git push*)",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-push-session-guard.js\"",
+            "timeout": 15000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre-edit-scope-detect.js\"",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
