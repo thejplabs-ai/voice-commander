@@ -46,8 +46,6 @@ _whisper_cache_key: tuple = ()
 # que sem este lock podem ambas disparar WhisperModel(...) em paralelo e
 # duplicar VRAM (OOM com large-v3).
 _whisper_model_lock = threading.Lock()
-_openai_client = None
-_OPENAI_API_KEY: str | None = None
 
 # UI state
 _ctk_available: bool = False

@@ -40,6 +40,9 @@
 # Any change here must be reviewed against the smoke-test matrix in
 # .aios/reports/sentinel/fix-plan-gemini-prompts.md.
 
+from dataclasses import dataclass
+from typing import Callable, Literal
+
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -302,3 +305,168 @@ def build_translate(text: str, target_lang: str, context_prefix: str) -> str:
     lang_name = "inglês" if target_lang == "en" else "português brasileiro"
     system = SYSTEM_TRANSLATE.format(lang_name=lang_name)
     return f"{context_prefix}{system}\n\n{user_translate(text)}"
+
+
+# ── PromptSpec table — single source of truth for per-mode prompt + behavior ─
+#
+# Consumed by ai_provider._run() through the Provider Protocol. Replaces the
+# previous shape where each provider (gemini.py, openrouter.py, openai_.py)
+# carried its own copy of mode dispatch + system prompt + temperature.
+#
+# SYSTEM_*, user_*, build_* exports above remain the byte-identity source of
+# truth (test_gemini_prompts.py asserts the invariant). The PROMPTS entries
+# below reference those constants directly — no duplication.
+
+
+@dataclass(frozen=True)
+class PromptSpec:
+    """Per-mode prompt config + behavior knobs.
+
+    Fields:
+        system_resolver:  cfg dict -> SYSTEM message string. Static modes
+            return the SYSTEM_X constant; dynamic modes (correct, translate,
+            query) resolve based on cfg.
+        user_builder:     (text, **extra) -> USER message string. extra kwargs
+            cover modes that need a second input (query_with_clipboard, command).
+        temperature:      Float passed to OpenRouter. Gemini uses it too unless
+            gemini_uses_sdk_default=True (for legacy transcribe/prompt parity).
+        speed_tier:       "fast" | "quality" — selects OpenRouter model.
+        success_log:      cfg dict -> log label ("Prompt simplificado"), or
+            None when the spec uses success_hook instead.
+        success_hook:     (cfg, original_text, result) -> None. Called on a
+            successful API response. Used by transcribe for double-print +
+            vocabulary learning. Other modes leave this None.
+        fallback_kind:    Which fallback _run() returns on failure:
+            "text"     → return the original input text
+            "selected" → return state._command_selected_text (command mode)
+            "sentinel" → return "[SEM RESPOSTA] {text}" (query modes)
+        gemini_uses_sdk_default: When True, GeminiProvider omits the `config`
+            kwarg from generate_content(), preserving legacy SDK-default
+            temperature behavior for transcribe + prompt modes (matches
+            voice/gemini.py:206-208 and test_call_gemini contract).
+    """
+    system_resolver: Callable[[dict], str]
+    user_builder: Callable[..., str]
+    temperature: float
+    speed_tier: Literal["fast", "quality"]
+    success_log: Callable[[dict], str] | None
+    fallback_kind: Literal["text", "selected", "sentinel"]
+    gemini_uses_sdk_default: bool = False
+    success_hook: Callable[[dict, str, str], None] | None = None
+
+
+def _resolve_correct(cfg: dict) -> str:
+    """smart (default) vs minimal. 'off' is handled by callers (no API call)."""
+    return SYSTEM_CORRECT_MINIMAL if cfg.get("CORRECTION_STYLE") == "minimal" else SYSTEM_CORRECT_SMART
+
+
+def _resolve_translate(cfg: dict) -> str:
+    target = cfg.get("TRANSLATE_TARGET_LANG", "en")
+    lang_name = "inglês" if target == "en" else "português brasileiro"
+    return SYSTEM_TRANSLATE.format(lang_name=lang_name)
+
+
+def _resolve_query_system(cfg: dict) -> str:
+    """QUERY_SYSTEM_PROMPT override > DEFAULT_QUERY_SYSTEM_PROMPT."""
+    custom = (cfg.get("QUERY_SYSTEM_PROMPT") or "").strip()
+    return custom or DEFAULT_QUERY_SYSTEM_PROMPT
+
+
+def _transcribe_success_hook(cfg: dict, original: str, result: str) -> None:
+    """transcribe-specific success: double-print + vocabulary learning.
+
+    Previously duplicated in voice/gemini.py:212-225 and voice/openrouter.py:131-143.
+    Consolidated here so both providers share the same post-correction logic.
+    """
+    print(f"[OK]   Original : {original}")
+    print(f"[OK]   Corrigido: {result}")
+    try:
+        from voice import vocabulary as _vocab
+        candidates = _vocab.learn_from_correction(original, result)
+        if candidates:
+            for word in candidates:
+                _vocab.add_word(word)
+            print(f"[INFO] Vocabulário: +{len(candidates)} palavras ({', '.join(candidates)})")
+    except Exception as e:
+        print(f"[WARN] Vocabulário falhou ({type(e).__name__}: {e})")
+
+
+PROMPTS: dict[str, PromptSpec] = {
+    "transcribe": PromptSpec(
+        system_resolver=_resolve_correct,
+        user_builder=lambda text, **_: user_correct(text),
+        temperature=0.0,
+        speed_tier="fast",
+        success_log=None,
+        fallback_kind="text",
+        gemini_uses_sdk_default=True,
+        success_hook=_transcribe_success_hook,
+    ),
+    "simple": PromptSpec(
+        system_resolver=lambda cfg: SYSTEM_SIMPLIFY,
+        user_builder=lambda text, **_: user_simplify(text),
+        temperature=0.1,
+        speed_tier="quality",
+        success_log=lambda cfg: "Prompt simplificado",
+        fallback_kind="text",
+    ),
+    "prompt": PromptSpec(
+        system_resolver=lambda cfg: SYSTEM_STRUCTURE,
+        user_builder=lambda text, **_: user_structure(text),
+        temperature=0.2,
+        speed_tier="quality",
+        success_log=lambda cfg: "Prompt estruturado",
+        fallback_kind="text",
+        gemini_uses_sdk_default=True,
+    ),
+    "query": PromptSpec(
+        system_resolver=_resolve_query_system,
+        user_builder=lambda text, **_: text,
+        temperature=0.3,
+        speed_tier="quality",
+        success_log=lambda cfg: "Resposta",
+        fallback_kind="sentinel",
+    ),
+    "query_with_clipboard": PromptSpec(
+        system_resolver=_resolve_query_system,
+        user_builder=lambda text, clipboard, **_: (
+            f"[CONTEXTO DO CLIPBOARD]\n{clipboard}\n\n[INSTRUÇÃO]\n{text}"
+        ),
+        temperature=0.3,
+        speed_tier="quality",
+        success_log=lambda cfg: "Resposta clipboard-context",
+        fallback_kind="sentinel",
+    ),
+    "bullet": PromptSpec(
+        system_resolver=lambda cfg: SYSTEM_BULLET_DUMP,
+        user_builder=lambda text, **_: user_bullet_dump(text),
+        temperature=0.2,
+        speed_tier="fast",
+        success_log=lambda cfg: "Bullet dump",
+        fallback_kind="text",
+    ),
+    "email": PromptSpec(
+        system_resolver=lambda cfg: SYSTEM_DRAFT_EMAIL,
+        user_builder=lambda text, **_: user_draft_email(text),
+        temperature=0.3,
+        speed_tier="fast",
+        success_log=lambda cfg: "Email draft",
+        fallback_kind="text",
+    ),
+    "translate": PromptSpec(
+        system_resolver=_resolve_translate,
+        user_builder=lambda text, **_: user_translate(text),
+        temperature=0.1,
+        speed_tier="fast",
+        success_log=lambda cfg: f"Traduzido → {cfg.get('TRANSLATE_TARGET_LANG', 'en')}",
+        fallback_kind="text",
+    ),
+    "command": PromptSpec(
+        system_resolver=lambda cfg: SYSTEM_COMMAND,
+        user_builder=lambda text, selected_text, **_: user_command(text, selected_text),
+        temperature=0.2,
+        speed_tier="quality",
+        success_log=lambda cfg: "Comando aplicado",
+        fallback_kind="selected",
+    ),
+}

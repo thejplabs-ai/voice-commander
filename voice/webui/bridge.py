@@ -27,7 +27,7 @@ class WebBridge:
         """Returns the full config dict for populating form fields."""
         cfg = dict(state._CONFIG)
         # Mask API keys — only show last 4 chars
-        for k in ("GEMINI_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+        for k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY"):
             val = cfg.get(k)
             if val and len(val) > 4:
                 cfg[k] = "***" + val[-4:]
@@ -115,8 +115,6 @@ class WebBridge:
             if api_key:
                 if provider == "openrouter":
                     env_vals["OPENROUTER_API_KEY"] = api_key
-                elif provider == "openai":
-                    env_vals["OPENAI_API_KEY"] = api_key
                 else:
                     env_vals["GEMINI_API_KEY"] = api_key
             if license_key:

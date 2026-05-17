@@ -47,7 +47,6 @@ def _needs_onboarding() -> bool:
     has_ai_key = (
         state._CONFIG.get("GEMINI_API_KEY")
         or state._CONFIG.get("OPENROUTER_API_KEY")
-        or state._CONFIG.get("OPENAI_API_KEY")
     )
     if not has_ai_key:
         return True
@@ -138,9 +137,7 @@ def _log_startup_info() -> None:
     elif gemini_ok:
         print(f"  AI      : Gemini ({key_display}) [{gemini_model}]")
     else:
-        openai_ok = bool(state._CONFIG.get("OPENAI_API_KEY"))
-        openai_model = state._CONFIG.get("OPENAI_MODEL", "gpt-4o-mini")
-        print(f"  AI      : OpenAI {'(configurado)' if openai_ok else '(sem chave)'} [{openai_model}]")
+        print("  AI      : sem chave configurada")
     print(f"  Licença : {_lic_msg}")
     whisper_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
     beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)

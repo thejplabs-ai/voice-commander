@@ -143,7 +143,7 @@ def test_correction_style_smart_gemini():
 
 def test_correction_style_minimal_openrouter():
     """CORRECTION_STYLE=minimal deve passar o system prompt MINIMALISTA ao _call."""
-    state._CONFIG = _set_config(CORRECTION_STYLE="minimal")
+    state._CONFIG = _set_config(CORRECTION_STYLE="minimal", OPENROUTER_API_KEY="or-test-key")
 
     captured_system: list[str] = []
 
@@ -167,7 +167,7 @@ def test_correction_style_minimal_openrouter():
 
 def test_correction_style_smart_openrouter():
     """CORRECTION_STYLE=smart deve passar o system prompt smart ao _call."""
-    state._CONFIG = _set_config(CORRECTION_STYLE="smart")
+    state._CONFIG = _set_config(CORRECTION_STYLE="smart", OPENROUTER_API_KEY="or-test-key")
 
     captured_system: list[str] = []
 
