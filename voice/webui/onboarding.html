@@ -1226,10 +1226,6 @@ kbd {
                         <span class="provider-tab-name">Gemini</span>
                         <span class="provider-tab-desc">Google AI, gratuito</span>
                     </button>
-                    <button class="provider-tab" id="tab-openai" onclick="switchProvider('openai')">
-                        <span class="provider-tab-name">OpenAI</span>
-                        <span class="provider-tab-desc">GPT-4o Mini</span>
-                    </button>
                 </div>
 
                 <!-- OpenRouter panel -->
@@ -1309,46 +1305,6 @@ kbd {
                     <div class="test-row">
                         <button class="btn btn-ghost btn-sm" id="test-gemini-btn" onclick="testApiKey()">Testar Conexao</button>
                         <span class="status-label" id="api-status-gemini"></span>
-                    </div>
-                </div>
-
-                <!-- OpenAI panel -->
-                <div id="provider-openai" style="display:none;">
-                    <div class="card instructions-card">
-                        <div class="instructions-title">Como obter</div>
-                        <div class="instruction-steps">
-                            <div class="instruction-step">
-                                <div class="step-num">1</div>
-                                <div class="step-text">Acesse <a href="#" onclick="openLink('https://platform.openai.com/api-keys');return false;">platform.openai.com/api-keys</a></div>
-                            </div>
-                            <div class="instruction-step">
-                                <div class="step-num">2</div>
-                                <div class="step-text">Login na sua conta OpenAI</div>
-                            </div>
-                            <div class="instruction-step">
-                                <div class="step-num">3</div>
-                                <div class="step-text">Clique em <strong style="color:var(--text-primary)">Create new secret key</strong></div>
-                            </div>
-                            <div class="instruction-step">
-                                <div class="step-num">4</div>
-                                <div class="step-text">Copie a chave e cole abaixo</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="field-group">
-                        <label class="field-label" for="openai-input">OpenAI API Key</label>
-                        <div class="input-wrap">
-                            <input type="password" id="openai-input" placeholder="sk-..." autocomplete="off" spellcheck="false">
-                            <button class="eye-btn" type="button" onclick="toggleEye('openai-input', this)" aria-label="Mostrar/ocultar">
-                                <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="test-row">
-                        <button class="btn btn-ghost btn-sm" id="test-openai-btn" onclick="testApiKey()">Testar Conexao</button>
-                        <span class="status-label" id="api-status-openai"></span>
                     </div>
                 </div>
 
@@ -1626,7 +1582,7 @@ function updateFooter(n) {
 /* ── Step 4 summary ─────────────────────────────────────────────── */
 
 function renderDoneSummary() {
-    var providerNames = { openrouter: 'OpenRouter', gemini: 'Gemini', openai: 'OpenAI' };
+    var providerNames = { openrouter: 'OpenRouter', gemini: 'Gemini' };
     var providerLabel = document.getElementById('done-provider');
     var sub = document.getElementById('done-sub');
 
@@ -1664,7 +1620,7 @@ var selectedProvider = 'openrouter';
 
 function switchProvider(prov) {
     selectedProvider = prov;
-    var providers = ['openrouter', 'gemini', 'openai'];
+    var providers = ['openrouter', 'gemini'];
     providers.forEach(function (p) {
         document.getElementById('provider-' + p).style.display = (p === prov) ? '' : 'none';
         document.getElementById('tab-' + p).classList.toggle('active', p === prov);
@@ -1678,7 +1634,7 @@ function switchProvider(prov) {
 /* ── Get active API key ─────────────────────────────────────────── */
 
 function getActiveApiKey() {
-    var inputMap = { openrouter: 'openrouter-input', gemini: 'gemini-input', openai: 'openai-input' };
+    var inputMap = { openrouter: 'openrouter-input', gemini: 'gemini-input' };
     var input = document.getElementById(inputMap[selectedProvider]);
     return input ? input.value.trim() : '';
 }
@@ -1686,9 +1642,9 @@ function getActiveApiKey() {
 /* ── Test API Key ───────────────────────────────────────────────── */
 
 async function testApiKey() {
-    var inputMap  = { openrouter: 'openrouter-input', gemini: 'gemini-input', openai: 'openai-input' };
-    var btnMap    = { openrouter: 'test-openrouter-btn', gemini: 'test-gemini-btn', openai: 'test-openai-btn' };
-    var statusMap = { openrouter: 'api-status-openrouter', gemini: 'api-status-gemini', openai: 'api-status-openai' };
+    var inputMap  = { openrouter: 'openrouter-input', gemini: 'gemini-input' };
+    var btnMap    = { openrouter: 'test-openrouter-btn', gemini: 'test-gemini-btn' };
+    var statusMap = { openrouter: 'api-status-openrouter', gemini: 'api-status-gemini' };
 
     var key    = document.getElementById(inputMap[selectedProvider]).value.trim();
     var btn    = document.getElementById(btnMap[selectedProvider]);
@@ -1706,15 +1662,8 @@ async function testApiKey() {
         var res;
         if (selectedProvider === 'openrouter') {
             res = await api.test_openrouter_key(key);
-        } else if (selectedProvider === 'gemini') {
-            res = await api.test_gemini_key(key);
         } else {
-            // OpenAI: basic format validation (bridge doesn't have test_openai_key)
-            if (key.startsWith('sk-') && key.length > 20) {
-                res = { ok: true, message: 'Formato OK' };
-            } else {
-                res = { ok: false, message: 'Formato invalido. Deve comecar com sk-' };
-            }
+            res = await api.test_gemini_key(key);
         }
         if (res.ok) {
             setStatus(status, res.message || 'Conexao OK', 'ok');

@@ -1,242 +1,244 @@
 """
-Tests for voice/ai_provider.py — provider dispatch routing.
+Tests for voice/ai_provider.py — Provider Protocol dispatch + mode resolution.
 
-Strategy: patch sys.modules to inject mock Gemini/OpenAI/OpenRouter modules,
-and control provider priority via config keys.
-Priority: OPENROUTER_API_KEY > GEMINI_API_KEY > OPENAI_API_KEY
+Strategy: monkeypatch each provider's `chat()` method on its module-level
+_PROVIDER singleton. Asserts the orchestration contract that _run() and
+process() guarantee, without exercising real SDK calls.
+Priority: OPENROUTER_API_KEY > GEMINI_API_KEY.
 """
-import sys
 from unittest.mock import MagicMock
 
 import pytest
 
-import voice
-from voice import ai_provider
+from voice import ai_provider, state
 
 
 @pytest.fixture(autouse=True)
-def clean_config(monkeypatch):
-    """Start each test with a known config."""
-    cfg = {"GEMINI_API_KEY": "test-gemini-key"}
-    monkeypatch.setattr(voice.state, "_CONFIG", cfg)
-    return cfg
+def reset_runtime_state(monkeypatch):
+    """Each test starts with a clean config + no AI cooldown."""
+    monkeypatch.setattr(state, "_CONFIG", {})
+    monkeypatch.setattr(state, "_ai_last_call_time", 0.0)
+    monkeypatch.setattr(state, "_clipboard_context", "")
+    monkeypatch.setattr(state, "_command_selected_text", "")
+    monkeypatch.setattr(state, "_GEMINI_API_KEY", None)
+    monkeypatch.setattr(state, "_window_context", {})
 
 
-def _mock_gemini(monkeypatch) -> MagicMock:
-    mock = MagicMock()
-    monkeypatch.setattr(voice, "gemini", mock)
-    monkeypatch.setitem(sys.modules, "voice.gemini", mock)
-    return mock
+def _stub_openrouter(monkeypatch, return_value="or_result"):
+    """Replace OpenRouter provider chat() with a stub. Returns the mock."""
+    from voice import openrouter
+    mock_chat = MagicMock(return_value=return_value)
+    monkeypatch.setattr(openrouter._PROVIDER, "chat", mock_chat)
+    return mock_chat
 
 
-def _mock_openai(monkeypatch) -> MagicMock:
-    mock = MagicMock()
-    monkeypatch.setitem(sys.modules, "voice.openai_", mock)
-    return mock
-
-
-def _mock_openrouter(monkeypatch) -> MagicMock:
-    mock = MagicMock()
-    monkeypatch.setitem(sys.modules, "voice.openrouter", mock)
-    # Also set package attr so `from voice import openrouter` resolves
-    monkeypatch.setattr(voice, "openrouter", mock, raising=False)
-    return mock
+def _stub_gemini(monkeypatch, return_value="gemini_result"):
+    """Replace Gemini provider chat() with a stub. Returns the mock."""
+    from voice import gemini
+    mock_chat = MagicMock(return_value=return_value)
+    monkeypatch.setattr(gemini._PROVIDER, "chat", mock_chat)
+    return mock_chat
 
 
 # ---------------------------------------------------------------------------
 # Provider priority routing
 # ---------------------------------------------------------------------------
 
-def test_sem_nenhuma_key_retorna_texto_original(monkeypatch):
-    """When no API keys configured, returns original text."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {})
-    result = ai_provider.process("transcribe", "hello")
-    assert result == "hello"
+def test_sem_nenhuma_key_retorna_texto_original():
+    """Without any API key configured, process() returns the input unchanged."""
+    state._CONFIG.clear()
+    assert ai_provider.process("transcribe", "hello") == "hello"
 
 
 def test_gemini_dispatch_quando_so_gemini_key(monkeypatch):
-    """When only GEMINI_API_KEY is set, routes to Gemini."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {"GEMINI_API_KEY": "test-key"})
-    mock = _mock_gemini(monkeypatch)
-    mock.correct_with_gemini.return_value = "gemini_result"
+    """When only GEMINI_API_KEY is set, process() routes to GeminiProvider."""
+    state._CONFIG["GEMINI_API_KEY"] = "test-key"
+    monkeypatch.setattr(state, "_GEMINI_API_KEY", "test-key")
+    chat = _stub_gemini(monkeypatch, return_value="gemini_output")
 
     result = ai_provider.process("transcribe", "text")
 
-    mock.correct_with_gemini.assert_called_once_with("text")
-    assert result == "gemini_result"
+    chat.assert_called_once()
+    assert result == "gemini_output"
 
 
 def test_openrouter_tem_prioridade_sobre_gemini(monkeypatch):
-    """When OPENROUTER_API_KEY is set, it takes priority over GEMINI_API_KEY."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {
-        "OPENROUTER_API_KEY": "or-key",
-        "GEMINI_API_KEY": "gemini-key",
-    })
-    mock_or = _mock_openrouter(monkeypatch)
-    mock_or.correct.return_value = "openrouter_result"
-    mock_gem = _mock_gemini(monkeypatch)
+    """OPENROUTER_API_KEY wins over GEMINI_API_KEY when both are set."""
+    state._CONFIG.update({"OPENROUTER_API_KEY": "or-key", "GEMINI_API_KEY": "g-key"})
+    monkeypatch.setattr(state, "_GEMINI_API_KEY", "g-key")
+    or_chat = _stub_openrouter(monkeypatch, return_value="or_output")
+    g_chat = _stub_gemini(monkeypatch)
 
     result = ai_provider.process("transcribe", "text")
 
-    mock_or.correct.assert_called_once_with("text")
-    mock_gem.correct_with_gemini.assert_not_called()
-    assert result == "openrouter_result"
-
-
-def test_openai_provider_dispatch(monkeypatch):
-    """When only OPENAI_API_KEY is set, routes to OpenAI."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {"OPENAI_API_KEY": "test-key"})
-    mock = _mock_openai(monkeypatch)
-    mock.correct_with_openai.return_value = "openai_result"
-
-    result = ai_provider.process("transcribe", "text")
-
-    mock.correct_with_openai.assert_called_once_with("text")
-    assert result == "openai_result"
+    or_chat.assert_called_once()
+    g_chat.assert_not_called()
+    assert result == "or_output"
 
 
 def test_modo_desconhecido_retorna_texto_original(monkeypatch):
     """Unknown mode returns the original text unchanged."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {"GEMINI_API_KEY": "k"})
-    _mock_gemini(monkeypatch)
+    state._CONFIG["GEMINI_API_KEY"] = "k"
+    monkeypatch.setattr(state, "_GEMINI_API_KEY", "k")
+    _stub_gemini(monkeypatch)
 
-    result = ai_provider.process("modo_inexistente", "texto original")
-
-    assert result == "texto original"
+    assert ai_provider.process("modo_inexistente", "texto original") == "texto original"
 
 
 # ---------------------------------------------------------------------------
-# Todos os 6 modos nao-query — Gemini
+# Mode→spec resolution
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("mode,gemini_fn", [
-    ("transcribe", "correct_with_gemini"),
-    ("simple",     "simplify_as_prompt"),
-    ("prompt",     "structure_as_prompt"),
-    ("bullet",     "bullet_dump_with_gemini"),
-    ("email",      "draft_email_with_gemini"),
-    ("translate",  "translate_with_gemini"),
-])
-def test_todos_modos_gemini(monkeypatch, mode, gemini_fn):
-    """Each non-query mode dispatches to the correct Gemini function."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {"GEMINI_API_KEY": "k"})
-    mock = _mock_gemini(monkeypatch)
-    getattr(mock, gemini_fn).return_value = f"{mode}_output"
+@pytest.mark.parametrize("mode", ["transcribe", "simple", "prompt", "bullet", "email", "translate"])
+def test_modes_routam_para_provider_chat(monkeypatch, mode):
+    """Each canonical mode dispatches through the active provider's chat()."""
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    state._CONFIG["CORRECTION_STYLE"] = "smart"
+    chat = _stub_openrouter(monkeypatch, return_value=f"{mode}_output")
 
     result = ai_provider.process(mode, "input_text")
 
-    getattr(mock, gemini_fn).assert_called_once_with("input_text")
+    chat.assert_called_once()
     assert result == f"{mode}_output"
 
 
-def test_query_modo_sem_clipboard_usa_query_with_gemini(monkeypatch):
-    """Query mode dispatches to query_with_gemini when clipboard context is empty."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {
-        "GEMINI_API_KEY": "k",
-        "CLIPBOARD_CONTEXT_ENABLED": True,
-    })
-    monkeypatch.setattr(voice.state, "_clipboard_context", "")
-    mock = _mock_gemini(monkeypatch)
-    mock.query_with_gemini.return_value = "query_output"
+def test_query_sem_clipboard_usa_spec_query(monkeypatch):
+    """query mode uses PROMPTS['query'] when clipboard context is empty."""
+    state._CONFIG.update({"OPENROUTER_API_KEY": "or-key", "CLIPBOARD_CONTEXT_ENABLED": True})
+    state._clipboard_context = ""
+    chat = _stub_openrouter(monkeypatch, return_value="query_out")
 
     result = ai_provider.process("query", "minha query")
 
-    mock.query_with_gemini.assert_called_once_with("minha query")
-    assert result == "query_output"
+    chat.assert_called_once()
+    # PROMPTS["query"].user_builder(text) == text (no clipboard injected)
+    assert chat.call_args.kwargs["user"] == "minha query"
+    assert result == "query_out"
 
 
-def test_query_modo_com_clipboard_usa_query_with_clipboard_context(monkeypatch):
-    """Query mode dispatches to query_with_clipboard_context when clipboard is set."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {
-        "GEMINI_API_KEY": "k",
-        "CLIPBOARD_CONTEXT_ENABLED": True,
-    })
-    monkeypatch.setattr(voice.state, "_clipboard_context", "contexto do clipboard")
-    mock = _mock_gemini(monkeypatch)
-    mock.query_with_clipboard_context.return_value = "context_output"
+def test_query_com_clipboard_usa_spec_query_with_clipboard(monkeypatch):
+    """query mode with non-empty clipboard uses PROMPTS['query_with_clipboard']."""
+    state._CONFIG.update({"OPENROUTER_API_KEY": "or-key", "CLIPBOARD_CONTEXT_ENABLED": True})
+    state._clipboard_context = "contexto do clipboard"
+    chat = _stub_openrouter(monkeypatch, return_value="ctx_out")
 
     result = ai_provider.process("query", "instrução de voz")
 
-    mock.query_with_clipboard_context.assert_called_once_with("instrução de voz", "contexto do clipboard")
-    assert result == "context_output"
+    chat.assert_called_once()
+    user_msg = chat.call_args.kwargs["user"]
+    assert "[CONTEXTO DO CLIPBOARD]" in user_msg
+    assert "contexto do clipboard" in user_msg
+    assert "instrução de voz" in user_msg
+    assert result == "ctx_out"
 
 
 def test_query_clipboard_desativado_usa_query_normal(monkeypatch):
-    """When CLIPBOARD_CONTEXT_ENABLED=false, query uses query_with_gemini."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {
-        "GEMINI_API_KEY": "k",
-        "CLIPBOARD_CONTEXT_ENABLED": False,
-    })
-    monkeypatch.setattr(voice.state, "_clipboard_context", "tem conteudo mas ignorado")
-    mock = _mock_gemini(monkeypatch)
-    mock.query_with_gemini.return_value = "query_output"
+    """CLIPBOARD_CONTEXT_ENABLED=False falls back to plain query spec."""
+    state._CONFIG.update({"OPENROUTER_API_KEY": "or-key", "CLIPBOARD_CONTEXT_ENABLED": False})
+    state._clipboard_context = "ignorado"
+    chat = _stub_openrouter(monkeypatch, return_value="query_out")
 
     result = ai_provider.process("query", "pergunta")
 
-    mock.query_with_gemini.assert_called_once_with("pergunta")
-    assert result == "query_output"
+    chat.assert_called_once()
+    assert chat.call_args.kwargs["user"] == "pergunta"
+    assert result == "query_out"
+
+
+def test_command_mode_injeta_selected_text(monkeypatch):
+    """command mode pulls state._command_selected_text into the user message."""
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    state._command_selected_text = "olá amigo"
+    chat = _stub_openrouter(monkeypatch, return_value="reformulado")
+
+    result = ai_provider.process("command", "deixa mais formal")
+
+    chat.assert_called_once()
+    user_msg = chat.call_args.kwargs["user"]
+    assert "[SELECTED TEXT]" in user_msg
+    assert "olá amigo" in user_msg
+    assert "[INSTRUCTION]" in user_msg
+    assert "deixa mais formal" in user_msg
+    assert result == "reformulado"
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter — smart routing por modo
+# Fallback resolution by spec.fallback_kind
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("mode,or_fn", [
-    ("transcribe", "correct"),
-    ("simple",     "simplify"),
-    ("prompt",     "structure"),
-    ("bullet",     "bullet_dump"),
-    ("email",      "draft_email"),
-    ("translate",  "translate"),
-])
-def test_todos_modos_openrouter(monkeypatch, mode, or_fn):
-    """Each mode dispatches to the correct OpenRouter function."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {"OPENROUTER_API_KEY": "or-key"})
-    mock = _mock_openrouter(monkeypatch)
-    getattr(mock, or_fn).return_value = f"{mode}_output"
+def test_fallback_text_quando_chat_retorna_vazio(monkeypatch):
+    """fallback_kind='text' (transcribe/simple/etc.) returns original text on empty response."""
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    _stub_openrouter(monkeypatch, return_value=None)
 
-    result = ai_provider.process(mode, "input_text")
-
-    getattr(mock, or_fn).assert_called_once_with("input_text")
-    assert result == f"{mode}_output"
+    assert ai_provider.process("simple", "texto original") == "texto original"
 
 
-def test_openrouter_query_com_clipboard(monkeypatch):
-    """OpenRouter query with clipboard context."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {
-        "OPENROUTER_API_KEY": "or-key",
-        "CLIPBOARD_CONTEXT_ENABLED": True,
-    })
-    monkeypatch.setattr(voice.state, "_clipboard_context", "clipboard text")
-    mock = _mock_openrouter(monkeypatch)
-    mock.query_with_clipboard.return_value = "or_query_output"
+def test_fallback_sentinel_para_query(monkeypatch):
+    """fallback_kind='sentinel' for query returns '[SEM RESPOSTA] {text}'."""
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    _stub_openrouter(monkeypatch, return_value=None)
 
     result = ai_provider.process("query", "pergunta")
 
-    mock.query_with_clipboard.assert_called_once_with("pergunta", "clipboard text")
-    assert result == "or_query_output"
+    assert result == "[SEM RESPOSTA] pergunta"
+
+
+def test_fallback_selected_para_command(monkeypatch):
+    """fallback_kind='selected' for command returns state._command_selected_text."""
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    state._command_selected_text = "texto preservado"
+    _stub_openrouter(monkeypatch, return_value=None)
+
+    result = ai_provider.process("command", "instrução")
+
+    assert result == "texto preservado"
 
 
 # ---------------------------------------------------------------------------
-# Todos os 7 modos — OpenAI (legacy)
+# Cooldown gate (SEC-05)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("mode,openai_fn", [
-    ("transcribe", "correct_with_openai"),
-    ("simple",     "simplify_with_openai"),
-    ("prompt",     "structure_as_prompt_openai"),
-    ("query",      "query_with_openai"),
-    ("bullet",     "bullet_dump_with_openai"),
-    ("email",      "draft_email_with_openai"),
-    ("translate",  "translate_with_openai"),
-])
-def test_todos_modos_openai(monkeypatch, mode, openai_fn):
-    """Each of the 7 modes dispatches to the correct OpenAI function."""
-    monkeypatch.setattr(voice.state, "_CONFIG", {"OPENAI_API_KEY": "test-key"})
-    mock = _mock_openai(monkeypatch)
-    getattr(mock, openai_fn).return_value = f"{mode}_output"
+def test_cooldown_bloqueia_chamadas_rapidas(monkeypatch):
+    """When _ai_last_call_time was within _AI_COOLDOWN_SECONDS, process() skips."""
+    import time
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    monkeypatch.setattr(state, "_ai_last_call_time", time.monotonic())  # just now
+    chat = _stub_openrouter(monkeypatch, return_value="should_not_reach")
 
-    result = ai_provider.process(mode, "input_text")
+    result = ai_provider.process("transcribe", "texto")
 
-    getattr(mock, openai_fn).assert_called_once_with("input_text")
-    assert result == f"{mode}_output"
+    chat.assert_not_called()
+    assert result == "texto"
+
+
+# ---------------------------------------------------------------------------
+# Rate limit response surfaces from provider
+# ---------------------------------------------------------------------------
+
+def test_rate_limit_propagation(monkeypatch):
+    """When provider.chat raises and provider.is_rate_limit is True, returns provider.rate_limit_msg()."""
+    from voice import openrouter
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+
+    def _raise_rate_limit(**_):
+        raise Exception("429 rate_limit")
+
+    monkeypatch.setattr(openrouter._PROVIDER, "chat", _raise_rate_limit)
+
+    result = ai_provider.process("transcribe", "texto")
+
+    assert "[LIMITE ATINGIDO]" in result
+
+
+def test_erro_generico_retorna_fallback(monkeypatch):
+    """Generic exception (not rate-limit) returns the fallback per spec.fallback_kind."""
+    from voice import openrouter
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+
+    def _raise(**_):
+        raise Exception("connection timeout")
+
+    monkeypatch.setattr(openrouter._PROVIDER, "chat", _raise)
+
+    assert ai_provider.process("simple", "texto") == "texto"

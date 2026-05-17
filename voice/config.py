@@ -104,9 +104,6 @@ def load_config() -> dict:
         "OPENROUTER_API_KEY": None,
         "OPENROUTER_MODEL_FAST": "meta-llama/llama-4-scout-17b-16e-instruct",
         "OPENROUTER_MODEL_QUALITY": "google/gemini-2.5-flash",
-        # Legacy providers (fallback se OPENROUTER_API_KEY nao configurada)
-        "OPENAI_API_KEY": None,
-        "OPENAI_MODEL": "gpt-4o-mini",
         # Translate
         "TRANSLATE_TARGET_LANG": "en",
         # Whisper initial prompt — vazio usa o padrão PT-BR + termos EN
@@ -250,7 +247,6 @@ def _reload_config() -> None:
     old_key = state._GEMINI_API_KEY
     old_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
     old_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
-    old_openai_key = state._CONFIG.get("OPENAI_API_KEY")
 
     state._CONFIG = load_config()
     state._GEMINI_API_KEY = state._CONFIG.get("GEMINI_API_KEY")
@@ -266,12 +262,6 @@ def _reload_config() -> None:
     if state._GEMINI_API_KEY != old_key:
         state._gemini_client = None
         print("[INFO] API key Gemini mudou — singleton resetado")
-
-    new_openai_key = state._CONFIG.get("OPENAI_API_KEY")
-    if new_openai_key != old_openai_key:
-        state._openai_client = None
-        state._OPENAI_API_KEY = new_openai_key
-        print("[INFO] OpenAI key mudou — singleton resetado")
 
     # OpenRouter singleton reset
     old_or_key = getattr(state, "_OPENROUTER_API_KEY", None)

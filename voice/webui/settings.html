@@ -1386,13 +1386,6 @@
                 <div class="provider-radio-desc">Google AI Studio. Gratuito, rapido.</div>
               </div>
             </label>
-            <label class="provider-radio" data-provider="openai">
-              <input type="radio" name="ai-provider" value="openai">
-              <div class="provider-radio-info">
-                <div class="provider-radio-name">OpenAI (legacy)</div>
-                <div class="provider-radio-desc">GPT-4o Mini. Compatibilidade.</div>
-              </div>
-            </label>
           </div>
         </div>
 
@@ -1455,29 +1448,6 @@
           </div>
         </div>
 
-        <!-- OpenAI fields -->
-        <div id="fields-openai" class="provider-fields">
-          <div class="card">
-            <div class="card-title">Chave OpenAI</div>
-            <div class="field-group">
-              <div class="input-pw-wrap">
-                <input type="password" class="input mono" id="openai-key" placeholder="sk-...">
-                <button class="pw-toggle" data-target="openai-key" aria-label="Mostrar chave">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
-                </button>
-                <button class="btn-test-key" data-provider="openai" title="Testar chave">Testar</button>
-              </div>
-              <div class="key-test-result hidden" id="test-result-openai">
-                <div class="status-dot"></div>
-                <span></span>
-              </div>
-            </div>
-            <div class="field-group">
-              <label class="field-label" for="openai-model">Modelo</label>
-              <input type="text" class="input mono" id="openai-model" placeholder="gpt-4o-mini">
-            </div>
-          </div>
-        </div>
       </section>
 
       <!-- ============================================================== -->
@@ -2147,7 +2117,7 @@
   }
 
   function updateProviderFields(provider) {
-    ['openrouter', 'gemini', 'openai'].forEach(p => {
+    ['openrouter', 'gemini'].forEach(p => {
       const el = $('fields-' + p);
       if (el) el.classList.toggle('visible', p === provider);
     });
@@ -2195,7 +2165,6 @@
         let key = '';
         if (provider === 'openrouter') key = $v('openrouter-key');
         else if (provider === 'gemini') key = $v('gemini-key');
-        else if (provider === 'openai') key = $v('openai-key');
 
         // If key starts with ***, it's masked - we can't test it
         if (key.startsWith('***')) {
@@ -2207,11 +2176,8 @@
           let result;
           if (provider === 'openrouter') {
             result = await window.pywebview.api.test_openrouter_key(key);
-          } else if (provider === 'gemini') {
-            result = await window.pywebview.api.test_gemini_key(key);
           } else {
-            // No test method for OpenAI yet, just format check
-            result = { ok: key.startsWith('sk-') && key.length > 20, message: key.startsWith('sk-') ? 'Formato OK' : 'Formato invalido' };
+            result = await window.pywebview.api.test_gemini_key(key);
           }
           showTestResult(resultEl, btn, result.ok, result.message);
         } catch (e) {
@@ -2303,8 +2269,6 @@
     sv('openrouter-model-quality', cfg.OPENROUTER_MODEL_QUALITY || '');
     sv('gemini-key',    cfg.GEMINI_API_KEY  || '');
     sv('gemini-model',  cfg.GEMINI_MODEL    || '');
-    sv('openai-key',    cfg.OPENAI_API_KEY  || '');
-    sv('openai-model',  cfg.OPENAI_MODEL    || '');
 
     // Hotkeys
     sv('record-hotkey',  cfg.RECORD_HOTKEY  || '');
@@ -2380,7 +2344,6 @@
     // Otherwise detect from masked keys (bridge returns ***xxxx when key exists)
     if (cfg.OPENROUTER_API_KEY) return 'openrouter';
     if (cfg.GEMINI_API_KEY) return 'gemini';
-    if (cfg.OPENAI_API_KEY) return 'openai';
     return 'openrouter';
   }
 
@@ -2393,8 +2356,6 @@
       OPENROUTER_MODEL_QUALITY:  $v('openrouter-model-quality'),
       GEMINI_API_KEY:            $v('gemini-key'),
       GEMINI_MODEL:              $v('gemini-model'),
-      OPENAI_API_KEY:            $v('openai-key'),
-      OPENAI_MODEL:              $v('openai-model'),
       RECORD_HOTKEY:             $v('record-hotkey'),
       CYCLE_HOTKEY:              $v('cycle-hotkey'),
       HISTORY_HOTKEY:            $v('history-hotkey'),
@@ -2443,7 +2404,7 @@
       const values = collectForm();
 
       // Don't send masked keys back (they'd overwrite real keys)
-      for (const k of ['OPENROUTER_API_KEY', 'GEMINI_API_KEY', 'OPENAI_API_KEY']) {
+      for (const k of ['OPENROUTER_API_KEY', 'GEMINI_API_KEY']) {
         if (values[k] && values[k].startsWith('***')) {
           delete values[k];
         }
@@ -2572,10 +2533,9 @@
     // Provider detection
     const provider = detectProvider(cfg);
     if (statusProviderBadge) {
-      const providerNames = { openrouter: 'OpenRouter', gemini: 'Gemini', openai: 'OpenAI' };
+      const providerNames = { openrouter: 'OpenRouter', gemini: 'Gemini' };
       const hasKey = (provider === 'openrouter' && cfg.OPENROUTER_API_KEY) ||
-                     (provider === 'gemini' && cfg.GEMINI_API_KEY) ||
-                     (provider === 'openai' && cfg.OPENAI_API_KEY);
+                     (provider === 'gemini' && cfg.GEMINI_API_KEY);
       statusProviderBadge.textContent = providerNames[provider] || provider;
       statusProviderBadge.className = 'badge ' + (hasKey ? 'badge-success' : 'badge-warning');
     }

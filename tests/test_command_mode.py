@@ -170,47 +170,63 @@ class TestCommandOverlayState:
 class TestCommandModeDispatch:
 
     def test_dispatch_openrouter_chama_command(self, monkeypatch):
-        """When OPENROUTER_API_KEY set, command mode dispatches to openrouter.command()."""
+        """When OPENROUTER_API_KEY set, command mode dispatches through OpenRouterProvider.chat()."""
         monkeypatch.setattr(voice.state, "_CONFIG", {"OPENROUTER_API_KEY": "or-key"})
         monkeypatch.setattr(voice.state, "_command_selected_text", "selected text here")
+        monkeypatch.setattr(voice.state, "_ai_last_call_time", 0.0)
 
-        mock_or = _mock_openrouter(monkeypatch)
-        mock_or.command.return_value = "modified text"
+        from voice import openrouter
+        chat = MagicMock(return_value="modified text")
+        monkeypatch.setattr(openrouter._PROVIDER, "chat", chat)
 
         from voice import ai_provider
         result = ai_provider.process("command", "make it uppercase")
 
-        mock_or.command.assert_called_once_with("make it uppercase", "selected text here")
+        chat.assert_called_once()
+        user_msg = chat.call_args.kwargs["user"]
+        assert "[SELECTED TEXT]" in user_msg
+        assert "selected text here" in user_msg
+        assert "[INSTRUCTION]" in user_msg
+        assert "make it uppercase" in user_msg
         assert result == "modified text"
 
     def test_dispatch_gemini_chama_command_with_gemini(self, monkeypatch):
-        """When GEMINI_API_KEY set (no OpenRouter), command dispatches to gemini.command_with_gemini()."""
+        """When GEMINI_API_KEY set (no OpenRouter), command dispatches through GeminiProvider.chat()."""
         monkeypatch.setattr(voice.state, "_CONFIG", {"GEMINI_API_KEY": "gemini-key"})
+        monkeypatch.setattr(voice.state, "_GEMINI_API_KEY", "gemini-key")
         monkeypatch.setattr(voice.state, "_command_selected_text", "texto selecionado")
+        monkeypatch.setattr(voice.state, "_ai_last_call_time", 0.0)
 
-        mock_gem = _mock_gemini(monkeypatch)
-        mock_gem.command_with_gemini.return_value = "texto modificado"
+        from voice import gemini
+        chat = MagicMock(return_value="texto modificado")
+        monkeypatch.setattr(gemini._PROVIDER, "chat", chat)
 
         from voice import ai_provider
         result = ai_provider.process("command", "traduz para inglês")
 
-        mock_gem.command_with_gemini.assert_called_once_with("traduz para inglês", "texto selecionado")
+        chat.assert_called_once()
+        user_msg = chat.call_args.kwargs["user"]
+        assert "[SELECTED TEXT]" in user_msg
+        assert "texto selecionado" in user_msg
+        assert "[INSTRUCTION]" in user_msg
+        assert "traduz para inglês" in user_msg
         assert result == "texto modificado"
 
     def test_command_mode_usa_state_command_selected_text(self, monkeypatch):
         """Command mode reads selected text from state._command_selected_text."""
         monkeypatch.setattr(voice.state, "_CONFIG", {"OPENROUTER_API_KEY": "or-key"})
         monkeypatch.setattr(voice.state, "_command_selected_text", "meu texto especial")
+        monkeypatch.setattr(voice.state, "_ai_last_call_time", 0.0)
 
-        mock_or = _mock_openrouter(monkeypatch)
-        mock_or.command.return_value = "resultado"
+        from voice import openrouter
+        chat = MagicMock(return_value="resultado")
+        monkeypatch.setattr(openrouter._PROVIDER, "chat", chat)
 
         from voice import ai_provider
         ai_provider.process("command", "instrução qualquer")
 
-        # Verify selected text was passed correctly
-        call_args = mock_or.command.call_args
-        assert call_args[0][1] == "meu texto especial"
+        chat.assert_called_once()
+        assert "meu texto especial" in chat.call_args.kwargs["user"]
 
 
 # ---------------------------------------------------------------------------
