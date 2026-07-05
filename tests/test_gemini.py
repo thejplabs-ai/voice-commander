@@ -210,6 +210,19 @@ class TestCallGemini:
         call_kwargs = mock_client.models.generate_content.call_args.kwargs
         assert "config" in call_kwargs
 
+    def test_transcribe_mode_passes_temperature_zero_config_kwarg(self, monkeypatch):
+        """Task 4: modo transcribe (PROMPTS['transcribe']) não usa mais o SDK default —
+        gemini_uses_sdk_default=False força temperature=0.0 explícita na chamada."""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = _make_response("corrigido")
+        monkeypatch.setattr(state, "_gemini_client", mock_client)
+
+        with patch("voice.gemini._get_gemini_client", return_value=mock_client):
+            gemini.correct_with_gemini("texto original")
+
+        call_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert "config" in call_kwargs
+
 
 # ---------------------------------------------------------------------------
 # correct_with_gemini()

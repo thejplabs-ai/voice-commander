@@ -88,7 +88,7 @@ def test_correction_style_minimal_gemini():
 
     mock_client = MagicMock()
 
-    def _fake_generate(model, contents):
+    def _fake_generate(model, contents, config=None):
         captured_prompt.append(contents)
         return mock_response
 
@@ -120,7 +120,7 @@ def test_correction_style_smart_gemini():
 
     mock_client = MagicMock()
 
-    def _fake_generate(model, contents):
+    def _fake_generate(model, contents, config=None):
         captured_prompt.append(contents)
         return mock_response
 
