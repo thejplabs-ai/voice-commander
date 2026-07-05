@@ -184,6 +184,18 @@ class _OverlayThread(threading.Thread):
             self._show(data.get("state", STATE_RECORDING), data.get("text", ""))
         elif cmd == "hide":
             self._hide()
+        elif cmd == "hide_transient":
+            # Task 3 fix: the decision must be made HERE, inside the thread
+            # that owns _current_state — not by a caller reading it from
+            # another thread. _poll_queue drains the whole queue in one
+            # tick (while True: get_nowait()), so if a "show" for done/error
+            # was enqueued just before this "hide_transient", it is handled
+            # first (FIFO) and _current_state is already fresh by the time
+            # we get here. A caller-side read could see a stale value
+            # (e.g. still "processing") and enqueue a hide that races the
+            # pending show, killing the toast before the user sees it.
+            if self._current_state not in (STATE_DONE, STATE_ERROR, STATE_HIDE):
+                self._hide()
 
     def _show(self, overlay_state: str, text: str) -> None:
         self._current_state = overlay_state
@@ -455,3 +467,17 @@ def hide() -> None:
     if t is None:
         return
     t.send("hide")
+
+
+def hide_transient() -> None:
+    """Esconde o overlay, exceto se um toast terminal (done/error) está ativo.
+
+    Task 3 fix: ao contrário de checar `_thread._current_state` no chamador
+    (race — a fila pode ter um "show" pendente ainda não processado), esta
+    função apenas enfileira "hide_transient" e deixa a própria thread do
+    overlay decidir com o estado fresco (ver `_handle_cmd`).
+    """
+    t = _get_thread()
+    if t is None:
+        return
+    t.send("hide_transient")

@@ -498,11 +498,14 @@ def _cleanup_transcribe(temp_path) -> None:
     # Story 4.5.1: esconder overlay se não foi para "done" (erro path).
     # Task 3 (W1 reliability sprint): "error" também tem auto-dismiss próprio
     # (show_error → _ERROR_DISMISS_MS) — não deve ser morto aqui, senão o
-    # toast de skip nunca chega a aparecer para o usuário.
+    # toast de skip nunca chega a aparecer para o usuário. A decisão de
+    # "é terminal, não esconde" agora vive inteiramente na overlay thread
+    # (hide_transient) — checar _current_state aqui do lado de fora seria
+    # ler estado obsoleto (race: show_error/show_done só atualiza
+    # _current_state quando a overlay thread drena a fila, não no enqueue).
     try:
         from voice import overlay as _overlay
-        if _overlay._thread and _overlay._thread._current_state not in ("done", "error", "hide"):
-            _overlay.hide()
+        _overlay.hide_transient()
     except Exception:
         pass
 

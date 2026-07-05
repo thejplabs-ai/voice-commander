@@ -32,9 +32,11 @@ from voice.overlay import (  # noqa: E402
     show_processing,
     show_done,
     hide,
+    hide_transient,
     STATE_RECORDING,
     STATE_PROCESSING,
     STATE_DONE,
+    STATE_ERROR,
     STATE_HIDE,
 )
 
@@ -263,3 +265,70 @@ class TestOverlayThreadInitialState:
         """_OverlayThread is a daemon thread."""
         t = _make_thread()
         assert t.daemon is True
+
+
+# ---------------------------------------------------------------------------
+# hide_transient() — Task 3 fix: decision must live in the overlay thread
+# (_handle_cmd), not in the caller reading a possibly-stale _current_state.
+# ---------------------------------------------------------------------------
+
+class TestHideTransient:
+
+    def test_hide_envia_comando_hide_transient(self, mock_thread):
+        """hide_transient() sends ('hide_transient', {}) to the queue."""
+        hide_transient()
+
+        cmd, data = mock_thread._q.get_nowait()
+        assert cmd == "hide_transient"
+
+    def test_handle_cmd_esconde_quando_processing(self):
+        """_handle_cmd('hide_transient') hides when state is non-terminal (e.g. processing)."""
+        t = _make_thread()
+        t._root = None  # _hide() no-ops safely when _root is falsy
+        t._current_state = STATE_PROCESSING
+
+        t._handle_cmd("hide_transient", {})
+
+        assert t._current_state == STATE_HIDE
+
+    def test_handle_cmd_preserva_estado_error(self):
+        """_handle_cmd('hide_transient') is a no-op when state is already 'error' (terminal)."""
+        t = _make_thread()
+        t._root = None
+        t._current_state = STATE_ERROR
+
+        t._handle_cmd("hide_transient", {})
+
+        assert t._current_state == STATE_ERROR
+
+    def test_handle_cmd_preserva_estado_done(self):
+        """_handle_cmd('hide_transient') is a no-op when state is already 'done' (terminal)."""
+        t = _make_thread()
+        t._root = None
+        t._current_state = STATE_DONE
+
+        t._handle_cmd("hide_transient", {})
+
+        assert t._current_state == STATE_DONE
+
+    def test_handle_cmd_fifo_show_error_antes_de_hide_transient(self):
+        """Regression: a pending show(error) drained in the same tick as a
+        hide_transient must win — this is the exact race from the bug report.
+        _poll_queue drains FIFO in one tick, so processing "show" before
+        "hide_transient" must leave the error toast visible.
+        """
+        t = _make_thread()
+        t._root = MagicMock()
+        t._dot_canvas = MagicMock()
+        t._state_label = MagicMock()
+        t._text_label = MagicMock()
+        t._dot_oval = "oval_id"
+        t._dismiss_id = None
+        t._dot_anim_id = None
+        t._current_state = STATE_PROCESSING
+
+        # Same tick: show(error) enqueued, then hide_transient right behind it.
+        t._handle_cmd("show", {"state": STATE_ERROR, "text": "Não detectei fala"})
+        t._handle_cmd("hide_transient", {})
+
+        assert t._current_state == STATE_ERROR
