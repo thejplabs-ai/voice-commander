@@ -137,12 +137,24 @@ def _stop_recording_snapshot() -> "tuple[object, str] | tuple[None, None]":
         return None, None
 
     state.is_recording = False
-    state.is_transcribing = True
     state.stop_event.set()
     # Capturar refs locais antes de soltar o lock — join e transcribe
     # executam FORA do lock para não bloquear toggles subsequentes.
     _stop_thread = state.record_thread
     _stop_mode = state.current_mode
+
+    if _stop_thread is None:
+        # Caminho anômalo: nada para dar join/transcrever. NÃO setar
+        # is_transcribing aqui — sem thread, nenhum caller agenda transcribe()
+        # (hotkey.py trata _stop_thread is None como "return" imediato), e o
+        # único lugar que limpa is_transcribing é _cleanup_transcribe em
+        # transcription.py (só roda se transcribe() rodar). Setar a flag
+        # incondicionalmente deixaria is_transcribing True para sempre,
+        # travando todo hotkey subsequente no guard de skip.
+        print("[WARN] STOP sem record_thread — nada para transcrever\n")
+        return None, None
+
+    state.is_transcribing = True
     print("[STOP] Parando gravação...\n")
     # Nota: frames são capturados APÓS o join (fora do lock) para
     # incluir os últimos frames gravados. Como o debounce atômico de

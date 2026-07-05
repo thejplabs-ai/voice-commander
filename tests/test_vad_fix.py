@@ -4,8 +4,14 @@ Regression tests for bug: empty transcription (error beep, no paste).
 Root cause: vad_filter=True with default threshold=0.5 was discarding all
 audio as silence when microphone volume was low.
 
-Fix: configurable VAD_THRESHOLD (default 0.3) + fallback without VAD when
-vad_duration==0 and audio_duration >= 2s.
+Fix: configurable VAD_THRESHOLD (default 0.3).
+
+Task 3 (W1 reliability sprint): the sem-VAD fallback (retranscribing without
+VAD when duration_after_vad==0, with a Whisper-hallucination blocklist) was
+removed entirely — it kept pasting artifacts like "Amara.org" / "Thank you
+for watching" on genuinely silent recordings. VAD-gate is now strict: no
+speech detected -> SKIP (beep + overlay "Não detectei fala" + history
+error=True), never a paste.
 
 Related history.jsonl entry: {"duration_seconds": 20.82, "raw_text": "", "error": true}
 """
@@ -178,74 +184,64 @@ def test_transcribe_passes_vad_threshold_to_model(audio_env, monkeypatch):
     assert "speech_pad_ms" in vad_params, "vad_parameters must include 'speech_pad_ms'"
 
 
-def test_transcribe_falls_back_without_vad_when_vad_duration_zero(audio_env, monkeypatch):
-    """When VAD detects no speech (duration_after_vad=0.0) and audio >= 2s, fallback is attempted."""
+def test_transcribe_skip_when_vad_detects_no_speech(audio_env, monkeypatch):
+    """Task 3 (W1 reliability sprint): VAD-gate estrito, sem fallback.
+
+    Quando o VAD não detecta fala (0 segments), a gravação vira SKIP:
+    beep de erro + overlay de erro "Não detectei fala" + history com
+    error=True + NENHUM paste. O fallback de retranscrição sem VAD foi
+    removido por completo — não deve haver 2a chamada a model.transcribe.
+    """
     _patch_wav_pipeline(monkeypatch, audio_duration_s=2.5)
 
-    seg = MagicMock()
-    seg.text = " Olá mundo aqui"  # > 8 chars, has alpha, not in hallucination set
-
-    results = [
-        ([], MagicMock(duration_after_vad=0.0)),          # 1st call: VAD → empty
-        ([seg], MagicMock(duration_after_vad=0.0)),        # 2nd call: fallback → text
-    ]
+    results = [([], MagicMock(duration_after_vad=0.0))]
     model, _, call_count = _make_model_mock(results)
     monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
 
+    played = []
+    monkeypatch.setattr(audio, "play_sound", lambda kind: played.append(kind))
+
+    history_calls = []
+    monkeypatch.setattr(
+        audio, "_append_history",
+        lambda *a, **k: history_calls.append((a, k)),
+    )
+
     pasted = []
-    monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: pasted.append(t))
-    monkeypatch.setattr(audio, "paste_via_sendinput", lambda: None)
+    monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: None)
+    monkeypatch.setattr(audio, "paste_via_sendinput", lambda: pasted.append(True))
+
+    overlay_errors = []
+    monkeypatch.setattr("voice.overlay.show_error", lambda text="": overlay_errors.append(text))
 
     frames = [MagicMock()]
     audio.transcribe(frames, "transcribe")
 
-    assert call_count[0] == 2, (
-        f"Expected 2 model.transcribe calls (VAD + fallback), got {call_count[0]}"
+    assert call_count[0] == 1, (
+        f"No fallback expected — only 1 model.transcribe call, got {call_count[0]}"
     )
-    assert len(pasted) == 1, "Fallback text must be pasted"
-    assert "Olá mundo aqui" in pasted[0]
+    assert played == ["error"], f"Expected play_sound('error'), got {played}"
+    assert len(history_calls) == 1, "History must be recorded once for the skip"
+    assert history_calls[0][1].get("error") is True, "History entry must have error=True"
+    assert len(overlay_errors) == 1, "Overlay error must be shown exactly once"
+    assert "Não detectei fala" in overlay_errors[0]
+    assert pasted == [], "No paste must happen when VAD detects no speech"
 
 
-def test_transcribe_no_fallback_when_audio_short(audio_env, monkeypatch):
-    """Fallback without VAD is NOT attempted when audio_duration < 2s (anti-hallucination)."""
-    _patch_wav_pipeline(monkeypatch, audio_duration_s=0.5)
+def test_transcribe_skip_no_second_model_call(audio_env, monkeypatch):
+    """Task 3: model.transcribe is called exactly once — the sem-VAD fallback no longer exists."""
+    _patch_wav_pipeline(monkeypatch, audio_duration_s=5.0)
 
     results = [([], MagicMock(duration_after_vad=0.0))]
     model, _, call_count = _make_model_mock(results)
     monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
     monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: None)
     monkeypatch.setattr(audio, "paste_via_sendinput", lambda: None)
+    monkeypatch.setattr("voice.overlay.show_error", lambda text="": None)
 
     frames = [MagicMock()]
     audio.transcribe(frames, "transcribe")
 
     assert call_count[0] == 1, (
-        f"Expected 1 model.transcribe call (no fallback for short audio), got {call_count[0]}"
-    )
-
-
-def test_transcribe_fallback_discards_hallucination(audio_env, monkeypatch):
-    """Fallback result is discarded when it matches known Whisper hallucination patterns."""
-    _patch_wav_pipeline(monkeypatch, audio_duration_s=3.0)
-
-    seg_hallucination = MagicMock()
-    seg_hallucination.text = "you"  # single word, classic Whisper artifact on silence
-
-    results = [
-        ([], MagicMock(duration_after_vad=0.0)),
-        ([seg_hallucination], MagicMock(duration_after_vad=0.0)),
-    ]
-    model, _, call_count = _make_model_mock(results)
-    monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
-
-    pasted = []
-    monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: pasted.append(t))
-    monkeypatch.setattr(audio, "paste_via_sendinput", lambda: None)
-
-    frames = [MagicMock()]
-    audio.transcribe(frames, "transcribe")
-
-    assert call_count[0] == 2, "Fallback must have been attempted"
-    assert len(pasted) == 0, (
-        f"Hallucination '{seg_hallucination.text}' must be discarded — got pasted: {pasted}"
+        f"Expected exactly 1 model.transcribe call regardless of audio duration, got {call_count[0]}"
     )

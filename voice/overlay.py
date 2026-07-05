@@ -19,6 +19,7 @@ STATE_PROCESSING   = "processing"
 STATE_DONE         = "done"
 STATE_MODE_CHANGE  = "mode_change"  # Story 4.6.2: ciclo de modo
 STATE_COMMAND      = "command"      # Epic 5.0: Command Mode
+STATE_ERROR        = "error"        # Task 3 (W1 reliability sprint): VAD-gate skip
 STATE_HIDE         = "hide"
 
 # Story 4.6.2: duração do overlay de ciclo de modo (ms)
@@ -32,6 +33,7 @@ _COLORS = {
     "recording":   "#D4626E",   # theme.TRAY_RECORDING (muted rose)
     "processing":  "#6B8EBF",   # theme.TRAY_PROCESSING (steel blue)
     "done":        "#7EC89B",   # theme.SUCCESS (sage green)
+    "error":       "#D4626E",   # theme.ERROR (muted rose)
     "text":        "#F5F5F0",   # theme.TEXT_PRIMARY (cream-white)
     "muted":       "#807E7A",   # theme.TEXT_MUTED
     "purple":      "#C4956A",   # theme.PURPLE (warm amber)
@@ -43,6 +45,7 @@ _OVERLAY_H = 72
 _MARGIN_RIGHT = 24
 _MARGIN_BOTTOM = 60
 _DONE_DISMISS_MS = 2000  # ms para auto-dismiss no estado "done"
+_ERROR_DISMISS_MS = 2500  # ms para auto-dismiss no estado "error" (skip VAD)
 
 
 # Resolve font family com fallback — chamado dentro de _build() onde self._root já existe
@@ -181,6 +184,18 @@ class _OverlayThread(threading.Thread):
             self._show(data.get("state", STATE_RECORDING), data.get("text", ""))
         elif cmd == "hide":
             self._hide()
+        elif cmd == "hide_transient":
+            # Task 3 fix: the decision must be made HERE, inside the thread
+            # that owns _current_state — not by a caller reading it from
+            # another thread. _poll_queue drains the whole queue in one
+            # tick (while True: get_nowait()), so if a "show" for done/error
+            # was enqueued just before this "hide_transient", it is handled
+            # first (FIFO) and _current_state is already fresh by the time
+            # we get here. A caller-side read could see a stale value
+            # (e.g. still "processing") and enqueue a hide that races the
+            # pending show, killing the toast before the user sees it.
+            if self._current_state not in (STATE_DONE, STATE_ERROR, STATE_HIDE):
+                self._hide()
 
     def _show(self, overlay_state: str, text: str) -> None:
         self._current_state = overlay_state
@@ -220,6 +235,11 @@ class _OverlayThread(threading.Thread):
             label = "Comando de Voz"
             info = text or "Fale sua instrução..."
             self._start_dot_anim(color, STATE_COMMAND)
+        elif overlay_state == STATE_ERROR:
+            color = _COLORS["error"]
+            label = "Erro"
+            info = text or "Não detectei fala"
+            self._dismiss_id = self._root.after(_ERROR_DISMISS_MS, self._animate_hide)
         else:
             self._hide()
             return
@@ -227,7 +247,7 @@ class _OverlayThread(threading.Thread):
         self._dot_canvas.itemconfig(self._dot_oval, fill=color)
         if hasattr(self, "_dot_glow"):
             self._dot_canvas.itemconfig(self._dot_glow, outline=color)
-        self._state_label.config(text=label, fg=color if overlay_state == STATE_DONE else _COLORS["text"])
+        self._state_label.config(text=label, fg=color if overlay_state in (STATE_DONE, STATE_ERROR) else _COLORS["text"])
         self._text_label.config(text=info)
 
         # Calcular posicao final
@@ -429,9 +449,35 @@ def show_mode_change(mode: str) -> None:
     t.send("show", state=STATE_MODE_CHANGE, text=mode_name)
 
 
+def show_error(text: str = "") -> None:
+    """Task 3 (W1 reliability sprint): exibe overlay no estado 'Erro'.
+
+    Usado quando o VAD não detecta fala (skip: beep + overlay + history,
+    sem paste) — nunca cola alucinação do Whisper no texto do usuário.
+    """
+    t = _get_thread()
+    if t is None:
+        return
+    t.send("show", state=STATE_ERROR, text=text)
+
+
 def hide() -> None:
     """Esconde o overlay imediatamente."""
     t = _get_thread()
     if t is None:
         return
     t.send("hide")
+
+
+def hide_transient() -> None:
+    """Esconde o overlay, exceto se um toast terminal (done/error) está ativo.
+
+    Task 3 fix: ao contrário de checar `_thread._current_state` no chamador
+    (race — a fila pode ter um "show" pendente ainda não processado), esta
+    função apenas enfileira "hide_transient" e deixa a própria thread do
+    overlay decidir com o estado fresco (ver `_handle_cmd`).
+    """
+    t = _get_thread()
+    if t is None:
+        return
+    t.send("hide_transient")

@@ -61,14 +61,6 @@ def toggle_recording(mode: str = "transcribe") -> None:
             _audio.play_sound("skip")
             return
 
-        # QW-1: cooldown de 2s após processamento de modo query
-        if not state.is_recording and mode == "query":
-            now = time.time()
-            if now < state._query_cooldown_until:
-                remaining = state._query_cooldown_until - now
-                print(f"[SKIP] Cooldown ativo — ignorando hotkey ({remaining:.1f}s restantes)\n")
-                return
-
         if not state.is_recording:
             _audio._start_recording(mode)
         else:

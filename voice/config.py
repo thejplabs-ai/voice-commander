@@ -102,8 +102,8 @@ def load_config() -> dict:
         # AI Provider — OpenRouter (gateway unico, recomendado)
         "AI_PROVIDER": "",
         "OPENROUTER_API_KEY": None,
-        "OPENROUTER_MODEL_FAST": "meta-llama/llama-4-scout-17b-16e-instruct",
-        "OPENROUTER_MODEL_QUALITY": "google/gemini-2.5-flash",
+        "OPENROUTER_MODEL_FAST": "google/gemini-3.1-flash-lite",
+        "OPENROUTER_MODEL_QUALITY": "google/gemini-3.1-flash-lite",
         # Translate
         "TRANSLATE_TARGET_LANG": "en",
         # Whisper initial prompt — vazio usa o padrão PT-BR + termos EN

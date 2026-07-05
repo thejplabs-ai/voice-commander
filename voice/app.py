@@ -131,8 +131,8 @@ def _log_startup_info() -> None:
     gemini_model = state._CONFIG.get("GEMINI_MODEL", "gemini-2.5-flash")
     or_key = state._CONFIG.get("OPENROUTER_API_KEY")
     if or_key:
-        fast_or = state._CONFIG.get("OPENROUTER_MODEL_FAST", "llama-4-scout")
-        qual_or = state._CONFIG.get("OPENROUTER_MODEL_QUALITY", "gemini-2.5-flash")
+        fast_or = state._CONFIG.get("OPENROUTER_MODEL_FAST", "gemini-3.1-flash-lite")
+        qual_or = state._CONFIG.get("OPENROUTER_MODEL_QUALITY", "gemini-3.1-flash-lite")
         print(f"  AI      : OpenRouter (fast: {fast_or.split('/')[-1]} | quality: {qual_or.split('/')[-1]})")
     elif gemini_ok:
         print(f"  AI      : Gemini ({key_display}) [{gemini_model}]")

@@ -62,8 +62,8 @@ def _bootstrap_state():
     state._CONFIG.setdefault("GEMINI_CORRECT", True)
     state._CONFIG.setdefault("TRANSLATE_TARGET_LANG", "en")
     state._CONFIG.setdefault("QUERY_SYSTEM_PROMPT", "")
-    state._CONFIG.setdefault("OPENROUTER_MODEL_FAST", "meta-llama/llama-4-scout-17b-16e-instruct")
-    state._CONFIG.setdefault("OPENROUTER_MODEL_QUALITY", "google/gemini-2.5-flash")
+    state._CONFIG.setdefault("OPENROUTER_MODEL_FAST", "google/gemini-3.1-flash-lite")
+    state._CONFIG.setdefault("OPENROUTER_MODEL_QUALITY", "google/gemini-3.1-flash-lite")
     yield
 
 

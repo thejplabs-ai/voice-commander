@@ -194,6 +194,12 @@ def _run(
             gemini_uses_sdk_default=spec.gemini_uses_sdk_default,
         )
         if result:
+            if spec.output_guard is not None and not spec.output_guard(text, result):
+                print(
+                    f"[WARN] correção desproporcional descartada "
+                    f"(in={len(text)} chars, out={len(result)} chars), usando texto cru"
+                )
+                return text
             if spec.success_log is not None:
                 print(f"[OK]   {spec.success_log(cfg)} ({len(result)} chars)")
             if spec.success_hook is not None:
@@ -263,18 +269,7 @@ def process(mode: str, text: str) -> str:
     """Route text processing to the best available provider.
 
     Prioridade: OPENROUTER_API_KEY > GEMINI_API_KEY
-    Aplica cooldown de _AI_COOLDOWN_SECONDS entre chamadas (SEC-05).
     """
-    with state._state_lock:
-        now = time.monotonic()
-        elapsed = now - state._ai_last_call_time
-        cooldown = state._AI_COOLDOWN_SECONDS
-        if state._ai_last_call_time > 0 and elapsed < cooldown:
-            remaining = cooldown - elapsed
-            print(f"[SKIP] Cooldown ativo ({remaining:.1f}s restantes) — chamada AI ignorada")
-            return text
-        state._ai_last_call_time = time.monotonic()
-
     provider = _select_provider()
     if provider is None:
         print("[WARN] Nenhuma API key configurada (OPENROUTER_API_KEY ou GEMINI_API_KEY)")

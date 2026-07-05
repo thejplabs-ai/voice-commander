@@ -136,50 +136,22 @@ def _transcribe_model_fallback(mode: str, temp_path: str, kwargs: dict, vad_para
     return " ".join(s.text for s in segments).strip(), info
 
 
-def _transcribe_without_vad_on_empty(model, temp_path: str, kwargs: dict, info, audio_data, vad_threshold: float) -> str:
-    """Fallback sem VAD quando VAD descartou o áudio.
-
-    Chamado apenas quando raw_text vazio e audio_duration >= 2s com vad_duration == 0.
-    Retorna raw_text (pode ser vazio se fallback retornar conteúdo suspeito).
-    """
-    from voice import audio as _audio
-    audio_duration = len(audio_data) / _audio.SAMPLE_RATE
-    vad_duration = getattr(info, "duration_after_vad", 0.0) or 0.0
-    print(
-        f"[WARN]  VAD descartou áudio (threshold={vad_threshold:.1f}, "
-        f"gravação={audio_duration:.1f}s, fala_detectada={vad_duration:.1f}s)"
-    )
-    if audio_duration < 2.0 or vad_duration != 0.0:
-        return ""
-
-    print("[...]  Tentando sem filtro VAD (fallback)...")
-    segments_fallback, _ = model.transcribe(temp_path, vad_filter=False, **kwargs)
-    raw_text_fallback = " ".join(s.text for s in segments_fallback).strip()
-    has_real_content = (
-        len(raw_text_fallback) >= 8
-        and any(c.isalpha() for c in raw_text_fallback)
-        and raw_text_fallback.lower() not in {
-            "you", "thank you", "thank you.", "thanks.",
-            "gracias.", "obrigado.", "obrigado",
-        }
-    )
-    if has_real_content:
-        print(f"[OK]   Fallback VAD: {raw_text_fallback}")
-        return raw_text_fallback
-    print(f"[WARN]  Fallback retornou conteúdo suspeito — descartado: [{raw_text_fallback}]")
-    return ""
-
-
 # ── Core STT dispatch (Whisper or Gemini, with full fallback chain) ──────────
 
 def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
     """Executa transcrição no arquivo WAV e retorna o texto transcrito.
 
     Roteia para Gemini STT ou Whisper local com base em STT_PROVIDER.
-    audio_data: numpy array concatenado (usado para calcular duração sem re-abrir WAV).
-    Tenta com VAD primeiro; se VAD falhar, tenta sem VAD. Se o texto
-    ficar vazio, tenta fallback sem VAD. Retorna string vazia se nada
-    for reconhecido.
+    Tenta com VAD primeiro; se VAD falhar por motivo de infraestrutura
+    (silero/onnx ausente, CUDA indisponível, modelo ausente), tenta os
+    fallbacks correspondentes. Se o VAD simplesmente não detectar fala,
+    retorna string vazia — sem fallback sem VAD (Task 3, W1 reliability
+    sprint: elimina o blocklist de alucinações do Whisper; ver
+    _emit_empty_audio_error para o skip visível ao usuário).
+
+    audio_data: ponytail — não é mais consultado aqui após a remoção do
+    fallback sem VAD; mantido na assinatura para não alterar _run_stt()/
+    transcribe(), que não pediram mudança nesta task.
     """
     from voice import audio as _audio
 
@@ -197,12 +169,10 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
         # Continua para Whisper abaixo
 
     model = _audio.get_whisper_model(mode)
-    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
     kwargs, vad_params = _build_transcribe_kwargs(model, mode)
-    info = None
 
     try:
-        segments, info = model.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
+        segments, _ = model.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
         raw_text = " ".join(s.text for s in segments).strip()
     except Exception as _vad_err:
         err_msg = str(_vad_err).lower()
@@ -217,16 +187,13 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
             current_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
             print(f"[ERRO] VRAM insuficiente durante transcrição em {current_device}. Fallback acionado.")
         if "silero" in err_msg or "onnx" in err_msg or "nosuchfile" in err_msg:
-            raw_text, info = _transcribe_no_vad_fallback(model, temp_path, kwargs, _vad_err)
+            raw_text, _ = _transcribe_no_vad_fallback(model, temp_path, kwargs, _vad_err)
         elif is_oom or "cublas" in err_msg or "cuda" in err_msg or "cudnn" in err_msg or "library" in err_msg:
-            raw_text, info = _transcribe_cpu_fallback(mode, temp_path, kwargs, vad_params, _vad_err)
+            raw_text, _ = _transcribe_cpu_fallback(mode, temp_path, kwargs, vad_params, _vad_err)
         elif "unable to open" in err_msg or "model.bin" in err_msg or "no such file" in err_msg:
-            raw_text, info = _transcribe_model_fallback(mode, temp_path, kwargs, vad_params, _vad_err)
+            raw_text, _ = _transcribe_model_fallback(mode, temp_path, kwargs, vad_params, _vad_err)
         else:
             raise
-
-    if not raw_text and info is not None:
-        raw_text = _transcribe_without_vad_on_empty(model, temp_path, kwargs, info, audio_data, vad_threshold)
 
     return raw_text
 
@@ -392,8 +359,13 @@ def _validate_frames(frames: list, mode: str) -> bool:
     from voice import audio as _audio
     if frames:
         return True
-    print("[ERRO]  Sem áudio\n")
+    print("[SKIP]  Sem áudio\n")
     _audio.play_sound("error")
+    try:
+        from voice import overlay as _overlay
+        _overlay.show_error("Não detectei fala")
+    except Exception:
+        pass
     _audio._append_history(mode, "", None, 0.0, error=True)
     return False
 
@@ -439,13 +411,22 @@ def _run_stt(temp_path: str, mode: str, audio_data) -> tuple:
 
 
 def _emit_empty_audio_error(mode: str, t_start: float) -> None:
-    """Emite mensagem de erro 'não entendi' + beep + history quando STT retorna vazio."""
+    """Emite skip 'não detectei fala': beep + overlay + history, sem paste.
+
+    Task 3 (W1 reliability sprint): VAD-gate estrito — sem fallback de
+    retranscrição, sem paste do que quer que o Whisper tenha "alucinado".
+    """
     from voice import audio as _audio
     print(
-        "[ERRO]  Não entendi. Verifique o volume do microfone"
+        "[SKIP]  Não detectei fala. Verifique o volume do microfone"
         " (Configurações > Som > Dispositivos de entrada).\n"
     )
     _audio.play_sound("error")
+    try:
+        from voice import overlay as _overlay
+        _overlay.show_error("Não detectei fala")
+    except Exception:
+        pass
     duration = time.time() - t_start
     _audio._append_history(mode, "", None, duration, error=True)
 
@@ -478,10 +459,6 @@ def _dispatch_transcribed_text(
         _overlay.show_done(text)
     except Exception:
         pass
-
-    # QW-1: definir cooldown de 2s após processamento de query
-    if mode == "query":
-        state._query_cooldown_until = time.time() + state._QUERY_HOTKEY_COOLDOWN
 
     duration = time.time() - t_start
     timing = _build_timing_and_log(recording_ms, whisper_ms, gemini_ms, paste_ms, t_mono_start)
@@ -518,11 +495,17 @@ def _cleanup_transcribe(temp_path) -> None:
     # otimização, não crítico.
     _release_vram_if_cuda()
     _audio._update_tray_state("idle")
-    # Story 4.5.1: esconder overlay se não foi para "done" (erro path)
+    # Story 4.5.1: esconder overlay se não foi para "done" (erro path).
+    # Task 3 (W1 reliability sprint): "error" também tem auto-dismiss próprio
+    # (show_error → _ERROR_DISMISS_MS) — não deve ser morto aqui, senão o
+    # toast de skip nunca chega a aparecer para o usuário. A decisão de
+    # "é terminal, não esconde" agora vive inteiramente na overlay thread
+    # (hide_transient) — checar _current_state aqui do lado de fora seria
+    # ler estado obsoleto (race: show_error/show_done só atualiza
+    # _current_state quando a overlay thread drena a fila, não no enqueue).
     try:
         from voice import overlay as _overlay
-        if _overlay._thread and _overlay._thread._current_state not in ("done", "hide"):
-            _overlay.hide()
+        _overlay.hide_transient()
     except Exception:
         pass
 

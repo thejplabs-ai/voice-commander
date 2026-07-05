@@ -101,7 +101,6 @@ from voice.transcription import (  # noqa: F401, E402
     _transcribe_no_vad_fallback,
     _transcribe_cpu_fallback,
     _transcribe_model_fallback,
-    _transcribe_without_vad_on_empty,
     _write_audio_to_wav,
     _try_snippet_match,
     _post_process_and_paste,

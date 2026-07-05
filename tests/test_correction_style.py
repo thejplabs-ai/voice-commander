@@ -19,8 +19,8 @@ def _set_config(**overrides):
         "GEMINI_CORRECT": True,
         "GEMINI_MODEL": "gemini-2.5-flash",
         "CORRECTION_STYLE": "smart",
-        "OPENROUTER_MODEL_FAST": "meta-llama/llama-4-scout-17b-16e-instruct",
-        "OPENROUTER_MODEL_QUALITY": "google/gemini-2.5-flash",
+        "OPENROUTER_MODEL_FAST": "google/gemini-3.1-flash-lite",
+        "OPENROUTER_MODEL_QUALITY": "google/gemini-3.1-flash-lite",
     }
     base.update(overrides)
     return base
@@ -88,7 +88,7 @@ def test_correction_style_minimal_gemini():
 
     mock_client = MagicMock()
 
-    def _fake_generate(model, contents):
+    def _fake_generate(model, contents, config=None):
         captured_prompt.append(contents)
         return mock_response
 
@@ -120,7 +120,7 @@ def test_correction_style_smart_gemini():
 
     mock_client = MagicMock()
 
-    def _fake_generate(model, contents):
+    def _fake_generate(model, contents, config=None):
         captured_prompt.append(contents)
         return mock_response
 

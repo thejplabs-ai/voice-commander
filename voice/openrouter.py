@@ -4,8 +4,8 @@
 # a single OpenAI-compatible API endpoint.
 #
 # Smart routing (driven by PromptSpec.speed_tier):
-#   Fast modes (transcribe, email, bullet, translate) → Llama 4 Scout
-#   Quality modes (simple, prompt, query, command)    → Gemini 2.5 Flash
+#   Both fast and quality modes default to google/gemini-3.1-flash-lite.
+#   Per-tier model routing plumbing is preserved for future customization.
 #
 # After provider-protocol consolidation, the per-mode functions below are thin
 # shims through ai_provider._run(). _call() is preserved as the SDK-call
@@ -21,8 +21,8 @@ _client = None
 
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-_MODEL_FAST = "meta-llama/llama-4-scout-17b-16e-instruct"
-_MODEL_QUALITY = "google/gemini-2.5-flash"
+_MODEL_FAST = "google/gemini-3.1-flash-lite"
+_MODEL_QUALITY = "google/gemini-3.1-flash-lite"
 
 # Modos rápidos que usam o modelo fast (legacy compat — PromptSpec.speed_tier
 # is the source of truth post-refactor).
