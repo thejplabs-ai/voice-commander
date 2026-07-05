@@ -337,6 +337,32 @@ class TestToggleRecording:
         # Recording should still be True (STOP was ignored)
         assert state.is_recording is True
 
+    def test_toggle_stop_sem_thread_nao_trava_flag(self, monkeypatch):
+        """Bug reproduction: STOP with record_thread=None must NOT leave
+        is_transcribing stuck True forever — otherwise every subsequent
+        hotkey press hits the "Aguardando transcrição anterior terminar..."
+        skip guard until restart."""
+        monkeypatch.setattr(state, "is_recording", True)
+        monkeypatch.setattr(state, "is_transcribing", False)
+        monkeypatch.setattr(state, "record_start_time", time.time() - 2.0)  # past 500ms guard
+        monkeypatch.setattr(state, "record_thread", None)
+
+        audio.toggle_recording("transcribe")
+
+        assert state.is_transcribing is False
+        assert state.is_recording is False
+
+        # Next toggle must be able to start a new recording, not skip.
+        with patch.object(audio, "play_sound") as mock_play, \
+             patch.object(audio, "_update_tray_state"), \
+             patch("voice.clipboard.read_clipboard", return_value=""), \
+             patch("voice.audio.threading.Thread") as mock_thread:
+            mock_thread.return_value = MagicMock()
+            audio.toggle_recording("transcribe")
+
+        assert state.is_recording is True
+        mock_play.assert_called_once_with("start")
+
 
 # ---------------------------------------------------------------------------
 # transcribe() — post-processing
