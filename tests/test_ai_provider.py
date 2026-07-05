@@ -224,3 +224,44 @@ def test_erro_generico_retorna_fallback(monkeypatch):
     monkeypatch.setattr(openrouter._PROVIDER, "chat", _raise)
 
     assert ai_provider.process("simple", "texto") == "texto"
+
+
+# ---------------------------------------------------------------------------
+# Output guard (W1 reliability sprint — Task 5): transcribe-only ratio guard
+# ---------------------------------------------------------------------------
+
+
+def test_output_guard_descarta_correcao_desproporcional_e_usa_texto_cru(monkeypatch):
+    """transcribe: output desproporcional (resposta/expansão do modelo) é descartado — retorna o texto cru."""
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    input_text = "a" * 100
+    disproportionate_output = "Entendo! Vamos construir a descrição da vaga juntos. " * 8  # ~400+ chars
+    _stub_openrouter(monkeypatch, return_value=disproportionate_output)
+
+    result = ai_provider.process("transcribe", input_text)
+
+    assert result == input_text
+
+
+def test_output_guard_aceita_correcao_proporcional(monkeypatch):
+    """transcribe: output dentro da faixa 0.5-2.0 é aceito normalmente."""
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    input_text = "a" * 100
+    proportional_output = "b" * 110
+    _stub_openrouter(monkeypatch, return_value=proportional_output)
+
+    result = ai_provider.process("transcribe", input_text)
+
+    assert result == proportional_output
+
+
+def test_output_guard_nao_afeta_modos_sem_guard(monkeypatch):
+    """simple mode não tem output_guard — output desproporcional passa normalmente."""
+    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
+    input_text = "a" * 100
+    disproportionate_output = "b" * 500
+    _stub_openrouter(monkeypatch, return_value=disproportionate_output)
+
+    result = ai_provider.process("simple", input_text)
+
+    assert result == disproportionate_output

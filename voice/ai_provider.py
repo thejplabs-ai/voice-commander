@@ -194,6 +194,12 @@ def _run(
             gemini_uses_sdk_default=spec.gemini_uses_sdk_default,
         )
         if result:
+            if spec.output_guard is not None and not spec.output_guard(text, result):
+                print(
+                    f"[WARN] correção desproporcional descartada "
+                    f"(in={len(text)} chars, out={len(result)} chars), usando texto cru"
+                )
+                return text
             if spec.success_log is not None:
                 print(f"[OK]   {spec.success_log(cfg)} ({len(result)} chars)")
             if spec.success_hook is not None:

@@ -353,6 +353,12 @@ class PromptSpec:
             voice/gemini.py:206-208 and test_call_gemini contract). transcribe
             no longer uses this (W1 reliability sprint, Task 4) — it now sends
             temperature=0.0 explicitly to the Gemini SDK.
+        output_guard:     (input_text, output_text) -> bool. Optional hook run
+            by _run() on a successful response; False discards the output and
+            falls back to the raw input text instead. Deterministic last line
+            of defense against a correction model that responds/expands
+            instead of correcting (W1 reliability sprint, Task 5). None for
+            every mode except transcribe.
     """
     system_resolver: Callable[[dict], str]
     user_builder: Callable[..., str]
@@ -362,6 +368,7 @@ class PromptSpec:
     fallback_kind: Literal["text", "selected", "sentinel"]
     gemini_uses_sdk_default: bool = False
     success_hook: Callable[[dict, str, str], None] | None = None
+    output_guard: Callable[[str, str], bool] | None = None
 
 
 def _resolve_correct(cfg: dict) -> str:
@@ -400,6 +407,28 @@ def _transcribe_success_hook(cfg: dict, original: str, result: str) -> None:
         print(f"[WARN] Vocabulário falhou ({type(e).__name__}: {e})")
 
 
+def _transcribe_output_guard(input_text: str, output_text: str) -> bool:
+    """Deterministic ratio guard: rejects a correction that looks like the
+    model responded/expanded instead of correcting (e.g. "Entendo! Vamos
+    construir a descrição da vaga..."). Last line of defense — see
+    ai_provider._run().
+
+    # ponytail: 0.5-2.0 ratio + 20-char floor are hardcoded thresholds, not
+    # tuned from real transcript data. A real correction (punctuation,
+    # capitalization, minor spelling fixes) rarely changes length by more
+    # than 2x; short inputs vary too much proportionally to gate on ratio,
+    # so they always pass (as long as output isn't empty). Revisit if false
+    # positives/negatives show up in production logs.
+    """
+    stripped_in = input_text.strip()
+    if stripped_in and not output_text.strip():
+        return False
+    if len(stripped_in) < 20:
+        return True
+    ratio = len(output_text) / len(stripped_in)
+    return 0.5 <= ratio <= 2.0
+
+
 PROMPTS: dict[str, PromptSpec] = {
     "transcribe": PromptSpec(
         system_resolver=_resolve_correct,
@@ -409,6 +438,7 @@ PROMPTS: dict[str, PromptSpec] = {
         success_log=None,
         fallback_kind="text",
         success_hook=_transcribe_success_hook,
+        output_guard=_transcribe_output_guard,
     ),
     "simple": PromptSpec(
         system_resolver=lambda cfg: SYSTEM_SIMPLIFY,

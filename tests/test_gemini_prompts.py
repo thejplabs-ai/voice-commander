@@ -331,3 +331,62 @@ def test_transcribe_gemini_uses_sdk_default_is_false():
     """Task 4: transcribe usa temperature=0.0 explícita no Gemini direto (não mais SDK default)."""
     assert gp.PROMPTS["transcribe"].gemini_uses_sdk_default is False
     assert gp.PROMPTS["transcribe"].temperature == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Output guard — razão de tamanho para transcribe (W1 reliability sprint — Task 5)
+# ---------------------------------------------------------------------------
+# Última linha de defesa: se a "correção" vier desproporcional ao input (ex.:
+# modelo respondeu/expandiu em vez de corrigir — "Entendo! Vamos construir..."),
+# o guard descarta e ai_provider._run() cola o texto cru. Ver voice/ai_provider.py.
+
+
+def test_guard_aceita_sempre_input_curto_qualquer_razao():
+    """Input < 20 chars (stripped) sempre aceito, mesmo com razão de tamanho absurda."""
+    assert gp._transcribe_output_guard("oi", "um output bem maior que o input curtinho") is True
+    assert gp._transcribe_output_guard("tudo bem?", "ok") is True
+
+
+def test_guard_input_curto_com_output_vazio_rejeita():
+    """Mesmo com input curto, output vazio nunca é aceitável."""
+    assert gp._transcribe_output_guard("oi", "") is False
+    assert gp._transcribe_output_guard("oi", "   ") is False
+
+
+def test_guard_razao_0_4_rejeita():
+    """Razão output/input = 0.4, abaixo do piso 0.5 — rejeita."""
+    assert gp._transcribe_output_guard("a" * 100, "b" * 40) is False
+
+
+def test_guard_razao_0_5_aceita():
+    """Razão output/input = 0.5, no piso — aceita (inclusive)."""
+    assert gp._transcribe_output_guard("a" * 100, "b" * 50) is True
+
+
+def test_guard_razao_1_0_aceita():
+    """Razão output/input = 1.0 — aceita."""
+    assert gp._transcribe_output_guard("a" * 100, "b" * 100) is True
+
+
+def test_guard_razao_2_0_aceita():
+    """Razão output/input = 2.0, no teto — aceita (inclusive)."""
+    assert gp._transcribe_output_guard("a" * 100, "b" * 200) is True
+
+
+def test_guard_razao_2_5_rejeita():
+    """Razão output/input = 2.5, acima do teto — rejeita."""
+    assert gp._transcribe_output_guard("a" * 100, "b" * 250) is False
+
+
+def test_guard_output_vazio_com_input_longo_rejeita():
+    """Output vazio com input não-vazio (>= 20 chars) sempre rejeita."""
+    assert gp._transcribe_output_guard("a" * 30, "") is False
+
+
+def test_guard_registrado_somente_no_transcribe():
+    """Somente PROMPTS['transcribe'] tem output_guard; outros modos ficam None."""
+    assert gp.PROMPTS["transcribe"].output_guard is gp._transcribe_output_guard
+    for mode, spec in gp.PROMPTS.items():
+        if mode == "transcribe":
+            continue
+        assert spec.output_guard is None, f"modo {mode} não deveria ter output_guard"
