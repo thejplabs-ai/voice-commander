@@ -21,8 +21,8 @@ _client = None
 
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-_MODEL_FAST = "meta-llama/llama-4-scout-17b-16e-instruct"
-_MODEL_QUALITY = "google/gemini-2.5-flash"
+_MODEL_FAST = "google/gemini-3.1-flash-lite"
+_MODEL_QUALITY = "google/gemini-3.1-flash-lite"
 
 # Modos rápidos que usam o modelo fast (legacy compat — PromptSpec.speed_tier
 # is the source of truth post-refactor).
