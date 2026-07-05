@@ -15,9 +15,8 @@ from voice import ai_provider, state
 
 @pytest.fixture(autouse=True)
 def reset_runtime_state(monkeypatch):
-    """Each test starts with a clean config + no AI cooldown."""
+    """Each test starts with a clean config."""
     monkeypatch.setattr(state, "_CONFIG", {})
-    monkeypatch.setattr(state, "_ai_last_call_time", 0.0)
     monkeypatch.setattr(state, "_clipboard_context", "")
     monkeypatch.setattr(state, "_command_selected_text", "")
     monkeypatch.setattr(state, "_GEMINI_API_KEY", None)
@@ -193,23 +192,6 @@ def test_fallback_selected_para_command(monkeypatch):
     result = ai_provider.process("command", "instrução")
 
     assert result == "texto preservado"
-
-
-# ---------------------------------------------------------------------------
-# Cooldown gate (SEC-05)
-# ---------------------------------------------------------------------------
-
-def test_cooldown_bloqueia_chamadas_rapidas(monkeypatch):
-    """When _ai_last_call_time was within _AI_COOLDOWN_SECONDS, process() skips."""
-    import time
-    state._CONFIG["OPENROUTER_API_KEY"] = "or-key"
-    monkeypatch.setattr(state, "_ai_last_call_time", time.monotonic())  # just now
-    chat = _stub_openrouter(monkeypatch, return_value="should_not_reach")
-
-    result = ai_provider.process("transcribe", "texto")
-
-    chat.assert_not_called()
-    assert result == "texto"
 
 
 # ---------------------------------------------------------------------------

@@ -173,7 +173,6 @@ class TestCommandModeDispatch:
         """When OPENROUTER_API_KEY set, command mode dispatches through OpenRouterProvider.chat()."""
         monkeypatch.setattr(voice.state, "_CONFIG", {"OPENROUTER_API_KEY": "or-key"})
         monkeypatch.setattr(voice.state, "_command_selected_text", "selected text here")
-        monkeypatch.setattr(voice.state, "_ai_last_call_time", 0.0)
 
         from voice import openrouter
         chat = MagicMock(return_value="modified text")
@@ -195,7 +194,6 @@ class TestCommandModeDispatch:
         monkeypatch.setattr(voice.state, "_CONFIG", {"GEMINI_API_KEY": "gemini-key"})
         monkeypatch.setattr(voice.state, "_GEMINI_API_KEY", "gemini-key")
         monkeypatch.setattr(voice.state, "_command_selected_text", "texto selecionado")
-        monkeypatch.setattr(voice.state, "_ai_last_call_time", 0.0)
 
         from voice import gemini
         chat = MagicMock(return_value="texto modificado")
@@ -216,7 +214,6 @@ class TestCommandModeDispatch:
         """Command mode reads selected text from state._command_selected_text."""
         monkeypatch.setattr(voice.state, "_CONFIG", {"OPENROUTER_API_KEY": "or-key"})
         monkeypatch.setattr(voice.state, "_command_selected_text", "meu texto especial")
-        monkeypatch.setattr(voice.state, "_ai_last_call_time", 0.0)
 
         from voice import openrouter
         chat = MagicMock(return_value="resultado")

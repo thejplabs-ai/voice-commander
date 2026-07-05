@@ -25,7 +25,6 @@ def reset_recording_state(monkeypatch):
     monkeypatch.setattr(state, "frames_buf", [])
     monkeypatch.setattr(state, "record_thread", None)
     monkeypatch.setattr(state, "record_start_time", 0.0)
-    monkeypatch.setattr(state, "_query_cooldown_until", 0.0)
     monkeypatch.setattr(state, "_CONFIG", {
         "MAX_RECORD_SECONDS": 120,
         "AUDIO_DEVICE_INDEX": None,
@@ -338,33 +337,6 @@ class TestToggleRecording:
         # Recording should still be True (STOP was ignored)
         assert state.is_recording is True
 
-    def test_toggle_query_cooldown_ativo_skip(self, monkeypatch):
-        """toggle_recording skips query mode start if cooldown is active."""
-        monkeypatch.setattr(state, "is_recording", False)
-        monkeypatch.setattr(state, "is_transcribing", False)
-        monkeypatch.setattr(state, "_query_cooldown_until", time.time() + 10.0)  # Active cooldown
-
-        audio.toggle_recording("query")
-
-        # Should NOT start recording
-        assert state.is_recording is False
-
-    def test_toggle_query_cooldown_expirado_inicia(self, monkeypatch):
-        """toggle_recording starts query mode when cooldown has expired."""
-        monkeypatch.setattr(state, "is_recording", False)
-        monkeypatch.setattr(state, "is_transcribing", False)
-        monkeypatch.setattr(state, "_query_cooldown_until", time.time() - 5.0)  # Expired
-
-        with patch.object(audio, "play_sound"), \
-             patch.object(audio, "_update_tray_state"), \
-             patch("voice.clipboard.read_clipboard", return_value=""), \
-             patch("voice.audio.threading.Thread") as mock_thread:
-            mock_t = MagicMock()
-            mock_thread.return_value = mock_t
-            audio.toggle_recording("query")
-
-        assert state.is_recording is True
-
 
 # ---------------------------------------------------------------------------
 # transcribe() — post-processing
@@ -379,59 +351,6 @@ class TestTranscribe:
             audio.transcribe([], "transcribe")
 
         mock_play.assert_called_once_with("error")
-
-    def test_transcribe_query_define_cooldown(self, monkeypatch):
-        """transcribe() sets _query_cooldown_until after query mode processing."""
-        monkeypatch.setattr(state, "_query_cooldown_until", 0.0)
-
-        # Mock numpy concatenate
-        np_mock = MagicMock()
-        np_mock.concatenate.return_value = MagicMock()
-        np_mock.int16 = type("int16", (), {})()
-
-        frame = MagicMock()
-
-        with patch("voice.audio.np", np_mock), \
-             patch("voice.audio.wave"), \
-             patch("voice.audio.tempfile") as mock_tmp, \
-             patch.object(audio, "_do_transcription", return_value="test query result"), \
-             patch.object(audio, "_post_process_and_paste", return_value=("processed", 1200, 100)), \
-             patch.object(audio, "_update_tray_state"), \
-             patch("voice.logging_._append_history"):
-            mock_tmp.NamedTemporaryFile.return_value.__enter__ = MagicMock(return_value=MagicMock(name="test.wav"))
-            mock_tmp.NamedTemporaryFile.return_value.__exit__ = MagicMock(return_value=False)
-            mock_tmp.NamedTemporaryFile.return_value.name = "/tmp/test.wav"
-            with patch("os.unlink"):
-                audio.transcribe([frame], "query")
-
-        # Cooldown should have been set
-        assert state._query_cooldown_until > time.time()
-
-    def test_transcribe_nao_query_nao_define_cooldown(self, monkeypatch):
-        """transcribe() does NOT set cooldown for non-query modes."""
-        monkeypatch.setattr(state, "_query_cooldown_until", 0.0)
-
-        np_mock = MagicMock()
-        np_mock.concatenate.return_value = MagicMock()
-        np_mock.int16 = type("int16", (), {})()
-
-        frame = MagicMock()
-
-        with patch("voice.audio.np", np_mock), \
-             patch("voice.audio.wave"), \
-             patch("voice.audio.tempfile") as mock_tmp, \
-             patch.object(audio, "_do_transcription", return_value="transcribed text"), \
-             patch.object(audio, "_post_process_and_paste", return_value=("processed", 1200, 100)), \
-             patch.object(audio, "_update_tray_state"), \
-             patch("voice.logging_._append_history"):
-            mock_tmp.NamedTemporaryFile.return_value.__enter__ = MagicMock(return_value=MagicMock(name="test.wav"))
-            mock_tmp.NamedTemporaryFile.return_value.__exit__ = MagicMock(return_value=False)
-            mock_tmp.NamedTemporaryFile.return_value.name = "/tmp/test.wav"
-            with patch("os.unlink"):
-                audio.transcribe([frame], "transcribe")
-
-        # Cooldown should NOT have been set
-        assert state._query_cooldown_until == 0.0
 
 
 # ---------------------------------------------------------------------------

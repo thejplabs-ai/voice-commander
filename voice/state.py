@@ -55,14 +55,6 @@ _settings_window_lock = threading.Lock()
 # Settings request — main thread opens webview when set
 _settings_requested = threading.Event()
 
-# AI rate limiting — cooldown de 2s entre chamadas AI (SEC-05)
-_ai_last_call_time: float = 0.0
-_AI_COOLDOWN_SECONDS: float = 2.0
-
-# QW-1: cooldown pós-query — ignorar hotkey por 2s após processar modo query
-_query_cooldown_until: float = 0.0
-_QUERY_HOTKEY_COOLDOWN: float = 2.0
-
 # QW-6: duração da gravação para tooltip da tray
 _recording_start_time: float = 0.0
 _tray_tooltip_thread = None
@@ -74,7 +66,7 @@ _clipboard_context: str = ""
 _command_selected_text: str = ""
 
 # Lock para estado cross-thread fora do ciclo de gravação
-# Protege: _ai_last_call_time, _query_cooldown_until, _tray_state, _clipboard_context
+# Protege: _tray_state, _clipboard_context
 _state_lock = threading.RLock()
 
 # Epic 5.1: Dicionário Pessoal — cache do custom_vocabulary.json

@@ -479,10 +479,6 @@ def _dispatch_transcribed_text(
     except Exception:
         pass
 
-    # QW-1: definir cooldown de 2s após processamento de query
-    if mode == "query":
-        state._query_cooldown_until = time.time() + state._QUERY_HOTKEY_COOLDOWN
-
     duration = time.time() - t_start
     timing = _build_timing_and_log(recording_ms, whisper_ms, gemini_ms, paste_ms, t_mono_start)
     _audio._append_history(mode, raw_text, text, duration, timing_ms=timing)
