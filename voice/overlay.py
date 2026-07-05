@@ -19,6 +19,7 @@ STATE_PROCESSING   = "processing"
 STATE_DONE         = "done"
 STATE_MODE_CHANGE  = "mode_change"  # Story 4.6.2: ciclo de modo
 STATE_COMMAND      = "command"      # Epic 5.0: Command Mode
+STATE_ERROR        = "error"        # Task 3 (W1 reliability sprint): VAD-gate skip
 STATE_HIDE         = "hide"
 
 # Story 4.6.2: duração do overlay de ciclo de modo (ms)
@@ -32,6 +33,7 @@ _COLORS = {
     "recording":   "#D4626E",   # theme.TRAY_RECORDING (muted rose)
     "processing":  "#6B8EBF",   # theme.TRAY_PROCESSING (steel blue)
     "done":        "#7EC89B",   # theme.SUCCESS (sage green)
+    "error":       "#D4626E",   # theme.ERROR (muted rose)
     "text":        "#F5F5F0",   # theme.TEXT_PRIMARY (cream-white)
     "muted":       "#807E7A",   # theme.TEXT_MUTED
     "purple":      "#C4956A",   # theme.PURPLE (warm amber)
@@ -43,6 +45,7 @@ _OVERLAY_H = 72
 _MARGIN_RIGHT = 24
 _MARGIN_BOTTOM = 60
 _DONE_DISMISS_MS = 2000  # ms para auto-dismiss no estado "done"
+_ERROR_DISMISS_MS = 2500  # ms para auto-dismiss no estado "error" (skip VAD)
 
 
 # Resolve font family com fallback — chamado dentro de _build() onde self._root já existe
@@ -220,6 +223,11 @@ class _OverlayThread(threading.Thread):
             label = "Comando de Voz"
             info = text or "Fale sua instrução..."
             self._start_dot_anim(color, STATE_COMMAND)
+        elif overlay_state == STATE_ERROR:
+            color = _COLORS["error"]
+            label = "Erro"
+            info = text or "Não detectei fala"
+            self._dismiss_id = self._root.after(_ERROR_DISMISS_MS, self._animate_hide)
         else:
             self._hide()
             return
@@ -227,7 +235,7 @@ class _OverlayThread(threading.Thread):
         self._dot_canvas.itemconfig(self._dot_oval, fill=color)
         if hasattr(self, "_dot_glow"):
             self._dot_canvas.itemconfig(self._dot_glow, outline=color)
-        self._state_label.config(text=label, fg=color if overlay_state == STATE_DONE else _COLORS["text"])
+        self._state_label.config(text=label, fg=color if overlay_state in (STATE_DONE, STATE_ERROR) else _COLORS["text"])
         self._text_label.config(text=info)
 
         # Calcular posicao final
@@ -427,6 +435,18 @@ def show_mode_change(mode: str) -> None:
         return
     mode_name = _MODE_NAMES_PT.get(mode, mode)
     t.send("show", state=STATE_MODE_CHANGE, text=mode_name)
+
+
+def show_error(text: str = "") -> None:
+    """Task 3 (W1 reliability sprint): exibe overlay no estado 'Erro'.
+
+    Usado quando o VAD não detecta fala (skip: beep + overlay + history,
+    sem paste) — nunca cola alucinação do Whisper no texto do usuário.
+    """
+    t = _get_thread()
+    if t is None:
+        return
+    t.send("show", state=STATE_ERROR, text=text)
 
 
 def hide() -> None:
