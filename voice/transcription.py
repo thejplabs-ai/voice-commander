@@ -138,7 +138,7 @@ def _transcribe_model_fallback(mode: str, temp_path: str, kwargs: dict, vad_para
 
 # ── Core STT dispatch (Whisper or Gemini, with full fallback chain) ──────────
 
-def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
+def _do_transcription(temp_path: str, mode: str) -> str:
     """Executa transcrição no arquivo WAV e retorna o texto transcrito.
 
     Roteia para Gemini STT ou Whisper local com base em STT_PROVIDER.
@@ -148,10 +148,6 @@ def _do_transcription(temp_path: str, mode: str, audio_data) -> str:
     retorna string vazia — sem fallback sem VAD (Task 3, W1 reliability
     sprint: elimina o blocklist de alucinações do Whisper; ver
     _emit_empty_audio_error para o skip visível ao usuário).
-
-    audio_data: ponytail — não é mais consultado aqui após a remoção do
-    fallback sem VAD; mantido na assinatura para não alterar _run_stt()/
-    transcribe(), que não pediram mudança nesta task.
     """
     from voice import audio as _audio
 
@@ -398,14 +394,14 @@ def _prepare_wav(frames: list) -> tuple:
     return temp_path, audio_data
 
 
-def _run_stt(temp_path: str, mode: str, audio_data) -> tuple:
+def _run_stt(temp_path: str, mode: str) -> tuple:
     """Executa STT medindo latência da fase Whisper/Gemini.
 
     Retorna (raw_text, whisper_ms).
     """
     from voice import audio as _audio
     t_whisper_start = time.monotonic()
-    raw_text = _audio._do_transcription(temp_path, mode, audio_data)
+    raw_text = _audio._do_transcription(temp_path, mode)
     whisper_ms = int((time.monotonic() - t_whisper_start) * 1000)
     return raw_text, whisper_ms
 
@@ -523,8 +519,8 @@ def transcribe(frames: list, mode: str = "transcribe") -> None:
 
         _set_processing_state(mode)
 
-        temp_path, audio_data = _prepare_wav(frames)
-        raw_text, whisper_ms = _run_stt(temp_path, mode, audio_data)
+        temp_path, _ = _prepare_wav(frames)
+        raw_text, whisper_ms = _run_stt(temp_path, mode)
 
         if not raw_text:
             _emit_empty_audio_error(mode, t_start)
