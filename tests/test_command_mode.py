@@ -10,6 +10,7 @@ Tests:
 - STATE_COMMAND present in overlay
 """
 import ctypes
+import itertools
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -32,6 +33,12 @@ def _make_windll_mock():
     mock_kernel32.GlobalLock.return_value = 0xBEEF
     mock_kernel32.GlobalUnlock.return_value = 1
     mock_kernel32.GlobalFree.return_value = 0
+    # simulate_copy: modificadores soltos, injeção completa (4/4) e clipboard
+    # sequence number que muda a cada consulta (copy "publicado" no 1º poll)
+    mock_user32.GetAsyncKeyState.return_value = 0
+    mock_user32.SendInput.return_value = 4
+    _seq = itertools.count()
+    mock_user32.GetClipboardSequenceNumber.side_effect = lambda: next(_seq)
     mock_windll = MagicMock()
     mock_windll.kernel32 = mock_kernel32
     mock_windll.user32 = mock_user32
@@ -71,19 +78,41 @@ class TestSimulateCopy:
         args = mock_windll.user32.SendInput.call_args[0]
         assert args[0] == 4
 
-    def test_aguarda_50ms_apos_sendinput(self, monkeypatch):
-        """simulate_copy sleeps 50ms after SendInput to let clipboard populate."""
+    def test_aguarda_clipboard_mudar_apos_sendinput(self, monkeypatch):
+        """simulate_copy polls GetClipboardSequenceNumber until the copy lands."""
         mock_windll = _make_windll_mock()
         monkeypatch.setattr(ctypes, "windll", mock_windll)
 
-        sleep_calls = []
-        with patch("time.sleep", side_effect=lambda s: sleep_calls.append(s)):
+        with patch("time.sleep"):
             from voice.clipboard import simulate_copy
             simulate_copy()
 
-        assert any(abs(s - 0.05) < 0.001 for s in sleep_calls), (
-            f"Expected sleep(0.05) but got {sleep_calls}"
-        )
+        # 1 consulta antes do SendInput + >=1 poll até detectar a mudança
+        assert mock_windll.user32.GetClipboardSequenceNumber.call_count >= 2
+
+    def test_input_struct_tem_tamanho_correto_para_o_os(self):
+        """Regressão: sizeof(INPUT) deve ser 40 (x64) / 28 (x86).
+
+        Union sem MOUSEINPUT + dwExtraInfo c_ulong davam sizeof=20 e TODO
+        SendInput falhava com ERROR_INVALID_PARAMETER (87) sem injetar nada
+        — copy e paste quebrados em silêncio.
+        """
+        from voice import clipboard
+        expected = 40 if ctypes.sizeof(ctypes.c_void_p) == 8 else 28
+        assert ctypes.sizeof(clipboard._INPUT) == expected
+
+    def test_sendinput_bloqueado_retorna_sem_poll(self, monkeypatch):
+        """SendInput injecting fewer than 4 events (e.g. elevated window) aborts early."""
+        mock_windll = _make_windll_mock()
+        mock_windll.user32.SendInput.return_value = 0
+        monkeypatch.setattr(ctypes, "windll", mock_windll)
+
+        with patch("time.sleep"):
+            from voice.clipboard import simulate_copy
+            simulate_copy()  # não levanta; loga [WARN] e retorna
+
+        # consulta inicial do sequence number apenas — sem poll pós-injeção
+        assert mock_windll.user32.GetClipboardSequenceNumber.call_count == 1
 
     def test_nao_levanta_excecao(self, monkeypatch):
         """simulate_copy completes without raising exceptions."""
