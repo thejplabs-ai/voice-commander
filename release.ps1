@@ -95,6 +95,10 @@ if ($proc) {
         Start-Sleep -Milliseconds 500
         $waited++
     }
+    if (Get-Process -Name VoiceCommander -ErrorAction SilentlyContinue) {
+        Write-Output "[ERRO] VoiceCommander.exe ainda em execucao apos timeout - aborte ou feche manualmente"
+        exit 1
+    }
     Write-Output "[OK]   VoiceCommander.exe encerrado"
 } else {
     Write-Output "[OK]   VoiceCommander.exe nao estava em execucao"
@@ -102,7 +106,11 @@ if ($proc) {
 
 # --- 6. Install silencioso --------------------------------------------------
 Write-Output "[...] Instalando (silencioso, admin via UAC se necessario)"
-Start-Process -FilePath $setupPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+$setupProcess = Start-Process -FilePath $setupPath -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+if ($setupProcess.ExitCode -ne 0) {
+    Write-Output "[ERRO] Instalador retornou $($setupProcess.ExitCode)"
+    exit 1
+}
 Write-Output "[OK]   Instalacao concluida"
 
 # --- 7. Resumo final -------------------------------------------------------
