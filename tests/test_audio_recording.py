@@ -224,7 +224,7 @@ class TestOnHotkeyDebounce:
 
     def test_concurrent_debounce_race_condition(self, monkeypatch, mock_config):
         """
-        Regression: quando o keyboard library dispara on_hotkey() em múltiplas threads
+        Regression: quando o Win32 RegisterHotKey module dispara on_hotkey() em múltiplas threads
         quase simultaneamente (race condition), apenas UMA deve passar pelo debounce.
 
         Sem o _hotkey_debounce_lock atômico, duas threads podem ler _last_hotkey_time
@@ -248,7 +248,7 @@ class TestOnHotkeyDebounce:
         state.stop_event.clear()
 
         # Disparar 5 on_hotkey() calls simultaneamente em threads separadas
-        # (simula o keyboard library disparando eventos em paralelo)
+        # (simula o Win32 RegisterHotKey module disparando callbacks em paralelo)
         barrier = threading.Barrier(5)
 
         def _concurrent_hotkey():
@@ -277,7 +277,8 @@ class TestOnHotkeyDebounce:
         """
         Regression: second on_hotkey() call within 1000ms must be ignored
         regardless of is_recording state (unconditional debounce).
-        Root cause: keyboard library bounce arrives ~350-400ms after key-down,
+        Root cause: WM_HOTKEY also dispatches multiple times when key is held down
+        or when user repeats the hotkey in rapid succession (~350-400ms apart),
         which passed the old 300ms debounce. New threshold is 1000ms.
         """
         import winsound
@@ -341,7 +342,7 @@ class TestMinimumRecordingTime:
         """
         Regression: se o STOP chegar antes de 500ms do início da gravação,
         toggle_recording() deve retornar silenciosamente sem chamar transcribe().
-        Simula o segundo fire do keyboard library (~350-400ms após key-down)
+        Simula o segundo WM_HOTKEY event (~350-400ms após key-down)
         que passou o debounce antigo de 300ms mas agora é bloqueado por esta camada.
         """
         import winsound

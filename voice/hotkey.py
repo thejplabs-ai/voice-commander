@@ -89,7 +89,7 @@ def on_hotkey() -> None:
     """Hotkey único — usa state.selected_mode para determinar o modo.
 
     Debounce atômico: o check-and-set de _last_hotkey_time é protegido por um
-    Lock para evitar race condition quando o keyboard library dispara o callback
+    Lock para evitar race condition quando o Win32 RegisterHotKey module dispara o callback
     em múltiplas threads quase simultaneamente (key-down + key-up + bounce do OS
     chegam em ~1-5ms de diferença). Sem o lock, duas threads podem ler
     _last_hotkey_time ao mesmo tempo, ambas passam pelo check, e lançam dois
