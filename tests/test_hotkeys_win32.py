@@ -35,9 +35,11 @@ class TestParseHotkeyValidCombos:
         ("ctrl+shift+tab", (hk.MOD_CONTROL | hk.MOD_SHIFT | hk.MOD_NOREPEAT, 0x09)),
         ("ctrl+shift+h", (hk.MOD_CONTROL | hk.MOD_SHIFT | hk.MOD_NOREPEAT, ord("H"))),
         ("ctrl+alt+space", (hk.MOD_CONTROL | hk.MOD_ALT | hk.MOD_NOREPEAT, 0x20)),
+        ("ctrl+alt+m", (hk.MOD_CONTROL | hk.MOD_ALT | hk.MOD_NOREPEAT, ord("M"))),
+        ("ctrl+alt+h", (hk.MOD_CONTROL | hk.MOD_ALT | hk.MOD_NOREPEAT, ord("H"))),
     ])
     def test_combos_default_do_app(self, combo, expected):
-        """The 4 default hotkey combos from voice/config.py parse to the exact expected (mods, vk)."""
+        """The 6 default hotkey combos from voice/config.py parse to the exact expected (mods, vk)."""
         assert hk.parse_hotkey(combo) == expected
 
     def test_case_insensitive_e_espacos(self):
