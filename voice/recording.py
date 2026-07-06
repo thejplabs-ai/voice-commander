@@ -129,7 +129,8 @@ def _stop_recording_snapshot() -> "tuple[object, str] | tuple[None, None]":
     """Executa o path STOP da gravação (chamado com _toggle_lock adquirido).
 
     Retorna (record_thread, current_mode) se STOP for executado, ou (None, None)
-    se a gravação for muito curta (guard de 500ms).
+    se a gravação for muito curta (guard de 500ms) ou se não houver
+    record_thread para dar join/transcrever (caminho anômalo).
     """
     elapsed = time.time() - state.record_start_time
     if elapsed < 0.5:

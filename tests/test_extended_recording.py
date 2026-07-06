@@ -14,20 +14,6 @@ from voice import state
 from voice.config import load_config
 
 
-def _get_real_numpy():
-    """Return the real numpy module, bypassing the MagicMock stub in sys.modules."""
-    # Temporarily restore real numpy to get the actual module object
-    mock_np = sys.modules.get("numpy")
-    try:
-        del sys.modules["numpy"]
-        import numpy as _real
-        return _real
-    except ImportError:
-        return mock_np
-    finally:
-        sys.modules["numpy"] = mock_np
-
-
 # ---------------------------------------------------------------------------
 # Story 5.4.1: Extended Recording — defaults and memory footprint
 # ---------------------------------------------------------------------------
@@ -137,11 +123,11 @@ class TestHandsFreeLoop:
         # Run synchronously — must return without blocking
         audio.hands_free_loop()  # should return immediately
 
-    def test_hands_free_speech_detection_triggers_start(self, monkeypatch):
+    def test_hands_free_speech_detection_triggers_start(self, monkeypatch, real_numpy):
         """High-RMS frames for >= speech_ms should call toggle_recording (START)."""
         from voice import audio
 
-        real_np = _get_real_numpy()
+        real_np = real_numpy
 
         monkeypatch.setattr(state, "_CONFIG", self._base_config())
         monkeypatch.setattr(state, "is_recording", False)
@@ -188,11 +174,11 @@ class TestHandsFreeLoop:
         assert len(toggle_calls) >= 1, "toggle_recording should have been called for speech detection"
         assert toggle_calls[0] == "transcribe"
 
-    def test_hands_free_silence_detection_triggers_stop(self, monkeypatch):
+    def test_hands_free_silence_detection_triggers_stop(self, monkeypatch, real_numpy):
         """Silence frames >= silence_ms while recording should call toggle_recording (STOP)."""
         from voice import audio
 
-        real_np = _get_real_numpy()
+        real_np = real_numpy
 
         monkeypatch.setattr(state, "_CONFIG", self._base_config())
         monkeypatch.setattr(state, "is_recording", True)   # already recording
@@ -260,11 +246,11 @@ class TestHandsFreeLoop:
         finally:
             sd_mock.InputStream = original_InputStream
 
-    def test_hands_free_no_double_start_while_recording(self, monkeypatch):
+    def test_hands_free_no_double_start_while_recording(self, monkeypatch, real_numpy):
         """Speech detection must NOT trigger start if is_recording=True."""
         from voice import audio
 
-        real_np = _get_real_numpy()
+        real_np = real_numpy
 
         monkeypatch.setattr(state, "_CONFIG", self._base_config())
         monkeypatch.setattr(state, "is_recording", True)   # already recording

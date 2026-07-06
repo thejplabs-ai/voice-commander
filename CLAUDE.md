@@ -14,19 +14,35 @@ Voice Commander e uma ferramenta voice-to-text pessoal para Windows. Captura aud
 
 ---
 
+## Skills Cross-Projeto (user-level — adopted 2026-04-28)
+
+Skills propagados de `~/.claude/skills/`, disponiveis em qualquer sessao Claude Code:
+
+| Skill | Quando usar |
+|---|---|
+| `/grill` | Antes de feature/refactor nao-trivial. Walk decision tree com agente, recommended answer por pergunta. Output: shared understanding (Matt Pocock methodology). |
+| `/tdd` | Durante implementacao — red-green-refactor. Test fail FIRST, then implementation. Anti-cheating tests. |
+| `/to-prd` | Apos `/grill`, sintetizar contexto em PRD sem re-interrogar. |
+| `/improve-codebase-architecture` | Scan deep vs shallow modules (Ousterhout). Propoe deepening, NAO auto-refatora. |
+
+Source: Matt Pocock methodology (mattpocock/skills). Adocao articulada em AIOS ADR-048/049/050.
+
+---
+
 ## Stack e Dependencias
 
 | Pacote | Versao Pinada | Proposito |
 |--------|--------------|-----------|
 | `faster-whisper` | 1.2.1 | Transcricao local (small model, CPU/int8) |
 | `google-genai` | 1.63.0 | Gemini 2.5 Flash (correcao, prompts, query) |
-| `keyboard` | 0.13.5 | Registro de hotkeys globais |
 | `sounddevice` | 0.5.5 | Captura de audio do microfone |
 | `numpy` | 2.4.2 | Processamento de frames de audio |
 | `pystray` | 0.19.5 | System tray icon (3 estados visuais) |
 | `Pillow` | 11.1.0 | Geracao de icones para o tray |
-| `customtkinter` | 5.2.2 | Busca de historico (`history_search.py`) e briefing matinal |
+| `customtkinter` | 5.2.2 | Busca de historico (`history_search.py`) |
 | `pywebview` | 5.3.2 | Settings + Onboarding (UI primaria via HTML/CSS, Epic 5) |
+| `rapidfuzz` | 3.14.3 | Fuzzy matching de snippets (frase inteira, threshold 90) |
+| `openai` | 2.24.0 | Client OpenAI-compatible usado pelo gateway OpenRouter (provider OpenAI direto nao existe mais) |
 
 Versoes em `requirements.txt`. Atualizar somente com intencao explicita e novo pin.
 
@@ -64,32 +80,42 @@ python -c "import sounddevice; print(sounddevice.query_devices())"
 ```
 voice-commander/
 ├── voice/                      <- Pacote principal
+│   ├── __main__.py             <- Entry point de `python -m voice` / PyInstaller
 │   ├── app.py                  <- Entry point — main(), hotkey loop, startup
 │   ├── config.py               <- load_config(), _save_env(), _reload_config(), license validation
 │   ├── state.py                <- Estado global (recording, mode, buffers)
-│   ├── audio.py                <- Gravacao sounddevice, toggle, beeps
+│   ├── audio.py                <- Facade de gravacao (re-exporta recording/hotkey/sound/hands_free/transcription)
+│   ├── recording.py            <- Loop de captura + snapshot transacional START/STOP
+│   ├── hotkey.py               <- Toggle/callbacks de gravacao (on_hotkey, on_command_hotkey, debounce)
+│   ├── hotkeys_win32.py        <- RegisterHotKey via ctypes puro, pump thread GetMessageW (W2)
+│   ├── transcription.py        <- Pipeline pos-gravacao: STT -> VAD-gate -> match de snippets -> AI -> paste
+│   ├── sound.py                <- Beeps/sons de feedback (custom .wav ou winsound fallback)
+│   ├── hands_free.py           <- Loop VAD auto-start/stop por energia RMS (HANDS_FREE_ENABLED)
 │   ├── mic.py                  <- Captura raw do microfone (sounddevice wrapper)
 │   ├── whisper.py              <- Transcricao local (faster-whisper)
 │   ├── gemini.py               <- Cliente Gemini, modos de processamento
-│   ├── ai_provider.py          <- Facade routing + retry utils (OpenRouter > Gemini > OpenAI)
+│   ├── gemini_prompts.py       <- PromptSpec + builders SYSTEM_*/user_* — fonte unica de prompts
+│   ├── ai_provider.py          <- Facade routing + retry utils (OpenRouter > Gemini, sem OpenAI direto)
 │   ├── openrouter.py           <- OpenRouter gateway (OpenAI-compatible, smart routing)
-│   ├── openai_.py              <- Implementacao OpenAI (provider legacy)
 │   ├── modes.py                <- Nomes, labels e acoes centralizados de todos os modos
 │   ├── tray.py                 <- System tray, 3 estados visuais, menu
 │   ├── webui/                  <- Settings + Onboarding (pywebview + HTML, Epic 5)
+│   │   ├── bridge.py           <- API Python exposta ao JS via window.pywebview.api
+│   │   ├── onboarding.html     <- Tela de onboarding inicial
+│   │   └── settings.html       <- Tela de Configuracoes
 │   ├── overlay.py              <- Toast/feedback visual (tkinter puro)
-│   ├── history_search.py       <- Busca em history.jsonl (usa customtkinter direto)
-│   ├── clipboard.py            <- Leitura/escrita de clipboard via ctypes
+│   ├── history_search.py       <- Busca em history.jsonl (CTk, fila thread-safe para reuse)
+│   ├── clipboard.py            <- Leitura/escrita de clipboard + SendInput via ctypes
 │   ├── paths.py                <- Resolucao de paths (_BASE_DIR)
 │   ├── mutex.py                <- Named Mutex Win32 (instancia unica)
 │   ├── logging_.py             <- Setup de log e rotacao de sessao
 │   ├── shutdown.py             <- graceful_shutdown, release mutex
 │   ├── theme.py                <- Design tokens JP Labs (cores, fontes, espacamento)
-│   ├── snippets.py             <- Snippets/templates de texto
+│   ├── snippets.py             <- Snippets/templates de texto (match frase-completa)
 │   ├── vocabulary.py           <- Vocabulario custom do Whisper
 │   ├── window_context.py       <- Contexto da janela ativa (foreground window)
 │   └── __init__.py             <- __version__ = "1.0.15"
-├── tests/                      <- 365+ testes
+├── tests/                      <- 500+ testes
 ├── requirements.txt            <- Dependencias pinadas (Python 3.13)
 ├── .env.example                <- Template de configuracao
 ├── .env                        <- Configuracao local (NUNCA commitar)
@@ -139,7 +165,9 @@ voice-commander/
 
 ### Ciclo de modos (via `RECORD_HOTKEY` + `CYCLE_HOTKEY`)
 
-O modo ativo e exibido no tooltip do tray. Trocar modo: `CYCLE_HOTKEY` (default: `Ctrl+Shift+Tab`).
+O modo ativo e exibido no tooltip do tray. Trocar modo: `CYCLE_HOTKEY` (default: `Ctrl+Alt+N`).
+
+Ciclar por hotkey troca o modo só em memória para a sessão atual; a escolha feita via tray/Configuracoes é que persiste no `.env`. Um restart do app volta ao modo persistido (W3).
 
 | Modo (id) | Nome PT | Comportamento |
 |-----------|---------|---------------|
@@ -154,17 +182,17 @@ O modo ativo e exibido no tooltip do tray. Trocar modo: `CYCLE_HOTKEY` (default:
 Todos usam `RECORD_HOTKEY` (default: `Ctrl+Shift+Space`) para iniciar/parar gravacao.
 `CYCLE_MODES` no `.env` controla quais modos entram no ciclo (default: 5 primeiros).
 
-Todos os hotkeys usam `suppress=False` (ver Gotchas).
+Hotkeys globais registrados via Win32 `RegisterHotKey` (ver `voice/hotkeys_win32.py` e Gotchas) — `HISTORY_HOTKEY` (default: `Ctrl+Alt+H`) abre a busca no historico; `COMMAND_HOTKEY` (default: `Ctrl+Alt+Space`) aciona o Command Mode (Epic 5.0, fora do ciclo de modos).
 
 ---
 
 ## AI Provider Routing
 
-Prioridade: `OPENROUTER_API_KEY` > `GEMINI_API_KEY` > `OPENAI_API_KEY`
+Prioridade: `OPENROUTER_API_KEY` > `GEMINI_API_KEY` (OpenAI direto foi removido — OpenRouter proxeia os mesmos modelos pelo mesmo gateway)
 
-Via OpenRouter (recomendado), smart routing automatico:
-- Modos rapidos (transcribe, email, bullet, translate) -> Llama 4 Scout
-- Modos complexos (simple, prompt, query) -> Gemini 2.5 Flash
+Via OpenRouter (recomendado), plumbing fast/quality mantido por modo, mas ambos os tiers default hoje para o mesmo modelo:
+- Modos rapidos (transcribe, email, bullet, translate) -> `google/gemini-3.1-flash-lite` (`OPENROUTER_MODEL_FAST`)
+- Modos complexos (simple, prompt, query) -> `google/gemini-3.1-flash-lite` (`OPENROUTER_MODEL_QUALITY`)
 
 ---
 
@@ -180,8 +208,6 @@ Fonte da verdade: `voice/config.py` (`load_config()`). Defaults abaixo refletem 
 | `OPENROUTER_API_KEY` | *(vazio)* | string | Gateway unico (recomendado). Obter em openrouter.ai/keys |
 | `GEMINI_API_KEY` | — | string | Fallback direto. Obter em aistudio.google.com/apikey |
 | `GEMINI_MODEL` | `gemini-2.5-flash` | string | Modelo Gemini para correcao/estruturacao |
-| `OPENAI_API_KEY` | *(vazio)* | string | Legacy fallback |
-| `OPENAI_MODEL` | `gpt-4o-mini` | string | Modelo OpenAI |
 
 ### Transcricao (Whisper)
 
@@ -202,7 +228,7 @@ Fonte da verdade: `voice/config.py` (`load_config()`). Defaults abaixo refletem 
 
 | Variavel | Default | Tipo | Descricao |
 |----------|---------|------|-----------|
-| `MAX_RECORD_SECONDS` | `120` | int | Timeout de gravacao. Bip de aviso 5s antes |
+| `MAX_RECORD_SECONDS` | `600` | int | Timeout de gravacao. Bip de aviso 5s antes |
 | `AUDIO_DEVICE_INDEX` | *(vazio)* | int | Indice do microfone. Vazio = padrao do SO |
 | `PASTE_DELAY_MS` | `50` | int | Delay adicional antes de colar (ms) |
 | `SOUND_START` | *(vazio)* | string | Path para som customizado de inicio. Vazio = beep padrao |
@@ -216,10 +242,11 @@ Fonte da verdade: `voice/config.py` (`load_config()`). Defaults abaixo refletem 
 | Variavel | Default | Tipo | Descricao |
 |----------|---------|------|-----------|
 | `RECORD_HOTKEY` | `ctrl+shift+space` | string | Iniciar/parar gravacao |
-| `CYCLE_HOTKEY` | `ctrl+shift+tab` | string | Ciclar entre modos do ciclo |
+| `CYCLE_HOTKEY` | `ctrl+alt+n` | string | Ciclar entre modos do ciclo |
 | `CYCLE_MODES` | `transcribe,email,simple,prompt,query` | string | Modos no ciclo (separados por virgula) |
 | `QUERY_SYSTEM_PROMPT` | *(vazio)* | string | System prompt customizado para modo query |
-| `HISTORY_HOTKEY` | `ctrl+shift+h` | string | Abrir busca no historico |
+| `HISTORY_HOTKEY` | `ctrl+alt+h` | string | Abrir busca no historico |
+| `COMMAND_HOTKEY` | `ctrl+alt+space` | string | Aciona o Command Mode (Epic 5.0) |
 
 ### Features
 
@@ -236,8 +263,8 @@ Fonte da verdade: `voice/config.py` (`load_config()`). Defaults abaixo refletem 
 
 | Variavel | Default | Tipo | Descricao |
 |----------|---------|------|-----------|
-| `OPENROUTER_MODEL_FAST` | `meta-llama/llama-4-scout-17b-16e-instruct` | string | Modelo para modos rapidos |
-| `OPENROUTER_MODEL_QUALITY` | `google/gemini-2.5-flash` | string | Modelo para modos complexos |
+| `OPENROUTER_MODEL_FAST` | `google/gemini-3.1-flash-lite` | string | Modelo para modos rapidos |
+| `OPENROUTER_MODEL_QUALITY` | `google/gemini-3.1-flash-lite` | string | Modelo para modos complexos |
 
 ### Observabilidade
 
@@ -260,7 +287,7 @@ Fonte da verdade: `voice/config.py` (`load_config()`). Defaults abaixo refletem 
 
 ```
 [ ] python -m py_compile voice/*.py   — zero erros de sintaxe
-[ ] pytest                            — 250+ testes passando
+[ ] pytest                            — 500+ testes passando
 [ ] Testado com pythonw.exe           — sem console, comportamento real
 [ ] .env nao commitado
 [ ] .env.example atualizado se nova variavel
@@ -365,9 +392,21 @@ keyboard.send("ctrl+v")        # nunca keyboard para paste
 
 ## Gotchas Conhecidos
 
-### `suppress=False` nos hotkeys e INTENCIONAL
+### ctypes Win32 exige `restype`/`argtypes` explicitos em toda funcao
 
-Nao alterar para `suppress=True`. Com suppress=True, ha delay perceptivel em Ctrl+C, Ctrl+V, Shift+seta, etc. em todo o sistema. O risco de re-entrada e mitigado por `_toggle_lock`.
+Duas falhas silenciosas da mesma familia em `voice/clipboard.py` (corrigidas no hotfix #22): a struct `INPUT` do `SendInput` tinha `sizeof` de 20 bytes (x64 exige 40 — union incompleta + `dwExtraInfo` como `c_ulong` de 4 bytes em vez de `ULONG_PTR`), o que derrubava todo `SendInput` com erro Win32 87 sem colar nada; e `GetClipboardData` sem `restype` truncava o handle de 64 para 32 bits, fazendo `GlobalSize` retornar 0 e a leitura falhar em silencio. Toda chamada ctypes a uma API Win32 neste projeto declara `restype`/`argtypes` explicitamente — ver `voice/clipboard.py` e `voice/hotkeys_win32.py`.
+
+### Hotkeys globais via `RegisterHotKey` (Win32, W2)
+
+Combos registrados via `RegisterHotKey` sao CONSUMIDOS pelo SO — nao chegam ao app em foco. Falha de registro (combo ja em uso por outro app, win error 1409) e reportada no startup com beep + `[ERRO]` no log, sem derrubar os demais hotkeys do ciclo. Rebind feito nas Configuracoes re-registra tudo na hora (`request_rebind()` em `voice/hotkeys_win32.py`).
+
+### Migracao one-time de hotkey legado (W3) e só em memória
+
+`load_config()` reescreve `CYCLE_HOTKEY`/`HISTORY_HOTKEY` em memoria se o valor carregado bater exatamente com o default antigo (`ctrl+shift+tab` / `ctrl+shift+h`) — nao reescreve o `.env`. Converge no proximo save feito pelas Configuracoes.
+
+### Isolamento de testes (W4) — autouse fixture redireciona paths
+
+`tests/conftest.py` tem uma fixture `autouse=True` que redireciona `_BASE_DIR`/log/history para um `tmp_path` a cada teste. Teste novo nao precisa de setup proprio para nao vazar estado real. Excecao opt-out: `tests/test_openrouter_smoke.py`, que usa o `.env` real e so roda com `RUN_OPENROUTER_SMOKE=1`.
 
 ### `pythonw.exe` nao tem stdout/stderr
 
@@ -400,9 +439,9 @@ A versao no script Inno Setup nao e lida automaticamente de `__version__`. Sync 
 
 Em desenvolvimento, arquivos ficam na raiz do repositorio. Em producao, ficam em `APPDATA/VoiceCommander/`. Testes manuais de paths devem ser feitos com `pythonw.exe`.
 
-### `theme._font()` cacheia `tkfont.families()`
+### `theme._font()` cacheia `tkfont.families()` (mecanica mudou no W4)
 
-O cache e criado na primeira chamada e reutilizado. Se fontes forem instaladas durante a sessao, o cache nao sera atualizado (reiniciar o app).
+Desde o W4, `_font()` nao cria mais um `tk.Tk()` root transiente para sondar familias de fonte instaladas (esse root podia acabar sendo "adotado" por qualquer thread que chamasse primeiro). Agora so sonda e cacheia se ja existir um root Tk default vivo (`tkinter._default_root`); caso contrario retorna a familia preferida sem probing (fallback so ocorre no render, via substituicao nativa do Tk). Se o cache chegou a ser populado, fontes instaladas durante a sessao ainda exigem restart do app para aparecer.
 
 ---
 
@@ -429,7 +468,7 @@ pip install -r requirements.txt
 ### Testar os modos
 1. `python -m voice` (ou `pythonw.exe -m voice` para simular producao)
 2. Aguardar startup — icone aparece na system tray; tooltip exibe modo ativo
-3. **Ciclar modos:** `Ctrl+Shift+Tab` -> overlay exibe o novo modo por 1.5s
+3. **Ciclar modos:** `Ctrl+Alt+N` -> overlay exibe o novo modo por 1.5s
 4. **Transcribe:** `Ctrl+Shift+Space` -> falar -> parar -> conferir correcao ortografica
 5. **Email:** ciclar para `email` -> ditar rascunho -> conferir email formatado
 6. **Query:** ciclar para `query` -> fazer pergunta -> conferir resposta

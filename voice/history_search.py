@@ -2,9 +2,14 @@
 # Abre janela CTk com campo de busca e lista de resultados do history.jsonl
 
 import json
+import queue
 import threading
 
 from voice import state
+
+# W4 hygiene: interval (ms) for the Tcl-owning thread to drain the reuse
+# command queue via root.after — mirrors voice/overlay.py's _poll_queue.
+_POLL_INTERVAL_MS = 150
 
 
 def _load_history() -> list[dict]:
@@ -59,6 +64,13 @@ class HistorySearchWindow:
         self._search_var = None
         self._listbox = None
         self._status_label = None
+        # W4 hygiene: commands from other threads (hotkey reuse path) are
+        # enqueued here and drained on the Tcl-owning thread via _poll_queue.
+        self._q: queue.Queue = queue.Queue()
+        # Own-thread lifecycle flag — set True at the end of _build(), False
+        # in _close()/on mainloop crash. Callers on OTHER threads read this
+        # instead of touching tkinter (winfo_exists) directly.
+        self.is_open = False
 
     def open(self) -> None:
         """Abre janela em thread daemon."""
@@ -85,6 +97,10 @@ class HistorySearchWindow:
             self._root.mainloop()
         except Exception as e:
             print(f"[WARN] HistorySearch encerrada: {e}")
+        finally:
+            # Mainloop returned (normal close) or crashed above — either way
+            # this window is no longer reusable; unblock future opens.
+            self.is_open = False
 
     def _build(self) -> None:
         import customtkinter as ctk
@@ -175,6 +191,29 @@ class HistorySearchWindow:
         # Focar campo de busca
         self._root.after(100, lambda: self._root.focus_force())
 
+        # W4 hygiene: window is fully built on this (Tcl-owning) thread —
+        # safe to advertise reuse and start draining the command queue.
+        self.is_open = True
+        self._root.after(_POLL_INTERVAL_MS, self._poll_queue)
+
+    def _poll_queue(self) -> None:
+        """Drena comandos enfileirados por outras threads (reuso do singleton).
+        Roda exclusivamente na thread dona do Tcl, via root.after — nunca
+        chamado direto por quem enfileira."""
+        try:
+            while True:
+                cmd = self._q.get_nowait()
+                self._handle_cmd(cmd)
+        except queue.Empty:
+            pass
+        if self.is_open:
+            self._root.after(_POLL_INTERVAL_MS, self._poll_queue)
+
+    def _handle_cmd(self, cmd: str) -> None:
+        if cmd == "show":
+            self._root.lift()
+            self._root.focus_force()
+
     def _on_search_change(self, *_) -> None:
         """Chamado cada vez que o texto de busca muda."""
         query = self._search_var.get() if self._search_var else ""
@@ -254,6 +293,9 @@ class HistorySearchWindow:
     def _close(self) -> None:
         """Fecha a janela e libera referência global."""
         global _history_window_ref
+        # W4 hygiene: mark closed FIRST so the drain loop (root.after) stops
+        # rescheduling itself and reuse callers on other threads stop enqueuing.
+        self.is_open = False
         if self._root is not None:
             try:
                 if self._root.winfo_exists():
@@ -271,18 +313,21 @@ _history_window_lock = threading.Lock()
 
 
 def open_history_search() -> None:
-    """Story 4.5.5: Abre o overlay de busca de histórico (singleton)."""
+    """Story 4.5.5: Abre o overlay de busca de histórico (singleton).
+
+    W4 hygiene: since W2 this runs on a fresh hotkey worker thread each call,
+    a different thread than the one owning the CTk mainloop. The reuse path
+    below must never touch tkinter directly (winfo_exists/lift/focus_force)
+    — it only enqueues a "show" command; the Tcl-owning thread drains it via
+    HistorySearchWindow._poll_queue (root.after loop). Creating a brand-new
+    window still runs its own dedicated thread, unaffected by this change.
+    """
     global _history_window_ref
     with _history_window_lock:
         existing = _history_window_ref
-        if existing is not None and existing._root is not None:
-            try:
-                if existing._root.winfo_exists():
-                    existing._root.lift()
-                    existing._root.focus_force()
-                    return
-            except Exception:
-                pass
+        if existing is not None and existing.is_open:
+            existing._q.put("show")
+            return
         win = HistorySearchWindow()
         _history_window_ref = win
     win.open()

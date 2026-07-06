@@ -103,7 +103,9 @@ def on_hotkey() -> None:
     now = time.time()
     # Lock atômico: apenas uma thread por vez pode ler+atualizar _last_hotkey_time.
     # non-blocking tryacquire: se o lock estiver ocupado (outra thread está passando
-    # pelo debounce agora), este fire é descartado imediatamente — é bounce.
+    # pelo debounce agora), este fire é descartado imediatamente — com MOD_NOREPEAT
+    # no registro Win32, auto-repeat não gera WM_HOTKEY; o lock cobre fires quase
+    # simultâneos de threads worker distintas.
     if not _audio._hotkey_debounce_lock.acquire(blocking=False):
         return
     try:

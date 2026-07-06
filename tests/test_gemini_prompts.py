@@ -333,6 +333,11 @@ def test_transcribe_gemini_uses_sdk_default_is_false():
     assert gp.PROMPTS["transcribe"].temperature == 0.0
 
 
+def test_prompt_gemini_uses_sdk_default_is_true():
+    """W1: modo prompt usa a temperatura default do SDK Gemini (não força valor explícito)."""
+    assert gp.PROMPTS["prompt"].gemini_uses_sdk_default is True
+
+
 # ---------------------------------------------------------------------------
 # Output guard — razão de tamanho para transcribe (W1 reliability sprint — Task 5)
 # ---------------------------------------------------------------------------

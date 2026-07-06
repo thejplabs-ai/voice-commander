@@ -18,10 +18,18 @@ from voice import hotkeys_win32 as hk
 
 @pytest.fixture(autouse=True)
 def _reset_module_state():
-    """Isolate tests from the module-level _registered singleton dict."""
-    hk._registered.clear()
+    """Isolate tests from all module-level singletons in voice/hotkeys_win32.py:154-159."""
+    def _reset():
+        hk._registered.clear()
+        hk._bindings_provider = None
+        hk._failure_reporter = None
+        hk._thread = None
+        hk._thread_id = 0
+        hk._ready_event.clear()
+
+    _reset()
     yield
-    hk._registered.clear()
+    _reset()
 
 
 # ---------------------------------------------------------------------------
