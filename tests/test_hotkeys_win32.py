@@ -300,6 +300,175 @@ class TestDispatchHotkey:
 
 
 # ---------------------------------------------------------------------------
+# _pump — resiliência a exceções (fake GetMessageW roteirizado, sem thread real)
+# ---------------------------------------------------------------------------
+
+def _scripted_get_message(script):
+    """Fake GetMessageW: consome (message, wParam) do script; esgotou -> WM_QUIT (retorno 0)."""
+    it = iter(script)
+
+    def _gm(msg_ref, hwnd, lo, hi):
+        try:
+            message, wparam = next(it)
+        except StopIteration:
+            return 0
+        msg_ref._obj.message = message
+        msg_ref._obj.wParam = wparam
+        return 1
+
+    return _gm
+
+
+class TestPumpExceptionResilience:
+
+    def test_thread_start_raise_nao_mata_pump_e_unregister_no_exit(self, monkeypatch, capsys):
+        """WM_HOTKEY cujo Thread.start levanta -> pump sobrevive, processa a mensagem
+        seguinte e, no WM_QUIT, sai limpo desregistrando tudo."""
+        mock_user32 = MagicMock()
+        mock_user32.RegisterHotKey.return_value = 1
+        mock_user32.GetMessageW.side_effect = _scripted_get_message([
+            (hk.WM_HOTKEY, 1),
+            (hk.WM_HOTKEY, 2),
+        ])
+        monkeypatch.setattr(hk, "user32", mock_user32)
+        monkeypatch.setattr(hk, "kernel32", MagicMock())
+
+        def provider():
+            return [
+                ("A", "ctrl+shift+space", MagicMock()),
+                ("B", "ctrl+shift+tab", MagicMock()),
+            ]
+
+        monkeypatch.setattr(hk, "_bindings_provider", provider)
+        monkeypatch.setattr(hk, "_failure_reporter", MagicMock())
+
+        mock_thread_cls = MagicMock()
+        mock_thread_cls.return_value.start.side_effect = [RuntimeError("boom"), None]
+        monkeypatch.setattr(hk.threading, "Thread", mock_thread_cls)
+
+        hk._ready_event.clear()
+        hk._pump()  # roda inline na thread do teste — não deve levantar
+
+        assert mock_thread_cls.return_value.start.call_count == 2  # sobreviveu ao 1º raise
+        assert "[ERRO]" in capsys.readouterr().out
+        assert hk._registered == {}  # finally desregistrou
+        assert mock_user32.UnregisterHotKey.call_count == 2
+
+    def test_reporter_raise_no_startup_ainda_sinaliza_ready(self, monkeypatch, capsys):
+        """failure_reporter levantando no registro inicial não impede _ready_event de disparar."""
+        mock_user32 = MagicMock()
+        mock_kernel32 = MagicMock()
+        mock_user32.RegisterHotKey.return_value = 0  # tudo falha -> reporter é chamado
+        mock_kernel32.GetLastError.return_value = 1409
+        mock_user32.GetMessageW.side_effect = _scripted_get_message([])  # WM_QUIT imediato
+        monkeypatch.setattr(hk, "user32", mock_user32)
+        monkeypatch.setattr(hk, "kernel32", mock_kernel32)
+
+        def provider():
+            return [("A", "ctrl+shift+space", MagicMock())]
+
+        monkeypatch.setattr(hk, "_bindings_provider", provider)
+        monkeypatch.setattr(hk, "_failure_reporter", MagicMock(side_effect=RuntimeError("reporter boom")))
+
+        hk._ready_event.clear()
+        hk._pump()  # não deve levantar
+
+        assert hk._ready_event.is_set()
+        assert "[ERRO]" in capsys.readouterr().out
+
+    def test_rebind_com_provider_quebrado_nao_mata_pump(self, monkeypatch, capsys):
+        """WM_APP_REBIND cujo provider levanta -> [ERRO] + pump continua até WM_QUIT."""
+        mock_user32 = MagicMock()
+        mock_user32.RegisterHotKey.return_value = 1
+        mock_user32.GetMessageW.side_effect = _scripted_get_message([
+            (hk.WM_APP_REBIND, 0),
+            (hk.WM_HOTKEY, 1),
+        ])
+        monkeypatch.setattr(hk, "user32", mock_user32)
+        monkeypatch.setattr(hk, "kernel32", MagicMock())
+
+        calls = {"n": 0}
+
+        def provider():
+            calls["n"] += 1
+            if calls["n"] == 2:  # 1º: registro inicial ok; 2º: rebind quebra
+                raise RuntimeError("provider boom")
+            return [("A", "ctrl+shift+space", MagicMock())]
+
+        monkeypatch.setattr(hk, "_bindings_provider", provider)
+        monkeypatch.setattr(hk, "_failure_reporter", MagicMock())
+
+        mock_thread_cls = MagicMock()
+        monkeypatch.setattr(hk.threading, "Thread", mock_thread_cls)
+
+        hk._ready_event.clear()
+        hk._pump()
+
+        assert "[ERRO]" in capsys.readouterr().out
+        # O pump sobreviveu ao provider quebrado e continuou consumindo mensagens
+        # até o WM_QUIT (3 chamadas: REBIND, HOTKEY, QUIT):
+        assert mock_user32.GetMessageW.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# start — guard de double-start
+# ---------------------------------------------------------------------------
+
+class TestStartDoubleStartGuard:
+
+    def test_start_no_op_se_pump_ja_vivo(self, monkeypatch):
+        alive_thread = MagicMock()
+        alive_thread.is_alive.return_value = True
+        monkeypatch.setattr(hk, "_thread", alive_thread)
+
+        mock_thread_cls = MagicMock()
+        monkeypatch.setattr(hk.threading, "Thread", mock_thread_cls)
+
+        hk.start(lambda: [], lambda f: None)
+
+        mock_thread_cls.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# request_rebind / stop — PostThreadMessageW falhou -> [WARN]
+# ---------------------------------------------------------------------------
+
+class TestPostThreadMessageFailureWarn:
+
+    @staticmethod
+    def _alive_thread():
+        t = MagicMock()
+        t.is_alive.return_value = True
+        return t
+
+    def test_request_rebind_loga_warn_se_post_falha(self, monkeypatch, capsys):
+        mock_user32 = MagicMock()
+        mock_kernel32 = MagicMock()
+        mock_user32.PostThreadMessageW.return_value = 0
+        mock_kernel32.GetLastError.return_value = 5
+        monkeypatch.setattr(hk, "user32", mock_user32)
+        monkeypatch.setattr(hk, "kernel32", mock_kernel32)
+        monkeypatch.setattr(hk, "_thread", self._alive_thread())
+
+        hk.request_rebind()
+
+        assert "[WARN]" in capsys.readouterr().out
+
+    def test_stop_loga_warn_se_post_falha(self, monkeypatch, capsys):
+        mock_user32 = MagicMock()
+        mock_kernel32 = MagicMock()
+        mock_user32.PostThreadMessageW.return_value = 0
+        mock_kernel32.GetLastError.return_value = 5
+        monkeypatch.setattr(hk, "user32", mock_user32)
+        monkeypatch.setattr(hk, "kernel32", mock_kernel32)
+        monkeypatch.setattr(hk, "_thread", self._alive_thread())
+
+        hk.stop()
+
+        assert "[WARN]" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
 # request_rebind / stop — no-op quando não iniciado
 # ---------------------------------------------------------------------------
 

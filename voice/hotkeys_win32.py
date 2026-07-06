@@ -221,24 +221,39 @@ def _pump() -> None:
     user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
     _thread_id = kernel32.GetCurrentThreadId()
 
-    _register_all()
-    _ready_event.set()
+    # Guard total: exceção de provider/reporter no registro inicial não pode
+    # impedir o _ready_event (start() ficaria bloqueado 5s) nem matar o pump.
+    try:
+        _register_all()
+    except Exception as e:
+        print(f"[ERRO] Falha no registro inicial de hotkeys: {e}")
+    finally:
+        _ready_event.set()
 
-    while True:
-        ret = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
-        if ret == 0:  # WM_QUIT
-            break
-        if ret == -1:
-            print("[ERRO] GetMessageW falhou no pump de hotkeys")
-            break
+    try:
+        while True:
+            ret = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+            if ret == 0:  # WM_QUIT
+                break
+            if ret == -1:
+                print("[ERRO] GetMessageW falhou no pump de hotkeys")
+                break
 
-        if msg.message == WM_HOTKEY:
-            _dispatch_hotkey(msg.wParam)
-        elif msg.message == WM_APP_REBIND:
-            _unregister_all()
-            _register_all()
-
-    _unregister_all()
+            # Guard do corpo do loop: exceção de handler (dispatch, provider ou
+            # reporter no rebind) loga e continua — o pump NUNCA morre por
+            # exceção (a classe de falha que este módulo existe pra eliminar).
+            try:
+                if msg.message == WM_HOTKEY:
+                    _dispatch_hotkey(msg.wParam)
+                elif msg.message == WM_APP_REBIND:
+                    _unregister_all()
+                    _register_all()
+            except Exception as e:
+                print(f"[ERRO] Exceção no pump de hotkeys (msg {msg.message:#06x}): {e}")
+    finally:
+        # Sempre desregistrar na saída — hotkeys globais órfãos persistem no
+        # SO até o fim do processo e bloqueiam re-registro.
+        _unregister_all()
 
 
 # ── API pública ────────────────────────────────────────────────────────────────
@@ -254,6 +269,9 @@ def start(
     houve falhas num ciclo. Aguarda a thread sinalizar prontidão (timeout 5s).
     """
     global _bindings_provider, _failure_reporter, _thread
+
+    if _thread is not None and _thread.is_alive():
+        return  # pump já rodando — usar request_rebind() para trocar bindings
 
     _bindings_provider = bindings_provider
     _failure_reporter = failure_reporter
@@ -271,7 +289,8 @@ def request_rebind() -> None:
     """
     if _thread is None or not _thread.is_alive():
         return
-    user32.PostThreadMessageW(_thread_id, WM_APP_REBIND, 0, 0)
+    if not user32.PostThreadMessageW(_thread_id, WM_APP_REBIND, 0, 0):
+        print(f"[WARN] PostThreadMessageW falhou no rebind de hotkeys: erro {kernel32.GetLastError()}")
 
 
 def stop() -> None:
@@ -280,6 +299,7 @@ def stop() -> None:
 
     if _thread is None or not _thread.is_alive():
         return
-    user32.PostThreadMessageW(_thread_id, WM_QUIT, 0, 0)
+    if not user32.PostThreadMessageW(_thread_id, WM_QUIT, 0, 0):
+        print(f"[WARN] PostThreadMessageW falhou no stop de hotkeys: erro {kernel32.GetLastError()}")
     _thread.join(timeout=5)
     _thread = None
