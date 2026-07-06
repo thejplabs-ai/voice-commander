@@ -167,7 +167,7 @@ def _cycle_mode() -> None:
         idx = 0
     next_idx = (idx + 1) % len(modes)
     next_mode = modes[next_idx]
-    _set_mode(next_mode)
+    _set_mode(next_mode, persist=False)
     _update_tray_state("idle")
     print(f"[INFO] Modo ciclado: {current} → {next_mode}")
     play_sound("skip")  # bip distinto ao ciclar
@@ -190,8 +190,8 @@ def _hotkey_bindings() -> list:
     cfg = state._CONFIG
     return [
         ("RECORD_HOTKEY", cfg.get("RECORD_HOTKEY", "ctrl+shift+space"), on_hotkey),
-        ("CYCLE_HOTKEY", cfg.get("CYCLE_HOTKEY", "ctrl+shift+tab"), _cycle_mode),
-        ("HISTORY_HOTKEY", cfg.get("HISTORY_HOTKEY", "ctrl+shift+h"), open_history_search),
+        ("CYCLE_HOTKEY", cfg.get("CYCLE_HOTKEY", "ctrl+alt+n"), _cycle_mode),
+        ("HISTORY_HOTKEY", cfg.get("HISTORY_HOTKEY", "ctrl+alt+h"), open_history_search),
         ("COMMAND_HOTKEY", cfg.get("COMMAND_HOTKEY", "ctrl+alt+space"), on_command_hotkey),
     ]
 

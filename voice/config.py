@@ -117,12 +117,12 @@ def load_config() -> dict:
         # QW-4: Delay adicional antes de colar (ms) — ajustar se o paste falha em apps lentos
         "PASTE_DELAY_MS": 50,
         # Story 4.5.3: Hotkey de ciclo de modo
-        "CYCLE_HOTKEY": "ctrl+shift+tab",
+        "CYCLE_HOTKEY": "ctrl+alt+n",
         # Story 4.5.4: Clipboard Context
         "CLIPBOARD_CONTEXT_ENABLED": "true",
         "CLIPBOARD_CONTEXT_MAX_CHARS": 2000,
         # Story 4.5.5: Hotkey para abrir busca no histórico
-        "HISTORY_HOTKEY": "ctrl+shift+h",
+        "HISTORY_HOTKEY": "ctrl+alt+h",
         # Story 4.5.1: Overlay de feedback visual
         "OVERLAY_ENABLED": "true",
         # Story 4.6.4: Ciclo de modos
@@ -149,6 +149,17 @@ def load_config() -> dict:
     }
     if os.path.exists(env_path):
         _load_env_file(config, env_path)
+
+    # W3: migração one-time dos defaults legados de hotkey (colidiam com atalhos
+    # universais do browser/VS Code). Em memória apenas — não reescreve o .env;
+    # converge no próximo save das Configurações.
+    # Migração exige match literal do default antigo (PRD: "exatamente igual"); casing divergente não migra.
+    if config["CYCLE_HOTKEY"] == "ctrl+shift+tab":
+        config["CYCLE_HOTKEY"] = "ctrl+alt+n"
+        print("[INFO] Hotkey legado migrado: CYCLE_HOTKEY ctrl+shift+tab -> ctrl+alt+n")
+    if config["HISTORY_HOTKEY"] == "ctrl+shift+h":
+        config["HISTORY_HOTKEY"] = "ctrl+alt+h"
+        print("[INFO] Hotkey legado migrado: HISTORY_HOTKEY ctrl+shift+h -> ctrl+alt+h")
 
     # Filtrar placeholder
     if config["GEMINI_API_KEY"] == "your_gemini_api_key_here":
@@ -247,10 +258,16 @@ def _reload_config() -> None:
     old_key = state._GEMINI_API_KEY
     old_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
     old_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
+    old_selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
 
     state._CONFIG = load_config()
     state._GEMINI_API_KEY = state._CONFIG.get("GEMINI_API_KEY")
-    state.selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
+    new_selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
+    # W3: só aplica o modo persistido se ele de fato mudou no .env — evita que
+    # um ciclo em memória (hotkey, não persistido) seja desfeito por um reload
+    # disparado ao salvar Configurações (que não mexe em SELECTED_MODE).
+    if new_selected_mode != old_selected_mode:
+        state.selected_mode = new_selected_mode
 
     new_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
     new_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")

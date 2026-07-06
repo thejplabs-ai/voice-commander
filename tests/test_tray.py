@@ -73,6 +73,22 @@ class TestSetMode:
             tray._set_mode(mode)
         assert state.selected_mode == mode
 
+    def test_persist_false_nao_chama_save_env(self, monkeypatch):
+        """W3 Task 2 — _set_mode(mode, persist=False) updates state but skips _save_env."""
+        with patch("voice.config._save_env") as mock_save:
+            tray._set_mode("query", persist=False)
+
+        assert state.selected_mode == "query"
+        mock_save.assert_not_called()
+
+    def test_persist_true_explicito_ainda_persiste(self, monkeypatch):
+        """W3 Task 2 — _set_mode(mode, persist=True) keeps the deliberate-persist behavior."""
+        with patch("voice.config._save_env") as mock_save:
+            tray._set_mode("bullet", persist=True)
+
+        assert state.selected_mode == "bullet"
+        mock_save.assert_called_once_with({"SELECTED_MODE": "bullet"})
+
 
 # ---------------------------------------------------------------------------
 # _update_tray_state()

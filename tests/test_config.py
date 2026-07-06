@@ -122,10 +122,10 @@ def test_novas_variaveis_stories_defaults(tmp_path, monkeypatch):
 
     cfg = voice.load_config()
 
-    assert cfg["CYCLE_HOTKEY"] == "ctrl+shift+tab"
+    assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+n"
     assert cfg["CLIPBOARD_CONTEXT_ENABLED"] is True
     assert cfg["CLIPBOARD_CONTEXT_MAX_CHARS"] == 2000
-    assert cfg["HISTORY_HOTKEY"] == "ctrl+shift+h"
+    assert cfg["HISTORY_HOTKEY"] == "ctrl+alt+h"
     assert cfg["OVERLAY_ENABLED"] is True
 
 
@@ -148,3 +148,122 @@ def test_clipboard_context_max_chars_parseable(tmp_path, monkeypatch):
     cfg = voice.load_config()
 
     assert cfg["CLIPBOARD_CONTEXT_MAX_CHARS"] == 1000
+
+
+class TestLegacyHotkeyMigration:
+    """W3: CYCLE_HOTKEY/HISTORY_HOTKEY defaults changed (collided with browser/VS Code
+    shortcuts once W2 made hotkeys Win32-exclusive). Users with the old value saved in
+    .env get migrated in-memory on every load — no I/O side effect, no versioning
+    framework, just the two exact-match checks."""
+
+    def test_migrates_legacy_cycle_hotkey(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "CYCLE_HOTKEY=ctrl+shift+tab\n")
+
+        cfg = voice.load_config()
+
+        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+n"
+
+    def test_migrates_legacy_history_hotkey(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "HISTORY_HOTKEY=ctrl+shift+h\n")
+
+        cfg = voice.load_config()
+
+        assert cfg["HISTORY_HOTKEY"] == "ctrl+alt+h"
+
+    def test_preserves_custom_cycle_hotkey(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "CYCLE_HOTKEY=ctrl+shift+f9\n")
+
+        cfg = voice.load_config()
+
+        assert cfg["CYCLE_HOTKEY"] == "ctrl+shift+f9"
+
+    def test_preserves_custom_history_hotkey(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "HISTORY_HOTKEY=alt+f2\n")
+
+        cfg = voice.load_config()
+
+        assert cfg["HISTORY_HOTKEY"] == "alt+f2"
+
+    def test_cross_key_value_not_migrated(self, tmp_path, monkeypatch):
+        """CYCLE_HOTKEY=ctrl+shift+h is a custom value for THIS key (the legacy
+        default for HISTORY_HOTKEY, not CYCLE_HOTKEY) — must not be touched."""
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "CYCLE_HOTKEY=ctrl+shift+h\n")
+
+        cfg = voice.load_config()
+
+        assert cfg["CYCLE_HOTKEY"] == "ctrl+shift+h"
+
+    def test_new_values_pass_through_unchanged(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "CYCLE_HOTKEY=ctrl+alt+n\nHISTORY_HOTKEY=ctrl+alt+h\n")
+
+        cfg = voice.load_config()
+
+        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+n"
+        assert cfg["HISTORY_HOTKEY"] == "ctrl+alt+h"
+
+    def test_missing_keys_get_new_defaults(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        env_path = tmp_path / ".env"
+        assert not env_path.exists()
+
+        cfg = voice.load_config()
+
+        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+n"
+        assert cfg["HISTORY_HOTKEY"] == "ctrl+alt+h"
+
+    def test_migration_does_not_write_env_file(self, tmp_path, monkeypatch):
+        """load_config() migrates in-memory only — no I/O side effect on .env."""
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        content = "CYCLE_HOTKEY=ctrl+shift+tab\n"
+        _write_env(tmp_path, content)
+
+        voice.load_config()
+
+        assert (tmp_path / ".env").read_text(encoding="utf-8") == content
+
+    def test_migration_logs_info_line(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "CYCLE_HOTKEY=ctrl+shift+tab\n")
+
+        voice.load_config()
+
+        out = capsys.readouterr().out
+        assert "[INFO]" in out
+        assert "CYCLE_HOTKEY" in out
+
+
+class TestReloadConfigSelectedMode:
+    """W3 Task 2 — _reload_config() must not clobber an in-memory cycled mode
+    when the persisted SELECTED_MODE didn't actually change between reloads.
+    """
+
+    def test_preserves_cycled_mode_when_persisted_value_unchanged(self, tmp_path, monkeypatch):
+        """User cycled to 'email' in memory while .env still says transcribe
+        (e.g. cycled, then opened Settings and saved an unrelated field) —
+        reload must not revert the in-memory mode back to transcribe."""
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "SELECTED_MODE=transcribe\n")
+        monkeypatch.setattr(voice.state, "_CONFIG", {"SELECTED_MODE": "transcribe"})
+        monkeypatch.setattr(voice.state, "selected_mode", "email")
+
+        voice._reload_config()
+
+        assert voice.state.selected_mode == "email"
+
+    def test_applies_new_persisted_mode_when_env_changed(self, tmp_path, monkeypatch):
+        """.env SELECTED_MODE genuinely changed (manual edit or deliberate
+        selection saved right before reload) — the new value must apply."""
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "SELECTED_MODE=query\n")
+        monkeypatch.setattr(voice.state, "_CONFIG", {"SELECTED_MODE": "transcribe"})
+        monkeypatch.setattr(voice.state, "selected_mode", "transcribe")
+
+        voice._reload_config()
+
+        assert voice.state.selected_mode == "query"

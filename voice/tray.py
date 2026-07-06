@@ -131,14 +131,18 @@ _MODES = [
     ("translate",  "Traduzir"),
 ]
 
-def _set_mode(mode: str) -> None:
-    """Seleciona o modo ativo e persiste no .env."""
+def _set_mode(mode: str, persist: bool = True) -> None:
+    """Seleciona o modo ativo. Por padrão persiste no .env (escolha deliberada
+    via menu da tray ou Configurações). persist=False muda só em memória —
+    usado pelo ciclo via hotkey (voice/app.py:_cycle_mode), que não deve
+    sobreviver a um restart."""
     state.selected_mode = mode
-    try:
-        from voice.config import _save_env
-        _save_env({"SELECTED_MODE": mode})
-    except Exception as e:
-        print(f"[WARN] Falha ao salvar SELECTED_MODE: {e}")
+    if persist:
+        try:
+            from voice.config import _save_env
+            _save_env({"SELECTED_MODE": mode})
+        except Exception as e:
+            print(f"[WARN] Falha ao salvar SELECTED_MODE: {e}")
     print(f"[INFO] Modo selecionado: {mode}")
 
 
