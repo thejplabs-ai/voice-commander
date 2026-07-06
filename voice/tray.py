@@ -4,7 +4,7 @@
 import threading
 import time
 
-from voice import state
+from voice import state, __version__
 from voice import theme
 from voice.modes import MODE_NAMES_PT as _MODE_NAMES_PT
 
@@ -77,7 +77,7 @@ def _tray_tooltip() -> str:
         estado = f"Gravando: {m}:{s:02d}"
     # Story 4.6.2: formato "Voice Commander — {modo} | {estado}"
     mode_name = _MODE_NAMES_PT.get(state.selected_mode, state.selected_mode)
-    return f"Voice Commander — {mode_name} | {estado}"
+    return f"Voice Commander v{__version__} — {mode_name} | {estado}"
 
 
 def _start_recording_tooltip_thread() -> None:

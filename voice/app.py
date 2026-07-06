@@ -8,7 +8,7 @@ import tempfile
 import threading
 import time
 
-from voice import state
+from voice import state, __version__
 from voice import hotkeys_win32
 from voice import audio as _audio
 from voice.config import load_config
@@ -118,7 +118,7 @@ def _log_startup_info() -> None:
     _lic_valid, _lic_msg = validate_license_key(state._CONFIG.get("LICENSE_KEY", "") or "")
 
     print("═" * 54)
-    print("  Voice Commander  |  Standalone")
+    print(f"  Voice Commander  v{__version__}  |  Standalone")
     print("═" * 54)
     print(f"  [{record_hotkey.title()}]  Gravar (modo ativo: {state.selected_mode})")
     print("  Trocar modo : System Tray > Modo")
