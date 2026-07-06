@@ -2130,11 +2130,6 @@
     });
   }
 
-  function getSelectedProvider() {
-    const checked = document.querySelector('input[name="ai-provider"]:checked');
-    return checked ? checked.value : 'openrouter';
-  }
-
   // ── Password toggles ─────────────────────────────────────────────────────
   function initPwToggles() {
     document.querySelectorAll('.pw-toggle').forEach(btn => {
@@ -2339,9 +2334,7 @@
   }
 
   function detectProvider(cfg) {
-    // Priority: if there's an explicit AI_PROVIDER saved, use it
-    if (cfg.AI_PROVIDER) return cfg.AI_PROVIDER.toLowerCase();
-    // Otherwise detect from masked keys (bridge returns ***xxxx when key exists)
+    // Detect from masked keys (bridge returns ***xxxx when key exists)
     if (cfg.OPENROUTER_API_KEY) return 'openrouter';
     if (cfg.GEMINI_API_KEY) return 'gemini';
     return 'openrouter';
@@ -2350,7 +2343,6 @@
   // ── Collect form for save ─────────────────────────────────────────────────
   function collectForm() {
     return {
-      AI_PROVIDER:               getSelectedProvider(),
       OPENROUTER_API_KEY:        $v('openrouter-key'),
       OPENROUTER_MODEL_FAST:     $v('openrouter-model-fast'),
       OPENROUTER_MODEL_QUALITY:  $v('openrouter-model-quality'),
@@ -2740,7 +2732,7 @@
     // Segmented control for snippet mode
     const hints = {
       replace: 'Ao falar o trigger, toda a transcricao e substituida pela expansao.',
-      inline: 'O trigger e substituido dentro da frase, mantendo o restante do texto.'
+      inline: 'O snippet dispara quando a frase falada inteira corresponde ao trigger; o texto da expansao substitui toda a transcricao, igual ao modo Substituir tudo.'
     };
     document.querySelectorAll('#snippet-mode-control .segmented-btn').forEach(b => {
       b.addEventListener('click', () => {

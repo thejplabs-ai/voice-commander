@@ -100,7 +100,6 @@ def load_config() -> dict:
         "WHISPER_MODEL_FAST": "tiny",
         "WHISPER_MODEL_QUALITY": "small",
         # AI Provider — OpenRouter (gateway unico, recomendado)
-        "AI_PROVIDER": "",
         "OPENROUTER_API_KEY": None,
         "OPENROUTER_MODEL_FAST": "google/gemini-3.1-flash-lite",
         "OPENROUTER_MODEL_QUALITY": "google/gemini-3.1-flash-lite",

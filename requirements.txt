@@ -25,10 +25,6 @@ openai==2.24.0
 nvidia-cublas-cu12==12.9.2.10
 nvidia-cudnn-cu12==9.20.0.48
 
-# Wake word — opcional, requerido somente se WAKE_WORD_ENABLED=true
-# openwakeword==0.6.0
-# onnxruntime==1.21.0
-
 # Dev / testing
 pytest==8.3.5
 ruff==0.9.10
