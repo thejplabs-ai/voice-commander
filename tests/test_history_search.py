@@ -6,11 +6,18 @@ Testar apenas a lógica de dados.
 """
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 
-from voice import state
-from voice.history_search import _load_history, _search_entries, _format_entry
+from voice import history_search, state
+from voice.history_search import (
+    HistorySearchWindow,
+    _load_history,
+    _search_entries,
+    _format_entry,
+    open_history_search,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -196,3 +203,91 @@ class TestFormatEntry:
         }
         result = _format_entry(entry)
         assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# open_history_search() reuse routing — must never call tkinter cross-thread.
+# Only enqueue; the Tcl-owning thread drains via _poll_queue (root.after loop).
+# ---------------------------------------------------------------------------
+
+
+class TestOpenHistorySearchReuse:
+    def test_reuso_enfileira_comando_sem_chamar_tkinter_direto(self, monkeypatch):
+        """When the window is open, reuse enqueues 'show' — no direct root calls."""
+        fake_win = HistorySearchWindow()
+        fake_win._root = MagicMock()
+        fake_win.is_open = True
+        monkeypatch.setattr(history_search, "_history_window_ref", fake_win)
+
+        open_history_search()
+
+        assert fake_win._q.get_nowait() == "show"
+        fake_win._root.winfo_exists.assert_not_called()
+        fake_win._root.lift.assert_not_called()
+        fake_win._root.focus_force.assert_not_called()
+
+    def test_janela_fechada_nao_reutiliza(self, monkeypatch):
+        """When is_open is False, a fresh window replaces the stale reference (no reuse)."""
+        fake_win = HistorySearchWindow()
+        fake_win._root = MagicMock()
+        fake_win.is_open = False
+        monkeypatch.setattr(history_search, "_history_window_ref", fake_win)
+        monkeypatch.setattr(HistorySearchWindow, "open", lambda self: None)
+
+        open_history_search()
+
+        assert history_search._history_window_ref is not fake_win
+        fake_win._root.winfo_exists.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# HistorySearchWindow._poll_queue() — drain mechanics, called directly
+# (no real Tcl interpreter needed; _root is a mock standing in for the widget).
+# ---------------------------------------------------------------------------
+
+
+class TestPollQueue:
+    def test_drena_fila_e_executa_show(self):
+        """Draining while open executes the enqueued 'show' command."""
+        win = HistorySearchWindow()
+        win._root = MagicMock()
+        win.is_open = True
+        win._q.put("show")
+
+        win._poll_queue()
+
+        win._root.lift.assert_called_once()
+        win._root.focus_force.assert_called_once()
+
+    def test_reagenda_proximo_drain_enquanto_aberta(self):
+        """Still open after draining -> reschedules itself via root.after."""
+        win = HistorySearchWindow()
+        win._root = MagicMock()
+        win.is_open = True
+
+        win._poll_queue()
+
+        win._root.after.assert_called_once()
+        args, _ = win._root.after.call_args
+        assert args[1] == win._poll_queue
+
+    def test_nao_reagenda_apos_fechamento(self):
+        """Once closed, the drain loop stops rescheduling (harmless after destroy)."""
+        win = HistorySearchWindow()
+        win._root = MagicMock()
+        win.is_open = False
+
+        win._poll_queue()
+
+        win._root.after.assert_not_called()
+
+    def test_fila_vazia_nao_levanta(self):
+        """Draining an empty queue is a no-op, not an error."""
+        win = HistorySearchWindow()
+        win._root = MagicMock()
+        win.is_open = True
+
+        win._poll_queue()  # should not raise queue.Empty outward
+
+        win._root.lift.assert_not_called()
+        win._root.focus_force.assert_not_called()

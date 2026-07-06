@@ -46,20 +46,27 @@ _cached_families: set | None = None
 
 
 def _font(family: str, size: int, bold: bool = False) -> tuple:
-    """Returns CTkFont-compatible tuple. Auto-fallback if family not installed."""
+    """Returns CTkFont-compatible tuple. Auto-fallback if family not installed.
+
+    W4 hygiene: no longer spins up a transient tk.Tk() root to probe families
+    (that root could end up owned by whatever thread first called this). If a
+    Tk root already exists (tkinter._default_root), reuse it to probe and
+    cache. Otherwise skip probing entirely and trust the caller's preferred
+    family — Tk substitutes its own system fallback at render time if the
+    family turns out to be missing, so this is a cosmetic-only trade-off.
+    """
     global _cached_families
+    weight = "bold" if bold else "normal"
     if _cached_families is None:
+        import tkinter as tk
+        if not tk._default_root:
+            return (family, size, weight)
+        import tkinter.font as tkfont
         try:
-            import tkinter as tk
-            import tkinter.font as tkfont
-            r = tk.Tk()
-            r.withdraw()
-            _cached_families = set(tkfont.families(r))
-            r.destroy()
+            _cached_families = set(tkfont.families(tk._default_root))
         except Exception:
             _cached_families = set()
     fam = family if family in _cached_families else _FALLBACK.get(family, "Segoe UI")
-    weight = "bold" if bold else "normal"
     return (fam, size, weight)
 
 
