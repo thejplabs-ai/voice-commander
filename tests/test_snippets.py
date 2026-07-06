@@ -234,25 +234,54 @@ class TestMatchSnippet:
         result = snippets.match_snippet("link reuniao")
         assert result == "https://meet.google.com/abc-def-ghi"
 
-    def test_match_partial_start(self, snippets_file):
-        """Texto que começa com trigger retorna expansão."""
+    def test_match_no_fire_trigger_at_start_of_longer_phrase(self, snippets_file):
+        """Frase mais longa que começa com o trigger NÃO dispara (hijack)."""
         result = snippets.match_snippet("assinatura por favor")
-        assert result == "Atenciosamente,\nJoao Pedro\nJP Labs"
+        assert result is None
 
-    def test_match_partial_end(self, snippets_file):
-        """Texto que termina com trigger retorna expansão."""
+    def test_match_no_fire_trigger_at_end_of_longer_phrase(self, snippets_file):
+        """Frase mais longa que termina com o trigger NÃO dispara (hijack)."""
         result = snippets.match_snippet("preciso da assinatura")
-        assert result == "Atenciosamente,\nJoao Pedro\nJP Labs"
+        assert result is None
 
-    def test_match_exact_takes_priority_over_partial(self, base_dir):
-        """Match exato tem prioridade sobre match parcial."""
+    def test_match_no_fire_trigger_in_middle_of_long_dictation(self, base_dir):
+        """Ditação longa que apenas contém o trigger no meio NÃO dispara (hijack)."""
+        snippets.save_snippets({"email de contato": "contato@jplabs.com"})
+        result = snippets.match_snippet(
+            "hoje eu quero falar sobre meu email de contato por favor"
+        )
+        assert result is None
+
+    def test_match_exact_takes_priority_over_fuzzy(self, base_dir):
+        """Match exato tem prioridade sobre fuzzy — não roda o estágio fuzzy."""
         snippets.save_snippets({
             "ok": "resultado exato",
-            "ok agora": "resultado parcial",
+            "ok agora": "resultado fuzzy",
         })
-        # "ok" corresponde exatamente antes de checar parcial
         result = snippets.match_snippet("ok")
         assert result == "resultado exato"
+
+    def test_match_fuzzy_full_phrase_fires_above_threshold(self, base_dir):
+        """Pequeno erro de ditado sobre a FRASE INTEIRA dispara via fuzzy (ratio >= 90)."""
+        snippets.save_snippets({"meu email de contato": "contato@jplabs.com"})
+        result = snippets.match_snippet("meu e-mail de contatos")
+        assert result == "contato@jplabs.com"
+
+    def test_match_fuzzy_full_phrase_does_not_fire_when_too_different(self, base_dir):
+        """Frase muito diferente do trigger não dispara via fuzzy."""
+        snippets.save_snippets({"meu email de contato": "contato@jplabs.com"})
+        result = snippets.match_snippet("vamos almocar as 3 da tarde amanha")
+        assert result is None
+
+    def test_match_inline_mode_only_fires_on_whole_phrase(self, base_dir):
+        """Snippet mode='inline' só dispara se a frase INTEIRA == trigger."""
+        snippets.save_snippets({
+            "assinatura": {"text": "Atenciosamente, JP", "mode": "inline"},
+        })
+        # Frase inteira igual ao trigger: dispara.
+        assert snippets.match_snippet("assinatura") == "Atenciosamente, JP"
+        # Trigger embutido em frase maior: NÃO dispara (sem inline mid-sentence).
+        assert snippets.match_snippet("bota a assinatura aqui") is None
 
     def test_match_none_when_no_match(self, snippets_file):
         """Sem match retorna None."""

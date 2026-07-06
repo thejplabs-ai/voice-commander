@@ -6,6 +6,10 @@
 #
 # Triggers são normalizados para lowercase no add/match.
 # Save é atômico via .tmp + os.replace().
+#
+# Matching é sempre de FRASE COMPLETA (exato ou fuzzy de alta confiança sobre
+# a frase inteira). O campo `mode` é aceito no CRUD mas não influencia o
+# matching — o resultado é sempre o `text` do snippet.
 
 import json
 import os
@@ -16,13 +20,7 @@ from voice import state
 
 
 _SNIPPETS_FILENAME = "snippets.json"
-_FUZZY_THRESHOLD = 82
-
-# Mapa de vogais com acento para regex tolerante
-_ACCENT_ALTS = {
-    "a": "[aáàâãä]", "e": "[eéèêë]", "i": "[iíìîï]",
-    "o": "[oóòôõö]", "u": "[uúùûü]", "c": "[cç]", "n": "[nñ]",
-}
+_FUZZY_THRESHOLD = 90
 
 
 def _snippets_path() -> str:
@@ -37,28 +35,6 @@ def _normalize(text: str) -> str:
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
-
-
-def _trigger_to_pattern(trigger: str) -> re.Pattern:
-    """Converte trigger em regex tolerante a acentos/hifens/case.
-
-    Ex: "meu email" -> r'(?i)\\bmeu\\s+e[-\\s]?mail\\b'
-    Aplicado direto no texto original (sem normalização).
-    """
-    norm_trigger = _normalize(trigger)
-    words = norm_trigger.split()
-    word_patterns = []
-    for w in words:
-        chars = []
-        for c in w:
-            if c in _ACCENT_ALTS:
-                chars.append(_ACCENT_ALTS[c])
-            else:
-                chars.append(re.escape(c))
-        # Permitir hifens opcionais entre chars (ex: e-mail, e mail, email)
-        word_patterns.append(r"[-\s]?".join(chars))
-    pattern_str = r"\b" + r"\s+" .join(word_patterns) + r"\b"
-    return re.compile(pattern_str, re.IGNORECASE)
 
 
 def _parse_entry(value) -> dict | None:
@@ -146,57 +122,16 @@ def get_snippets() -> dict:
     return load_snippets()
 
 
-def _apply_inline(original_text: str, trigger: str, expansion: str) -> str | None:
-    """Substitui o trigger dentro do texto original, preservando o contexto.
-
-    Usa regex tolerante a acentos/hifens/case direto no texto original.
-    Retorna o texto modificado, ou None se trigger não encontrado.
-    """
-    pattern = _trigger_to_pattern(trigger)
-    m = pattern.search(original_text)
-    if not m:
-        return None
-    return original_text[:m.start()] + expansion + original_text[m.end():]
-
-
-def _exact_match(norm_text: str, original_text: str, entries) -> str | None:
-    """Estágio 1: match exato normalizado. Para inline, aplica _apply_inline."""
-    for trigger, norm_trigger, expansion, mode in entries:
+def _exact_match(norm_text: str, entries) -> str | None:
+    """Estágio 1: frase inteira normalizada == trigger normalizado."""
+    for trigger, norm_trigger, expansion in entries:
         if norm_text == norm_trigger:
-            if mode == "inline":
-                return _apply_inline(original_text, trigger, expansion) or expansion
-            return expansion
-    return None
-
-
-def _inline_match(original_text: str, entries) -> str | None:
-    """Estágio 2a: inline via regex tolerante (len>=2, mode='inline' only)."""
-    for trigger, norm_trigger, expansion, mode in entries:
-        if mode != "inline":
-            continue
-        if len(norm_trigger) < 2:
-            continue
-        result = _apply_inline(original_text, trigger, expansion)
-        if result is not None:
-            return result
-    return None
-
-
-def _replace_containment_match(norm_text: str, entries) -> str | None:
-    """Estágio 2b: replace via word boundary (len>=2, mode='replace' only)."""
-    for trigger, norm_trigger, expansion, mode in entries:
-        if mode != "replace":
-            continue
-        if len(norm_trigger) < 2:
-            continue
-        pattern = r"\b" + re.escape(norm_trigger) + r"\b"
-        if re.search(pattern, norm_text):
             return expansion
     return None
 
 
 def _fuzzy_match(norm_text: str, entries) -> str | None:
-    """Estágio 3: fuzzy via rapidfuzz (len>=3, mode='replace', threshold 82).
+    """Estágio 2: fuzzy sobre a FRASE INTEIRA via rapidfuzz (len>=3, threshold 90).
 
     Retorna None se rapidfuzz não estiver disponível (ImportError).
     """
@@ -204,12 +139,10 @@ def _fuzzy_match(norm_text: str, entries) -> str | None:
         from rapidfuzz import fuzz
         best_match = None
         best_score = 0
-        for trigger, norm_trigger, expansion, mode in entries:
-            if mode == "inline":
-                continue
+        for trigger, norm_trigger, expansion in entries:
             if len(norm_trigger) < 3:
                 continue
-            score = fuzz.partial_ratio(norm_trigger, norm_text)
+            score = fuzz.ratio(norm_trigger, norm_text)
             if score >= _FUZZY_THRESHOLD and score > best_score:
                 best_score = score
                 best_match = expansion
@@ -219,16 +152,14 @@ def _fuzzy_match(norm_text: str, entries) -> str | None:
 
 
 def match_snippet(transcribed_text: str) -> str | None:
-    """Verifica se o texto transcrito corresponde a um snippet.
+    """Verifica se a FRASE INTEIRA transcrita corresponde a um snippet.
 
-    Retorna o texto final a ser colado:
-    - mode=replace: retorna a expansão (substitui tudo)
-    - mode=inline: retorna o texto com o trigger substituído pela expansão
+    Dispara somente quando a frase ditada bate por inteiro com o trigger —
+    nunca quando o trigger é apenas parte de uma ditação mais longa.
 
     Estratégia de match em cascata:
-    1. Match exato normalizado
-    2. Containment normalizado (word boundary)
-    3. Fuzzy via rapidfuzz (somente para mode=replace)
+    1. Match exato normalizado (frase inteira == trigger)
+    2. Fuzzy via rapidfuzz sobre a frase inteira (threshold alto)
     """
     if not state._CONFIG.get("SNIPPETS_ENABLED", True):
         return None
@@ -243,19 +174,11 @@ def match_snippet(transcribed_text: str) -> str | None:
 
     # Pre-compute normalized triggers
     entries = [
-        (trigger, _normalize(trigger), entry["text"], entry["mode"])
+        (trigger, _normalize(trigger), entry["text"])
         for trigger, entry in snippets.items()
     ]
 
-    result = _exact_match(norm_text, transcribed_text, entries)
-    if result is not None:
-        return result
-
-    result = _inline_match(transcribed_text, entries)
-    if result is not None:
-        return result
-
-    result = _replace_containment_match(norm_text, entries)
+    result = _exact_match(norm_text, entries)
     if result is not None:
         return result
 
