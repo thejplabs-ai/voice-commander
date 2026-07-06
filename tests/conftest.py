@@ -21,7 +21,6 @@ def _install_stubs():
         "sounddevice": MagicMock(),
         "numpy": MagicMock(),
         "winsound": MagicMock(),
-        "keyboard": MagicMock(),
         # google.generativeai (old-style, imported in tests for _get_gemini_client)
         "google": MagicMock(),
         "google.genai": MagicMock(),
