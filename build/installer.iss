@@ -3,8 +3,9 @@
 
 [Setup]
 AppName=Voice Commander
-AppVersion=1.0.15
-; Manter em sincronia com __version__ em voice/ui.py
+AppVersion=1.1.0
+; Valor injetado automaticamente por release.ps1 a partir de __version__ em voice/__init__.py. Nao editar manualmente
+AppMutex=Global\VoiceJPLabs_SingleInstance
 AppCopyright=Copyright (C) 2026 JP Labs
 AppPublisher=JP Labs
 AppPublisherURL=https://voice.jplabs.ai
