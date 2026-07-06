@@ -46,3 +46,44 @@ class TestSaveConfigRebind:
         assert result == {"ok": True}
         out = capsys.readouterr().out
         assert "[WARN]" in out
+
+
+class TestSaveConfigMaskedKeyGuard:
+    """Server-side guard: save_config() must drop masked GEMINI_API_KEY/
+    OPENROUTER_API_KEY values (values starting with '***', as returned by
+    get_config()) instead of persisting them over the real key. The JS
+    filter in settings.html is defense in depth, not the only guard.
+    """
+
+    def _patch_save_env(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            "voice.webui.bridge._save_env", lambda values: captured.update(values)
+        )
+        monkeypatch.setattr("voice.webui.bridge._reload_config", lambda: None)
+        monkeypatch.setattr("voice.hotkeys_win32.request_rebind", lambda: None)
+        return captured
+
+    def test_masked_keys_are_dropped_before_save_env(self, monkeypatch):
+        captured = self._patch_save_env(monkeypatch)
+
+        bridge = WebBridge()
+        result = bridge.save_config({
+            "OPENROUTER_API_KEY": "***abcd",
+            "GEMINI_API_KEY": "***efgh",
+            "VAD_THRESHOLD": "0.3",
+        })
+
+        assert result == {"ok": True}
+        assert "OPENROUTER_API_KEY" not in captured
+        assert "GEMINI_API_KEY" not in captured
+        assert captured == {"VAD_THRESHOLD": "0.3"}
+
+    def test_real_key_passes_through(self, monkeypatch):
+        captured = self._patch_save_env(monkeypatch)
+
+        bridge = WebBridge()
+        result = bridge.save_config({"OPENROUTER_API_KEY": "sk-or-nova"})
+
+        assert result == {"ok": True}
+        assert captured == {"OPENROUTER_API_KEY": "sk-or-nova"}

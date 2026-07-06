@@ -58,6 +58,11 @@ class WebBridge:
             # Convert bools back to string for .env
             clean = {}
             for k, v in values.items():
+                # Server-side guard: never persist a masked key (get_config()
+                # returns "***" + last 4 chars). The JS filter in
+                # settings.html is defense in depth, not the only check.
+                if k in ("GEMINI_API_KEY", "OPENROUTER_API_KEY") and isinstance(v, str) and v.startswith("***"):
+                    continue
                 if isinstance(v, bool):
                     clean[k] = "true" if v else "false"
                 elif v is None:
