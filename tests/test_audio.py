@@ -37,7 +37,6 @@ def reset_recording_state(monkeypatch):
         "WHISPER_INITIAL_PROMPT": "",
         "WHISPER_BEAM_SIZE": 5,
         "PASTE_DELAY_MS": 50,
-        "AI_PROVIDER": "gemini",
         "STT_PROVIDER": "whisper",
         "GEMINI_MODEL": "gemini-2.5-flash",
         "GEMINI_CORRECT": True,

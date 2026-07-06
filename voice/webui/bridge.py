@@ -127,12 +127,19 @@ class WebBridge:
         try:
             env_vals = {}
             if api_key:
-                if provider == "openrouter":
+                # Guard: never persist a masked key (shouldn't happen in onboarding, but defensive)
+                if not isinstance(api_key, str) or api_key.startswith("***"):
+                    pass  # Skip masked keys
+                elif provider == "openrouter":
                     env_vals["OPENROUTER_API_KEY"] = api_key
                 else:
                     env_vals["GEMINI_API_KEY"] = api_key
             if license_key:
-                env_vals["LICENSE_KEY"] = license_key
+                # Guard: never persist a masked license key either
+                if not isinstance(license_key, str) or license_key.startswith("***"):
+                    pass  # Skip masked keys
+                else:
+                    env_vals["LICENSE_KEY"] = license_key
             if env_vals:
                 _save_env(env_vals)
             if self._done_callback:

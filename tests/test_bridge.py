@@ -87,3 +87,43 @@ class TestSaveConfigMaskedKeyGuard:
 
         assert result == {"ok": True}
         assert captured == {"OPENROUTER_API_KEY": "sk-or-nova"}
+
+
+class TestFinishOnboardingMaskedKeyGuard:
+    """Verify finish_onboarding() drops masked API/license keys before saving."""
+
+    def test_masked_api_key_dropped_in_finish_onboarding(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            "voice.webui.bridge._save_env", lambda values: captured.update(values)
+        )
+        monkeypatch.setattr("voice.webui.bridge._reload_config", lambda: None)
+
+        bridge = WebBridge()
+        result = bridge.finish_onboarding(
+            api_key="***efgh",
+            license_key="valid-key",
+            provider="gemini"
+        )
+
+        assert result == {"ok": True}
+        assert "GEMINI_API_KEY" not in captured
+        assert captured == {"LICENSE_KEY": "valid-key"}
+
+    def test_masked_license_key_dropped_in_finish_onboarding(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            "voice.webui.bridge._save_env", lambda values: captured.update(values)
+        )
+        monkeypatch.setattr("voice.webui.bridge._reload_config", lambda: None)
+
+        bridge = WebBridge()
+        result = bridge.finish_onboarding(
+            api_key="sk-or-valid-key",
+            license_key="***1234",
+            provider="openrouter"
+        )
+
+        assert result == {"ok": True}
+        assert "LICENSE_KEY" not in captured
+        assert captured == {"OPENROUTER_API_KEY": "sk-or-valid-key"}

@@ -16,7 +16,7 @@
 #     (test_audio.py:394-396, 420-422)
 #   - patch("voice.audio.os.unlink") (test_snippets.py:356,404)
 #   - patch("voice.audio.ai_provider.process") (test_snippets.py:357,405)
-#   - patch.object(audio, "_do_transcription", ...) (test_audio.py:397,423; test_snippets.py:328,375)
+#   - patch.object(audio, "_do_transcription", ...) (test_snippets.py)
 #   - patch.object(audio, "_post_process_and_paste", ...) (test_audio.py:398,424)
 #   - patch.object(audio, "_update_tray_state") (test_audio.py:291,322,359,377,399,425)
 #   - monkeypatch.setattr(audio, "copy_to_clipboard"|"paste_via_sendinput"|"play_sound"|
