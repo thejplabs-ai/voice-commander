@@ -39,7 +39,7 @@ class TestParseHotkeyValidCombos:
         ("ctrl+alt+h", (hk.MOD_CONTROL | hk.MOD_ALT | hk.MOD_NOREPEAT, ord("H"))),
     ])
     def test_combos_default_do_app(self, combo, expected):
-        """The 6 default hotkey combos from voice/config.py parse to the exact expected (mods, vk)."""
+        """The 4 current defaults plus 2 legacy combos all parse to the exact expected (mods, vk)."""
         assert hk.parse_hotkey(combo) == expected
 
     def test_case_insensitive_e_espacos(self):

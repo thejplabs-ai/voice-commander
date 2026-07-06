@@ -153,6 +153,7 @@ def load_config() -> dict:
     # W3: migração one-time dos defaults legados de hotkey (colidiam com atalhos
     # universais do browser/VS Code). Em memória apenas — não reescreve o .env;
     # converge no próximo save das Configurações.
+    # Migração exige match literal do default antigo (PRD: "exatamente igual"); casing divergente não migra.
     if config["CYCLE_HOTKEY"] == "ctrl+shift+tab":
         config["CYCLE_HOTKEY"] = "ctrl+alt+m"
         print("[INFO] Hotkey legado migrado: CYCLE_HOTKEY ctrl+shift+tab -> ctrl+alt+m")
