@@ -54,6 +54,7 @@ if (Test-Path dist\VoiceCommander) {
     Remove-Item -Recurse -Force dist\VoiceCommander
     Write-Output "[OK]   dist\VoiceCommander anterior removido"
 }
+Remove-Item "dist\VoiceCommanderSetup.exe" -Force -ErrorAction SilentlyContinue
 Write-Output "[...] Build: PyInstaller + Inno Setup (build.bat)"
 Push-Location build
 # stdin nul: o pause no final do build.bat nao bloqueia o fluxo de um comando so

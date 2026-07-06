@@ -1,6 +1,6 @@
 # Voice Commander — Roadmap
 
-**Versao:** 1.0.15
+**Versao:** 1.1.0
 **Data:** 2026-03-26
 **Status:** Epic 4 concluido | Epic 4.5 DONE (6/7) | Epic 4.6 DONE (6/7) | Melhoria continua
 **Branch atual:** master
