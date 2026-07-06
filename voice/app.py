@@ -4,12 +4,13 @@ import ctypes
 import datetime
 import glob
 import os
-import sys
 import tempfile
 import threading
 import time
 
 from voice import state
+from voice import hotkeys_win32
+from voice import audio as _audio
 from voice.config import load_config
 from voice.config import validate_license_key, _show_license_expired_notification
 from voice.logging_ import _rotate_log
@@ -17,12 +18,6 @@ from voice.mutex import _acquire_named_mutex
 from voice.tray import _start_tray, _stop_tray
 from voice.audio import on_hotkey, on_command_hotkey, validate_microphone, get_whisper_model
 from voice.shutdown import graceful_shutdown
-
-try:
-    import keyboard
-except Exception as _e:
-    print(f"[ERRO IMPORT] {_e}")
-    sys.exit(1)
 
 
 def _needs_onboarding() -> bool:
@@ -184,87 +179,43 @@ def _cycle_mode() -> None:
         pass
 
 
-# Intervalo de re-registro defensivo de hotkeys.
-# Windows pode remover LowLevelKeyboardProc silenciosamente após transições de
-# sleep/standby/UAC, sem disparar exception. Sem esse re-registro periódico, o
-# app trava (hotkeys "morrem" mas processo continua vivo).
-_REREGISTER_INTERVAL = 300  # 5 min — cobre transições típicas de sleep/standby
+def _hotkey_bindings() -> list:
+    """bindings_provider passado a hotkeys_win32.start()/request_rebind().
 
-
-def _hotkey_loop() -> None:
-    """Loop resiliente de hotkeys.
-
-    Duas camadas de resiliência:
-    1. REATIVA — try/except externo re-registra se ocorrer exception.
-    2. PROATIVA — heartbeat a cada _REREGISTER_INTERVAL segundos re-registra
-       defensivamente (cobre casos onde Windows remove o hook silenciosamente,
-       sem exception, e keyboard.wait() ficaria pendurado para sempre).
+    Lê state._CONFIG a cada (re)registro — defaults idênticos aos de
+    voice/config.py:load_config(). Retorna [(config_key, combo, callback)].
     """
-    _restart_count = 0
-    while not state._shutdown_event.is_set():
+    from voice.history_search import open_history_search
+
+    cfg = state._CONFIG
+    return [
+        ("RECORD_HOTKEY", cfg.get("RECORD_HOTKEY", "ctrl+shift+space"), on_hotkey),
+        ("CYCLE_HOTKEY", cfg.get("CYCLE_HOTKEY", "ctrl+shift+tab"), _cycle_mode),
+        ("HISTORY_HOTKEY", cfg.get("HISTORY_HOTKEY", "ctrl+shift+h"), open_history_search),
+        ("COMMAND_HOTKEY", cfg.get("COMMAND_HOTKEY", "ctrl+alt+space"), on_command_hotkey),
+    ]
+
+
+def _report_hotkey_failures(failures: list) -> None:
+    """failure_reporter passado a hotkeys_win32.start() — chamado da thread do pump.
+
+    Nunca silêncio: loga cada combo que falhou, bipa uma vez e notifica via
+    tray quando disponível (precedente: voice/config.py:_show_license_expired_notification).
+    """
+    for config_key, combo, code in failures:
+        print(f"[ERRO] Hotkey nao registrado: {config_key} ({combo}) — combo em uso por outro app? (win err {code})")
+
+    _audio.play_sound("error")
+
+    if state._tray_icon is not None and state._tray_available:
+        combos = ", ".join(combo for _, combo, _ in failures)
         try:
-            keyboard.unhook_all()
-        except Exception as e:
-            print(f"[WARN] Falha ao limpar hotkeys anteriores: {e}")
-
-        try:
-            record_hotkey = state._CONFIG.get("RECORD_HOTKEY", "ctrl+shift+space")
-            cycle_hotkey = state._CONFIG.get("CYCLE_HOTKEY", "ctrl+shift+tab")
-            history_hotkey = state._CONFIG.get("HISTORY_HOTKEY", "ctrl+shift+h")
-            keyboard.add_hotkey(record_hotkey, lambda: on_hotkey(), suppress=False)
-            try:
-                keyboard.add_hotkey(cycle_hotkey, lambda: _cycle_mode(), suppress=False)
-            except Exception as e:
-                print(f"[WARN] Falha ao registrar CYCLE_HOTKEY ({cycle_hotkey}): {e}")
-            try:
-                from voice.history_search import open_history_search
-                keyboard.add_hotkey(history_hotkey, lambda: open_history_search(), suppress=False)
-            except Exception as e:
-                print(f"[WARN] Falha ao registrar HISTORY_HOTKEY ({history_hotkey}): {e}")
-
-            command_hotkey = state._CONFIG.get("COMMAND_HOTKEY", "ctrl+alt+space")
-            if command_hotkey:
-                try:
-                    keyboard.add_hotkey(command_hotkey, lambda: on_command_hotkey(), suppress=False)
-                except Exception as e:
-                    print(f"[WARN] Falha ao registrar COMMAND_HOTKEY ({command_hotkey}): {e}")
-
-            if _restart_count == 0:
-                print(f"[OK]   Hotkey registrado: {record_hotkey}. Aguardando...\n")
-                print(f"[INFO] Ciclar modo : {cycle_hotkey}")
-                print(f"[INFO] Histórico   : {history_hotkey}")
-                print(f"[INFO] Comando voz : {command_hotkey}")
-                print(f"[INFO] Modo atual  : {state.selected_mode}")
-            else:
-                print(f"[OK]   Hotkey re-registrado (restart #{_restart_count}). Aguardando...\n")
-
-            # Aguarda shutdown OU timeout. Se timeout expirar, re-registra
-            # defensivamente os hotkeys (heartbeat). keyboard.wait() foi
-            # substituído porque ele bloqueia indefinidamente mesmo quando
-            # o Windows remove o hook silenciosamente — ver Bug #1.
-            shutdown_requested = state._shutdown_event.wait(timeout=_REREGISTER_INTERVAL)
-            if shutdown_requested:
-                # Saída limpa — shutdown sinalizado (tray quit / Ctrl+C)
-                break
-
-            # Timeout expirou sem shutdown — heartbeat defensivo
-            _restart_count += 1
-            print("[INFO] Heartbeat hotkeys — re-registrando")
-            continue
-
-        except KeyboardInterrupt:
-            break
-
-        except Exception as e:
-            _restart_count += 1
-            print(f"[ERRO] Loop de hotkeys crashou: {e}")
-            print(f"[INFO] Reiniciando hotkeys em 3s (tentativa #{_restart_count})...\n")
-            time.sleep(3)
-            continue
-
-    print("[INFO] Hotkey loop encerrado")
-    # Signal main thread to exit (idempotente — .set() em evento já setado é no-op)
-    state._shutdown_event.set()
+            state._tray_icon.notify(
+                f"Falha ao registrar: {combos}. Troque o atalho nas Configurações.",
+                "Voice Commander",
+            )
+        except Exception:
+            pass
 
 
 def _main_event_loop() -> None:
@@ -337,13 +288,15 @@ def main() -> None:
         from voice.audio import hands_free_loop
         threading.Thread(target=hands_free_loop, daemon=True, name="HandsFree").start()
 
-    # Hotkeys em background thread — main thread fica livre para webview (pywebview exige main thread)
-    threading.Thread(target=_hotkey_loop, daemon=True).start()
+    # Hotkeys via Win32 RegisterHotKey — thread própria do módulo (pump precisa
+    # da sua própria message queue; main thread fica livre para webview).
+    hotkeys_win32.start(_hotkey_bindings, _report_hotkey_failures)
 
     # Main loop: atende requests de settings (webview) e aguarda shutdown
     _main_event_loop()
 
     # Story 3.3 — Shutdown gracioso (libera mutex internamente)
+    hotkeys_win32.stop()
     _stop_tray()
     graceful_shutdown()
     print("\nSaindo...")
