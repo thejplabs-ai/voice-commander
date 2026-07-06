@@ -277,9 +277,9 @@ class TestOnHotkeyDebounce:
         """
         Regression: second on_hotkey() call within 1000ms must be ignored
         regardless of is_recording state (unconditional debounce).
-        Root cause: WM_HOTKEY also dispatches multiple times when key is held down
-        or when user repeats the hotkey in rapid succession (~350-400ms apart),
-        which passed the old 300ms debounce. New threshold is 1000ms.
+        Root cause: the user can hammer the hotkey in rapid succession
+        (~350-400ms apart) and each press dispatches on_hotkey() on its own
+        worker thread, which passed the old 300ms debounce. New threshold is 1000ms.
         """
         import winsound
         monkeypatch.setattr(winsound, "Beep", MagicMock())
