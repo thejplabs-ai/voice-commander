@@ -66,6 +66,15 @@ class WebBridge:
                     clean[k] = str(v)
             _save_env(clean)
             _reload_config()
+            # ponytail: rebind incondicional (não diffa quais hotkeys mudaram) —
+            # re-registrar 4 hotkeys custa microssegundos, mais simples que
+            # diff-tracking de config. request_rebind() já é no-op se o pump
+            # de hotkeys_win32 não foi iniciado.
+            try:
+                from voice.hotkeys_win32 import request_rebind
+                request_rebind()
+            except Exception as e:
+                print(f"[WARN] Rebind de hotkeys falhou após salvar config: {e}")
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
