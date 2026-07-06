@@ -117,7 +117,7 @@ def load_config() -> dict:
         # QW-4: Delay adicional antes de colar (ms) — ajustar se o paste falha em apps lentos
         "PASTE_DELAY_MS": 50,
         # Story 4.5.3: Hotkey de ciclo de modo
-        "CYCLE_HOTKEY": "ctrl+alt+m",
+        "CYCLE_HOTKEY": "ctrl+alt+n",
         # Story 4.5.4: Clipboard Context
         "CLIPBOARD_CONTEXT_ENABLED": "true",
         "CLIPBOARD_CONTEXT_MAX_CHARS": 2000,
@@ -155,8 +155,8 @@ def load_config() -> dict:
     # converge no próximo save das Configurações.
     # Migração exige match literal do default antigo (PRD: "exatamente igual"); casing divergente não migra.
     if config["CYCLE_HOTKEY"] == "ctrl+shift+tab":
-        config["CYCLE_HOTKEY"] = "ctrl+alt+m"
-        print("[INFO] Hotkey legado migrado: CYCLE_HOTKEY ctrl+shift+tab -> ctrl+alt+m")
+        config["CYCLE_HOTKEY"] = "ctrl+alt+n"
+        print("[INFO] Hotkey legado migrado: CYCLE_HOTKEY ctrl+shift+tab -> ctrl+alt+n")
     if config["HISTORY_HOTKEY"] == "ctrl+shift+h":
         config["HISTORY_HOTKEY"] = "ctrl+alt+h"
         print("[INFO] Hotkey legado migrado: HISTORY_HOTKEY ctrl+shift+h -> ctrl+alt+h")

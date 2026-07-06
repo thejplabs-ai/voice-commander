@@ -122,7 +122,7 @@ def test_novas_variaveis_stories_defaults(tmp_path, monkeypatch):
 
     cfg = voice.load_config()
 
-    assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+m"
+    assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+n"
     assert cfg["CLIPBOARD_CONTEXT_ENABLED"] is True
     assert cfg["CLIPBOARD_CONTEXT_MAX_CHARS"] == 2000
     assert cfg["HISTORY_HOTKEY"] == "ctrl+alt+h"
@@ -162,7 +162,7 @@ class TestLegacyHotkeyMigration:
 
         cfg = voice.load_config()
 
-        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+m"
+        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+n"
 
     def test_migrates_legacy_history_hotkey(self, tmp_path, monkeypatch):
         monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
@@ -200,11 +200,11 @@ class TestLegacyHotkeyMigration:
 
     def test_new_values_pass_through_unchanged(self, tmp_path, monkeypatch):
         monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
-        _write_env(tmp_path, "CYCLE_HOTKEY=ctrl+alt+m\nHISTORY_HOTKEY=ctrl+alt+h\n")
+        _write_env(tmp_path, "CYCLE_HOTKEY=ctrl+alt+n\nHISTORY_HOTKEY=ctrl+alt+h\n")
 
         cfg = voice.load_config()
 
-        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+m"
+        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+n"
         assert cfg["HISTORY_HOTKEY"] == "ctrl+alt+h"
 
     def test_missing_keys_get_new_defaults(self, tmp_path, monkeypatch):
@@ -214,7 +214,7 @@ class TestLegacyHotkeyMigration:
 
         cfg = voice.load_config()
 
-        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+m"
+        assert cfg["CYCLE_HOTKEY"] == "ctrl+alt+n"
         assert cfg["HISTORY_HOTKEY"] == "ctrl+alt+h"
 
     def test_migration_does_not_write_env_file(self, tmp_path, monkeypatch):

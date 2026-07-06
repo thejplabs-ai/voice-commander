@@ -53,7 +53,7 @@ class TestHotkeyBindings:
         combos = {key: combo for key, combo, _ in bindings}
         assert combos == {
             "RECORD_HOTKEY": "ctrl+shift+space",
-            "CYCLE_HOTKEY": "ctrl+alt+m",
+            "CYCLE_HOTKEY": "ctrl+alt+n",
             "HISTORY_HOTKEY": "ctrl+alt+h",
             "COMMAND_HOTKEY": "ctrl+alt+space",
         }

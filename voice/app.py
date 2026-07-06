@@ -190,7 +190,7 @@ def _hotkey_bindings() -> list:
     cfg = state._CONFIG
     return [
         ("RECORD_HOTKEY", cfg.get("RECORD_HOTKEY", "ctrl+shift+space"), on_hotkey),
-        ("CYCLE_HOTKEY", cfg.get("CYCLE_HOTKEY", "ctrl+alt+m"), _cycle_mode),
+        ("CYCLE_HOTKEY", cfg.get("CYCLE_HOTKEY", "ctrl+alt+n"), _cycle_mode),
         ("HISTORY_HOTKEY", cfg.get("HISTORY_HOTKEY", "ctrl+alt+h"), open_history_search),
         ("COMMAND_HOTKEY", cfg.get("COMMAND_HOTKEY", "ctrl+alt+space"), on_command_hotkey),
     ]
