@@ -9,7 +9,7 @@ Covers the two new helpers passed to hotkeys_win32.start():
     failure, beeps once via the voice.audio facade, and notifies via tray
     when available (never silent).
 """
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from voice import state
 from voice import audio
@@ -120,3 +120,25 @@ class TestReportHotkeyFailures:
         app._report_hotkey_failures([("RECORD_HOTKEY", "ctrl+shift+space", 1409)])
 
         mock_tray.notify.assert_not_called()
+
+
+class TestCycleMode:
+    """W3 Task 2 — _cycle_mode() must advance the mode in memory only.
+
+    An accidental cycle-hotkey press must never persist to .env (it should
+    die on next restart). Deliberate selection (tray menu / Settings) is
+    covered by voice/tray.py TestSetMode and stays unchanged.
+    """
+
+    def test_advances_mode_without_persisting(self, monkeypatch):
+        monkeypatch.setattr(state, "_CONFIG", {
+            "CYCLE_MODES": "transcribe,email,simple,prompt,query",
+        })
+        monkeypatch.setattr(state, "selected_mode", "transcribe")
+        monkeypatch.setattr(audio, "play_sound", MagicMock())
+
+        with patch("voice.config._save_env") as mock_save:
+            app._cycle_mode()
+
+        assert state.selected_mode == "email"
+        mock_save.assert_not_called()

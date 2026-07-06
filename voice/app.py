@@ -167,7 +167,7 @@ def _cycle_mode() -> None:
         idx = 0
     next_idx = (idx + 1) % len(modes)
     next_mode = modes[next_idx]
-    _set_mode(next_mode)
+    _set_mode(next_mode, persist=False)
     _update_tray_state("idle")
     print(f"[INFO] Modo ciclado: {current} → {next_mode}")
     play_sound("skip")  # bip distinto ao ciclar

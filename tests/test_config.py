@@ -236,3 +236,34 @@ class TestLegacyHotkeyMigration:
         out = capsys.readouterr().out
         assert "[INFO]" in out
         assert "CYCLE_HOTKEY" in out
+
+
+class TestReloadConfigSelectedMode:
+    """W3 Task 2 — _reload_config() must not clobber an in-memory cycled mode
+    when the persisted SELECTED_MODE didn't actually change between reloads.
+    """
+
+    def test_preserves_cycled_mode_when_persisted_value_unchanged(self, tmp_path, monkeypatch):
+        """User cycled to 'email' in memory while .env still says transcribe
+        (e.g. cycled, then opened Settings and saved an unrelated field) —
+        reload must not revert the in-memory mode back to transcribe."""
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "SELECTED_MODE=transcribe\n")
+        monkeypatch.setattr(voice.state, "_CONFIG", {"SELECTED_MODE": "transcribe"})
+        monkeypatch.setattr(voice.state, "selected_mode", "email")
+
+        voice._reload_config()
+
+        assert voice.state.selected_mode == "email"
+
+    def test_applies_new_persisted_mode_when_env_changed(self, tmp_path, monkeypatch):
+        """.env SELECTED_MODE genuinely changed (manual edit or deliberate
+        selection saved right before reload) — the new value must apply."""
+        monkeypatch.setattr(voice.state, "_BASE_DIR", str(tmp_path))
+        _write_env(tmp_path, "SELECTED_MODE=query\n")
+        monkeypatch.setattr(voice.state, "_CONFIG", {"SELECTED_MODE": "transcribe"})
+        monkeypatch.setattr(voice.state, "selected_mode", "transcribe")
+
+        voice._reload_config()
+
+        assert voice.state.selected_mode == "query"

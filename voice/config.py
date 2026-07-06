@@ -257,10 +257,16 @@ def _reload_config() -> None:
     old_key = state._GEMINI_API_KEY
     old_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
     old_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
+    old_selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
 
     state._CONFIG = load_config()
     state._GEMINI_API_KEY = state._CONFIG.get("GEMINI_API_KEY")
-    state.selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
+    new_selected_mode = state._CONFIG.get("SELECTED_MODE", "transcribe")
+    # W3: só aplica o modo persistido se ele de fato mudou no .env — evita que
+    # um ciclo em memória (hotkey, não persistido) seja desfeito por um reload
+    # disparado ao salvar Configurações (que não mexe em SELECTED_MODE).
+    if new_selected_mode != old_selected_mode:
+        state.selected_mode = new_selected_mode
 
     new_model = state._CONFIG.get("WHISPER_MODEL", "tiny")
     new_device = state._CONFIG.get("WHISPER_DEVICE", "cpu")
