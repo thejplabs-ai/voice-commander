@@ -8,7 +8,7 @@ Configuracao do Claude Code para o projeto `voice-commander`.
 
 Voice Commander e uma ferramenta voice-to-text pessoal para Windows. Captura audio via hotkey global, transcreve com Whisper local e processa com Gemini, colando o resultado na janela ativa via ctypes SendInput.
 
-- **Versao:** source unica em `__version__` em `voice/__init__.py` (atualmente `1.0.15`)
+- **Versao:** source unica em `__version__` em `voice/__init__.py` (atualmente `1.1.0`)
 - **Plataforma:** Windows 10/11 exclusivo — usa `ctypes.windll`, `winsound`, Named Mutex Win32, `SendInput`
 - **Sem suporte macOS/Linux por design**
 
@@ -69,6 +69,10 @@ cd build && build.bat
 # Gerar chave de licenca
 python scripts/generate_license_key.py
 
+# Release local (gate + build + install). Um comando so
+powershell -File release.ps1            # verifica, injeta versao, builda, instala
+powershell -File release.ps1 -NoInstall  # so verifica + builda (sem parar/instalar o app)
+
 # Listar dispositivos de audio disponiveis
 python -c "import sounddevice; print(sounddevice.query_devices())"
 ```
@@ -114,7 +118,7 @@ voice-commander/
 │   ├── snippets.py             <- Snippets/templates de texto (match frase-completa)
 │   ├── vocabulary.py           <- Vocabulario custom do Whisper
 │   ├── window_context.py       <- Contexto da janela ativa (foreground window)
-│   └── __init__.py             <- __version__ = "1.0.15"
+│   └── __init__.py             <- __version__ = "1.1.0"
 ├── tests/                      <- 500+ testes
 ├── requirements.txt            <- Dependencias pinadas (Python 3.13)
 ├── .env.example                <- Template de configuracao
@@ -129,7 +133,7 @@ voice-commander/
 ├── voice_watchdog.ps1          <- Watchdog para restart automatico
 ├── build/
 │   ├── build.bat               <- PyInstaller + Inno Setup
-│   ├── installer.iss           <- Script Inno Setup (AppVersion hardcoded — sync manual)
+│   ├── installer.iss           <- Script Inno Setup (AppVersion injetado por release.ps1)
 │   └── create_icon.py          <- Gera icon.ico para o build
 ├── dist/                       <- Builds gerados (nao commitar)
 ├── scripts/
@@ -431,9 +435,9 @@ O modo e capturado no momento do toggle de inicio, nao no momento de parar a gra
 
 O onboarding (pywebview, `voice/webui/`) e chamado antes de `_acquire_named_mutex()`. Nao mover esta ordem.
 
-### `build/installer.iss` tem `AppVersion` hardcoded
+### `build/installer.iss` tem `AppVersion` hardcoded no arquivo
 
-A versao no script Inno Setup nao e lida automaticamente de `__version__`. Sync manual a cada release.
+O valor commitado (`1.1.0` ou o que estiver no momento) e so um placeholder. `release.ps1` sobrescreve essa linha automaticamente a partir de `__version__` em `voice/__init__.py` a cada execucao. Nao precisa sync manual; rodar `build/build.bat` direto (sem passar por `release.ps1`) usa o valor commitado, que pode estar desatualizado.
 
 ### Fork de `_BASE_DIR` em dev vs .exe
 
@@ -482,14 +486,18 @@ pip install -r requirements.txt
 ## Build e Distribuicao
 
 ### Processo
+
+Comando unico, na raiz do repo:
 ```bash
-python -m py_compile voice/*.py  # verificar sintaxe de todos os modulos
-cd build && build.bat            # PyInstaller -> dist\VoiceCommander\ + Inno Setup -> dist\VoiceCommanderSetup.exe
+powershell -File release.ps1
 ```
+
+`release.ps1` roda o gate (py_compile + ruff + pytest), injeta `__version__` de `voice/__init__.py` em `build/installer.iss`, chama `build/build.bat` (PyInstaller -> `dist\VoiceCommander\` + Inno Setup -> `dist\VoiceCommanderSetup.exe`), encerra o `VoiceCommander.exe` em execucao e instala silenciosamente. `-NoInstall` roda so o gate + build, sem tocar no app instalado nem instalar.
+
+`build/build.bat` continua sendo o passo de build interno (PyInstaller + Inno Setup) e pode ser chamado sozinho para debug, mas nao injeta versao.
 
 ### Checklist pre-release
 - [ ] `__version__` em `voice/__init__.py` atualizado
-- [ ] `AppVersion` em `build/installer.iss` sincronizado manualmente
 - [ ] `requirements.txt` atualizado se nova dependencia
 - [ ] Testado com `pythonw.exe` (sem console)
 - [ ] `.env` nao incluido no build

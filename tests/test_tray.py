@@ -8,7 +8,7 @@ We test state mutations and _save_env calls without touching real hardware.
 from unittest.mock import MagicMock, patch
 import pytest
 
-from voice import state, tray, theme
+from voice import state, tray, theme, __version__
 
 
 # ---------------------------------------------------------------------------
@@ -198,3 +198,14 @@ class TestStopTray:
         tray._stop_tray()  # Must not propagate
 
         assert state._tray_icon is None
+
+
+# ---------------------------------------------------------------------------
+# _tray_tooltip()
+# ---------------------------------------------------------------------------
+
+class TestTrayTooltip:
+    def test_tooltip_contem_versao(self):
+        """`_tray_tooltip()` must contain __version__."""
+        tooltip = tray._tray_tooltip()
+        assert __version__ in tooltip

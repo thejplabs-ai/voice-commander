@@ -1,7 +1,7 @@
 # voice/__init__.py — package entry point
 # Loads submodules in correct order and re-exports for backward compatibility.
 
-__version__ = "1.0.15"
+__version__ = "1.1.0"
 
 # 1. State first (no dependencies)
 from voice import state  # noqa: F401
