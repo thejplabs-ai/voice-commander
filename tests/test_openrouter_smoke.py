@@ -92,6 +92,8 @@ def test_structure_returns_costar_xml():
         "Modo prompt retornou prosa em vez de COSTAR XML. "
         f"Output (primeiros 300 chars): {result[:300]}"
     )
+    assert "<<<" not in result and ">>>" not in result
+    assert "corrigido:" not in result.lower()
 
 
 def test_simplify_returns_no_xml():
@@ -105,6 +107,8 @@ def test_simplify_returns_no_xml():
     assert "<role>" not in result, f"simplify contaminado com XML: {result[:200]}"
     assert "═══" not in result, f"simplify contaminado com COSTAR header: {result[:200]}"
     assert "SYSTEM PROMPT" not in result.upper()
+    assert "<<<" not in result and ">>>" not in result
+    assert "corrigido:" not in result.lower()
 
 
 def test_query_returns_ptbr_default():
@@ -117,6 +121,8 @@ def test_query_returns_ptbr_default():
     assert "Brasília" in result or "brasília" in result.lower(), (
         f"Esperado 'Brasília' na resposta. Output: {result[:200]}"
     )
+    assert "<<<" not in result and ">>>" not in result
+    assert "corrigido:" not in result.lower()
 
 
 def test_query_with_clipboard_uses_context():
@@ -133,6 +139,8 @@ def test_query_with_clipboard_uses_context():
     # Esperado: 225 (250 - 10%). Aceita "225" ou "R$ 225" em qualquer formato
     has_answer = "225" in result or "R$ 225" in result
     assert has_answer, f"Não usou contexto do clipboard. Output: {result[:300]}"
+    assert "<<<" not in result and ">>>" not in result
+    assert "corrigido:" not in result.lower()
 
 
 # ── R2 lower-risk (já smoke-passed manualmente, mas barato validar) ──────────
@@ -152,6 +160,9 @@ def test_correct_smart_preserves_meaning():
     assert has_capital, f"Não capitalizou: {result}"
     # Não pode ter mudado idioma — "pizza" deve continuar como "pizza"
     assert "pizza" in result.lower(), f"Mudou conteúdo: {result}"
+    # Bug B (2026-07 audit): preâmbulo/delimitadores <<< >>> vazando no paste
+    assert "<<<" not in result and ">>>" not in result
+    assert "corrigido:" not in result.lower()
 
 
 def test_translate_to_english():
@@ -166,6 +177,8 @@ def test_translate_to_english():
         word in result.lower() for word in ("hello", "world", "today", "sunny", "sun")
     )
     assert has_english_markers, f"Não parece traduzido para EN: {result[:200]}"
+    assert "<<<" not in result and ">>>" not in result
+    assert "corrigido:" not in result.lower()
 
 
 def test_bullet_dump_has_bullets():
@@ -179,6 +192,8 @@ def test_bullet_dump_has_bullets():
     assert "[LIMITE ATINGIDO]" not in result
     has_bullet_marker = "-" in result or "•" in result or "*" in result or "##" in result
     assert has_bullet_marker, f"Sem bullets: {result[:200]}"
+    assert "<<<" not in result and ">>>" not in result
+    assert "corrigido:" not in result.lower()
 
 
 def test_draft_email_has_subject_and_signature():
@@ -194,3 +209,5 @@ def test_draft_email_has_subject_and_signature():
     has_signature = "{Nome}" in result or "atenciosamente" in result.lower()
     assert has_subject, f"Sem 'Assunto:'. Output: {result[:300]}"
     assert has_signature, f"Sem assinatura. Output: {result[:300]}"
+    assert "<<<" not in result and ">>>" not in result
+    assert "corrigido:" not in result.lower()
