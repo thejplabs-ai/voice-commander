@@ -108,16 +108,24 @@ def _join_segments(segments) -> str:
 def _should_retranscribe_without_vad(info) -> bool:
     """Detector de perda excessiva do VAD (Bug A, Task 2 bug bounty 2).
 
-    True quando o VAD descartou >40% de um áudio com mais de 5s de duração
-    — sinal de que cortou fala real, não silêncio. Guard defensivo: se
-    duration/duration_after_vad estiverem ausentes, None ou não-numéricos
-    (ex.: MagicMock em teste), retorna False sem crashar.
+    True quando o VAD ENCONTROU fala substancial (>=1.0s) mas descartou
+    >40% de um áudio com mais de 5s de duração — sinal de que cortou fala
+    real, não silêncio. O fallback é para "VAD comeu fala demais", não para
+    "não há fala": se duration_after_vad < 1.0s, o VAD basicamente não achou
+    nada, e retranscrever sem VAD nesse caso reabre o incidente W1 (Amara.org
+    / "thank you" alucinados sobre silêncio genuíno — commit ad646fc). Esse
+    caso segue para o SKIP existente de texto vazio, não para este fallback.
+
+    Guard defensivo: se duration/duration_after_vad estiverem ausentes, None
+    ou não-numéricos (ex.: MagicMock em teste), retorna False sem crashar.
     """
     duration = getattr(info, "duration", None)
     duration_after_vad = getattr(info, "duration_after_vad", None)
     if not isinstance(duration, (int, float)) or not isinstance(duration_after_vad, (int, float)):
         return False
     if duration <= 5:
+        return False
+    if duration_after_vad < 1.0:
         return False
     return duration_after_vad < 0.6 * duration
 

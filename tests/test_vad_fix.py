@@ -203,7 +203,7 @@ def test_transcribe_skip_when_vad_detects_no_speech(audio_env, monkeypatch):
     """
     _patch_wav_pipeline(monkeypatch, audio_duration_s=2.5)
 
-    results = [([], MagicMock(duration_after_vad=0.0))]
+    results = [([], MagicMock(duration=2.5, duration_after_vad=0.0))]
     model, _, call_count = _make_model_mock(results)
     monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
 
@@ -241,7 +241,7 @@ def test_transcribe_skip_no_second_model_call(audio_env, monkeypatch):
     """Task 3: model.transcribe is called exactly once — the sem-VAD fallback no longer exists."""
     _patch_wav_pipeline(monkeypatch, audio_duration_s=5.0)
 
-    results = [([], MagicMock(duration_after_vad=0.0))]
+    results = [([], MagicMock(duration=5.0, duration_after_vad=0.0))]
     model, _, call_count = _make_model_mock(results)
     monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
     monkeypatch.setattr(audio, "copy_to_clipboard", lambda t: None)
@@ -325,3 +325,21 @@ def test_vad_no_fallback_when_duration_after_vad_missing(audio_env, monkeypatch)
 
     assert call_count[0] == 1
     assert result == "ok"
+
+
+def test_vad_no_fallback_when_vad_found_no_speech_at_all(audio_env, monkeypatch):
+    """CRITICAL fix (post-review): duration=40.0 (float real, >5s) com
+    duration_after_vad=0.0 (VAD não achou fala NENHUMA) não deve disparar o
+    fallback sem VAD — senão o Whisper re-transcreve silêncio genuíno e
+    alucina texto ("you", "thank you", "Amara.org"), reabrindo o incidente
+    W1 que motivou a remoção do fallback antigo (commit ad646fc). O
+    fallback é só para "VAD comeu fala demais", não para "não há fala".
+    """
+    info = MagicMock(duration=40.0, duration_after_vad=0.0)
+    model, call_kwargs, call_count = _make_model_mock([([], info)])
+    monkeypatch.setattr(audio, "get_whisper_model", lambda mode="transcribe": model)
+
+    result = audio._do_transcription("/tmp/fake.wav", "transcribe")
+
+    assert call_count[0] == 1, "Silêncio genuíno não deve acionar retranscrição sem VAD"
+    assert result == ""
