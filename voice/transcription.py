@@ -28,6 +28,7 @@
 # lookup goes through the voice.audio namespace — which is what monkeypatch
 # targets.
 
+import re
 import time
 
 from voice import state
@@ -77,8 +78,16 @@ def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
         task="transcribe",
         initial_prompt=initial_prompt,
         condition_on_previous_text=False,
-        temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        # Bug C (Task 3, bug bounty 2): a ladder alta demais deixava o large-v3
+        # cair em temperatura alta e completar o áudio com legenda de YouTube
+        # memorizada (sempre no fim, após frase real). Cap em 0.4 corta a
+        # fonte; hallucination_silence_threshold + word_timestamps são a
+        # segunda linha de defesa do próprio faster-whisper; a terceira é
+        # strip_hallucinated_tail() no ponto único de montagem do texto.
+        temperature=[0.0, 0.2, 0.4],
         beam_size=beam_size,
+        hallucination_silence_threshold=2.0,
+        word_timestamps=True,
     )
     if _supports_hotwords:
         try:
@@ -95,14 +104,83 @@ def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
     return kwargs, vad_params
 
 
+# Bug C (Task 3, bug bounty 2): padrões de cauda alucinada — legenda de
+# YouTube memorizada pelo large-v3 nas temperaturas altas da ladder de
+# fallback, sempre colada no FIM do texto, depois de uma frase real completa
+# (9 casos inequívocos em produção). Cada padrão termina em `.*$` de propósito:
+# uma vez identificado o início da alucinação, tudo depois dele na cauda é
+# lixo também (a alucinação nunca aparece seguida de fala real genuína).
+_HALLUCINATION_TAIL_PATTERNS = [
+    re.compile(r"inscreva[- ]?se no(sso)?( meu)? canal.*$", re.IGNORECASE),
+    re.compile(r"ative o sininho.*$", re.IGNORECASE),
+    re.compile(r"obrigado por assistir.*$", re.IGNORECASE),
+    re.compile(r"legendas pela comunidade.*$", re.IGNORECASE),
+    re.compile(r"(subtitles by )?the amara\.org community.*$", re.IGNORECASE),
+    re.compile(r"amara\.org.*$", re.IGNORECASE),
+    re.compile(r"acesse o (nosso )?site( www\.[^\s]+)?\.?\s*$", re.IGNORECASE),
+    re.compile(r"www\.[a-z0-9-]+\.com(\.br)?\s*$", re.IGNORECASE),
+]
+
+_HALLUCINATION_TAIL_WINDOW = 160
+_HALLUCINATION_TAIL_MAX_PASSES = 3
+
+
+def strip_hallucinated_tail(text: str) -> str:
+    """Remove cauda de legenda de YouTube alucinada pelo large-v3 (Bug C, Task 3).
+
+    Examina só os últimos _HALLUCINATION_TAIL_WINDOW chars do texto. Se algum
+    padrão de _HALLUCINATION_TAIL_PATTERNS casar nessa cauda, corta a partir
+    do início do match mais à esquerda (entre todos os padrões que baterem) e
+    faz rstrip. Repete até _HALLUCINATION_TAIL_MAX_PASSES vezes — cobre caudas
+    compostas (ex.: "Inscreva-se no canal! Ative o sininho!") cuja soma passe
+    da janela de uma única passada.
+
+    Como só a cauda é examinada, uma menção real no MEIO do texto (usuário
+    citando "inscreva-se" ou ditando uma URL, com fala real depois) fica fora
+    da janela e é preservada.
+
+    Fail-safe: se o corte esvaziar o texto todo, retorna o original — nunca
+    degrada para vazio.
+    """
+    if not text:
+        return text
+
+    current = text
+    for _ in range(_HALLUCINATION_TAIL_MAX_PASSES):
+        window_start = max(0, len(current) - _HALLUCINATION_TAIL_WINDOW)
+        tail = current[window_start:]
+
+        match_start = None
+        for pattern in _HALLUCINATION_TAIL_PATTERNS:
+            m = pattern.search(tail)
+            if m and (match_start is None or m.start() < match_start):
+                match_start = m.start()
+
+        if match_start is None:
+            break
+
+        cut_at = window_start + match_start
+        removed = current[cut_at:].strip()
+        current = current[:cut_at].rstrip()
+        print(f'[WARN] cauda alucinada removida: "{removed}"')
+
+        if not current:
+            break
+
+    if not current.strip():
+        return text
+    return current
+
+
 def _join_segments(segments) -> str:
     """Monta o texto final a partir dos segments do Whisper.
 
     Ponto único de montagem do raw_text — caminho normal E o fallback sem
-    VAD (Bug A, Task 2) passam por aqui, para a Task 3 (strip de cauda
-    alucinada) plugar num único lugar.
+    VAD (Bug A, Task 2) passam por aqui. strip_hallucinated_tail() (Bug C,
+    Task 3) plugado logo em seguida cobre os dois caminhos de uma vez.
     """
-    return " ".join(s.text for s in segments).strip()
+    text = " ".join(s.text for s in segments).strip()
+    return strip_hallucinated_tail(text)
 
 
 def _should_retranscribe_without_vad(info) -> bool:
