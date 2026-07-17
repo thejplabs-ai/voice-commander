@@ -8,7 +8,7 @@ Configuracao do Claude Code para o projeto `voice-commander`.
 
 Voice Commander e uma ferramenta voice-to-text pessoal para Windows. Captura audio via hotkey global, transcreve com Whisper local e processa com Gemini, colando o resultado na janela ativa via ctypes SendInput.
 
-- **Versao:** source unica em `__version__` em `voice/__init__.py` (atualmente `1.1.0`)
+- **Versao:** source unica em `__version__` em `voice/__init__.py` (atualmente `1.1.1`)
 - **Plataforma:** Windows 10/11 exclusivo — usa `ctypes.windll`, `winsound`, Named Mutex Win32, `SendInput`
 - **Sem suporte macOS/Linux por design**
 
@@ -118,7 +118,7 @@ voice-commander/
 │   ├── snippets.py             <- Snippets/templates de texto (match frase-completa)
 │   ├── vocabulary.py           <- Vocabulario custom do Whisper
 │   ├── window_context.py       <- Contexto da janela ativa (foreground window)
-│   └── __init__.py             <- __version__ = "1.1.0"
+│   └── __init__.py             <- __version__ = "1.1.1"
 ├── tests/                      <- 500+ testes
 ├── requirements.txt            <- Dependencias pinadas (Python 3.13)
 ├── .env.example                <- Template de configuracao
