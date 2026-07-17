@@ -174,3 +174,11 @@ def test_model_infra_fallback_strips_hallucinated_tail(monkeypatch):
     monkeypatch.setattr(audio_mod, "get_whisper_model", lambda mode: model)
     raw, _ = tr._transcribe_model_fallback("transcribe", "x.wav", {}, {}, RuntimeError("model.bin"))
     assert raw == "O deploy ficou pronto no fim da tarde."
+
+
+def test_trailing_dictated_url_preserved():
+    """Review final BB2: URL real ditada como ultima coisa da gravacao nao
+    pode ser comida pelo blocklist — so a variante com lead-in ("Acesse o
+    nosso site www...") e alucinacao conhecida."""
+    raw = "O endereco do cliente e www.padaria-central.com.br"
+    assert tr.strip_hallucinated_tail(raw) == raw

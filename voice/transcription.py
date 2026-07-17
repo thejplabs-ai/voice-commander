@@ -118,7 +118,9 @@ _HALLUCINATION_TAIL_PATTERNS = [
     re.compile(r"(subtitles by )?the amara\.org community.*$", re.IGNORECASE),
     re.compile(r"amara\.org.*$", re.IGNORECASE),
     re.compile(r"acesse o (nosso )?site( www\.[^\s]+)?\.?\s*$", re.IGNORECASE),
-    re.compile(r"www\.[a-z0-9-]+\.com(\.br)?\s*$", re.IGNORECASE),
+    # Review final BB2: padrão bare-www (sem lead-in) removido — comia URL
+    # legitimamente ditada no fim da gravação. Todos os casos reais de
+    # produção têm o lead-in "Acesse o (nosso) site", coberto acima.
 ]
 
 _HALLUCINATION_TAIL_WINDOW = 160
