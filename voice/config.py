@@ -85,7 +85,7 @@ def load_config() -> dict:
         "QUERY_SYSTEM_PROMPT": "",
         "HISTORY_MAX_ENTRIES": 500,
         "LOG_KEEP_SESSIONS": 5,
-        "VAD_THRESHOLD": 0.3,
+        "VAD_THRESHOLD": 0.5,
         # Mode selection
         "SELECTED_MODE": "transcribe",
         "RECORD_HOTKEY": "ctrl+shift+space",

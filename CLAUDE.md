@@ -226,7 +226,7 @@ Fonte da verdade: `voice/config.py` (`load_config()`). Defaults abaixo refletem 
 | `WHISPER_INITIAL_PROMPT` | *(vazio)* | string | Contexto de vocabulario para o Whisper. Vazio = padrao PT-BR |
 | `STT_PROVIDER` | `whisper` | string | `whisper` (local, offline) \| `gemini` (cloud, melhor PT-BR) |
 | `GEMINI_CORRECT` | `true` | string | `true` = Gemini corrige raw Whisper; `false` = retorna texto cru |
-| `VAD_THRESHOLD` | `0.3` | float | Sensibilidade VAD: 0.1 (muito sensivel) a 0.9 (pouco sensivel) |
+| `VAD_THRESHOLD` | `0.5` | float | Sensibilidade VAD: 0.1 (muito sensivel) a 0.9 (pouco sensivel) |
 
 ### Gravacao e Audio
 

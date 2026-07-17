@@ -89,10 +89,37 @@ def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
 
     vad_params = dict(
         threshold=vad_threshold,
-        min_silence_duration_ms=500,
-        speech_pad_ms=200,
+        min_silence_duration_ms=2000,
+        speech_pad_ms=400,
     )
     return kwargs, vad_params
+
+
+def _join_segments(segments) -> str:
+    """Monta o texto final a partir dos segments do Whisper.
+
+    Ponto único de montagem do raw_text — caminho normal E o fallback sem
+    VAD (Bug A, Task 2) passam por aqui, para a Task 3 (strip de cauda
+    alucinada) plugar num único lugar.
+    """
+    return " ".join(s.text for s in segments).strip()
+
+
+def _should_retranscribe_without_vad(info) -> bool:
+    """Detector de perda excessiva do VAD (Bug A, Task 2 bug bounty 2).
+
+    True quando o VAD descartou >40% de um áudio com mais de 5s de duração
+    — sinal de que cortou fala real, não silêncio. Guard defensivo: se
+    duration/duration_after_vad estiverem ausentes, None ou não-numéricos
+    (ex.: MagicMock em teste), retorna False sem crashar.
+    """
+    duration = getattr(info, "duration", None)
+    duration_after_vad = getattr(info, "duration_after_vad", None)
+    if not isinstance(duration, (int, float)) or not isinstance(duration_after_vad, (int, float)):
+        return False
+    if duration <= 5:
+        return False
+    return duration_after_vad < 0.6 * duration
 
 
 def _transcribe_no_vad_fallback(model, temp_path: str, kwargs: dict, err: Exception) -> tuple[str, object]:
@@ -144,10 +171,16 @@ def _do_transcription(temp_path: str, mode: str) -> str:
     Roteia para Gemini STT ou Whisper local com base em STT_PROVIDER.
     Tenta com VAD primeiro; se VAD falhar por motivo de infraestrutura
     (silero/onnx ausente, CUDA indisponível, modelo ausente), tenta os
-    fallbacks correspondentes. Se o VAD simplesmente não detectar fala,
-    retorna string vazia — sem fallback sem VAD (Task 3, W1 reliability
-    sprint: elimina o blocklist de alucinações do Whisper; ver
+    fallbacks correspondentes. Se o VAD simplesmente não detectar fala
+    nenhuma (0 segments), retorna string vazia — sem fallback (Task 3, W1
+    reliability sprint: elimina o blocklist de alucinações do Whisper; ver
     _emit_empty_audio_error para o skip visível ao usuário).
+
+    Bug A (Task 2, bug bounty 2): quando o VAD ENCONTRA fala mas descarta
+    >40% de um áudio >5s (info.duration_after_vad muito menor que
+    info.duration), isso é sinal de corte de fala real — não silêncio.
+    Nesse caso re-transcreve uma vez sem VAD (ver
+    _should_retranscribe_without_vad) e usa o resultado da segunda passada.
     """
     from voice import audio as _audio
 
@@ -168,8 +201,20 @@ def _do_transcription(temp_path: str, mode: str) -> str:
     kwargs, vad_params = _build_transcribe_kwargs(model, mode)
 
     try:
-        segments, _ = model.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
-        raw_text = " ".join(s.text for s in segments).strip()
+        segments, info = model.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
+        segments = list(segments)  # materializar antes de ler info.duration_after_vad
+        raw_text = _join_segments(segments)
+
+        if _should_retranscribe_without_vad(info):
+            duration = info.duration
+            duration_after_vad = info.duration_after_vad
+            pct = 100 * (1 - duration_after_vad / duration)
+            print(
+                f"[WARN] VAD descartou {pct:.0f}% do áudio "
+                f"({duration_after_vad:.1f}s de {duration:.1f}s) — re-transcrevendo sem VAD"
+            )
+            segments2, _ = model.transcribe(temp_path, vad_filter=False, **kwargs)
+            raw_text = _join_segments(list(segments2))
     except Exception as _vad_err:
         err_msg = str(_vad_err).lower()
         # Bug #2: OOM durante transcrição — log claro ANTES do fallback CUDA→CPU.
