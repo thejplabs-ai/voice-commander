@@ -41,6 +41,10 @@ def record() -> None:
     frame_count = 0
 
     device_index = state._CONFIG.get("AUDIO_DEVICE_INDEX")
+    # Task 4 (bug bounty 2, item 1): overflow flag descartada antes travava a
+    # detecção de frames perdidos por saturação do buffer do driver — logar
+    # no máximo uma vez por gravação (flag local, resetada a cada record()).
+    overflow_logged = False
 
     try:
         stream_kwargs: dict = {
@@ -53,7 +57,10 @@ def record() -> None:
 
         with _audio.sd.InputStream(**stream_kwargs) as stream:
             while not state.stop_event.is_set():
-                data, _ = stream.read(1024)
+                data, overflowed = stream.read(1024)
+                if overflowed and not overflow_logged:
+                    print("[WARN] overflow de captura do mic (frames perdidos)")
+                    overflow_logged = True
                 with state._toggle_lock:
                     state.frames_buf.append(data.copy())
                 frame_count += 1
@@ -83,6 +90,19 @@ def _start_recording(mode: str) -> None:
     state.frames_buf = []
     state.stop_event.clear()
     state.record_start_time = time.time()
+
+    # Task 4 (bug bounty 2, item 3): abrir o stream de captura o mais cedo
+    # possível. Antes, clipboard/window-context/overlay rodavam primeiro e
+    # podiam levar dezenas/centenas de ms (overlay Tkinter em especial),
+    # comendo os primeiros frames de fala pós-hotkey. record() abre o
+    # InputStream como primeira coisa que faz — iniciar a thread aqui, antes
+    # de qualquer I/O síncrono adicional, deixa o driver bufferizando áudio
+    # enquanto o resto do START ainda roda. Não muda a semântica do
+    # _toggle_lock: a thread só consegue dar append em frames_buf (via
+    # `with state._toggle_lock:` em record()) depois que este thread solta o
+    # lock ao final de toggle_recording() — igual ao comportamento anterior.
+    state.record_thread = _audio.threading.Thread(target=_audio.record, daemon=True)
+    state.record_thread.start()
 
     # Story 4.5.4: capturar clipboard context no início da gravação
     state._clipboard_context = ""
@@ -120,9 +140,6 @@ def _start_recording(mode: str) -> None:
         _overlay.show_recording(clipboard_chars=clip_chars)
     except Exception:
         pass  # overlay nunca deve crashar o recording
-
-    state.record_thread = _audio.threading.Thread(target=_audio.record, daemon=True)
-    state.record_thread.start()
 
 
 def _stop_recording_snapshot() -> "tuple[object, str] | tuple[None, None]":

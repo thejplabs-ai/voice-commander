@@ -146,6 +146,93 @@ class TestRecordIncremental:
         assert result is None, "record() must return None (frames go to state.frames_buf)"
 
 
+class TestRecordOverflowLogging:
+    """Task 4 (bug bounty 2, item 1): overflow flag do stream.read() não pode
+    ser descartada — logar [WARN] no máximo UMA vez por gravação, mesmo que
+    o overflow persista em várias leituras seguidas."""
+
+    def test_overflow_logged_once_across_multiple_reads(self, monkeypatch, mock_config, capsys):
+        """stream.read() retornando overflowed=True em 3 leituras seguidas —
+        [WARN] deve aparecer só uma vez no output."""
+        fake_frame = _make_fake_frame()
+        read_count = [0]
+
+        def fake_read(chunk_size):
+            read_count[0] += 1
+            if read_count[0] >= 3:
+                state.stop_event.set()
+            return fake_frame, True  # overflowed=True em toda leitura
+
+        fake_stream = MagicMock()
+        fake_stream.__enter__ = MagicMock(return_value=fake_stream)
+        fake_stream.__exit__ = MagicMock(return_value=False)
+        fake_stream.read = fake_read
+
+        import sounddevice as sd
+        monkeypatch.setattr(sd, "InputStream", MagicMock(return_value=fake_stream))
+        monkeypatch.setattr(state, "frames_buf", [])
+        state.stop_event.clear()
+
+        audio.record()
+
+        out = capsys.readouterr().out
+        assert out.count("[WARN] overflow de captura do mic (frames perdidos)") == 1, (
+            "Overflow deve ser logado no máximo uma vez por gravação, mesmo com "
+            "overflow em múltiplas leituras seguidas"
+        )
+
+    def test_no_overflow_warning_when_flag_is_falsy(self, monkeypatch, mock_config, capsys):
+        """overflowed=None (comportamento normal do sounddevice) não deve logar [WARN]."""
+        fake_frame = _make_fake_frame()
+        read_count = [0]
+
+        def fake_read(chunk_size):
+            read_count[0] += 1
+            if read_count[0] >= 2:
+                state.stop_event.set()
+            return fake_frame, None
+
+        fake_stream = MagicMock()
+        fake_stream.__enter__ = MagicMock(return_value=fake_stream)
+        fake_stream.__exit__ = MagicMock(return_value=False)
+        fake_stream.read = fake_read
+
+        import sounddevice as sd
+        monkeypatch.setattr(sd, "InputStream", MagicMock(return_value=fake_stream))
+        monkeypatch.setattr(state, "frames_buf", [])
+        state.stop_event.clear()
+
+        audio.record()
+
+        out = capsys.readouterr().out
+        assert "overflow de captura do mic" not in out
+
+
+class TestWriteAudioToWavClipsOutOfRangeSamples:
+    """Task 4 (bug bounty 2, item 2): samples fora de [-1.0, 1.0] devem saturar
+    em vez de dar wrap-around no cast para int16."""
+
+    def test_samples_saturate_instead_of_wrapping(self, tmp_path, monkeypatch, real_numpy):
+        from voice.transcription import _write_audio_to_wav
+        import wave
+
+        monkeypatch.setattr(audio, "np", real_numpy)
+        monkeypatch.setattr(audio, "wave", wave)
+
+        frames = [real_numpy.array([[1.5], [-1.5], [0.5]], dtype="float32")]
+        temp_path = str(tmp_path / "clip_test.wav")
+
+        _write_audio_to_wav(frames, temp_path)
+
+        with wave.open(temp_path, "rb") as wf:
+            raw = wf.readframes(wf.getnframes())
+        samples = real_numpy.frombuffer(raw, dtype=real_numpy.int16)
+
+        assert samples[0] == 32767, "sample 1.5 deve saturar em 32767, não dar wrap-around"
+        assert samples[1] == -32767, "sample -1.5 deve saturar em -32767, não dar wrap-around"
+        assert samples[2] == int(0.5 * 32767), "sample dentro de faixa não deve ser alterado"
+
+
 # ---------------------------------------------------------------------------
 # toggle_recording() — integration: frames available after stop
 # ---------------------------------------------------------------------------

@@ -342,7 +342,12 @@ def _write_audio_to_wav(frames: list, temp_path: str) -> object:
         wf.setnchannels(_audio.CHANNELS)
         wf.setsampwidth(2)
         wf.setframerate(_audio.SAMPLE_RATE)
-        wf.writeframes((audio_data * 32767).astype(_audio.np.int16).tobytes())
+        # Task 4 (bug bounty 2, item 2): sem clip, samples > 1.0/< -1.0 (ganho
+        # de mic alto ou gemini/pipeline gerando float fora de faixa) dão
+        # wrap-around no cast pra int16 em vez de saturar — vira ruído digital
+        # audível na gravação. np.clip satura em [-1.0, 1.0] antes do cast.
+        clipped = _audio.np.clip(audio_data, -1.0, 1.0)
+        wf.writeframes((clipped * 32767).astype(_audio.np.int16).tobytes())
     return audio_data
 
 
