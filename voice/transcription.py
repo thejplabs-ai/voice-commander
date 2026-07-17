@@ -28,6 +28,7 @@
 # lookup goes through the voice.audio namespace — which is what monkeypatch
 # targets.
 
+import re
 import time
 
 from voice import state
@@ -58,7 +59,7 @@ def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
     from voice.whisper import _DEFAULT_INITIAL_PROMPT as _PROMPT, _HOTWORDS as _HW
 
     lang_hint = state._CONFIG.get("WHISPER_LANGUAGE") or None
-    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
+    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.5)
     beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)
 
     initial_prompt = state._CONFIG.get("WHISPER_INITIAL_PROMPT") or _PROMPT
@@ -77,8 +78,16 @@ def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
         task="transcribe",
         initial_prompt=initial_prompt,
         condition_on_previous_text=False,
-        temperature=[0.0, 0.2, 0.4, 0.6, 0.8, 1.0],
+        # Bug C (Task 3, bug bounty 2): a ladder alta demais deixava o large-v3
+        # cair em temperatura alta e completar o áudio com legenda de YouTube
+        # memorizada (sempre no fim, após frase real). Cap em 0.4 corta a
+        # fonte; hallucination_silence_threshold + word_timestamps são a
+        # segunda linha de defesa do próprio faster-whisper; a terceira é
+        # strip_hallucinated_tail() no ponto único de montagem do texto.
+        temperature=[0.0, 0.2, 0.4],
         beam_size=beam_size,
+        hallucination_silence_threshold=2.0,
+        word_timestamps=True,
     )
     if _supports_hotwords:
         try:
@@ -89,10 +98,117 @@ def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
 
     vad_params = dict(
         threshold=vad_threshold,
-        min_silence_duration_ms=500,
-        speech_pad_ms=200,
+        min_silence_duration_ms=2000,
+        speech_pad_ms=400,
     )
     return kwargs, vad_params
+
+
+# Bug C (Task 3, bug bounty 2): padrões de cauda alucinada — legenda de
+# YouTube memorizada pelo large-v3 nas temperaturas altas da ladder de
+# fallback, sempre colada no FIM do texto, depois de uma frase real completa
+# (9 casos inequívocos em produção). Cada padrão termina em `.*$` de propósito:
+# uma vez identificado o início da alucinação, tudo depois dele na cauda é
+# lixo também (a alucinação nunca aparece seguida de fala real genuína).
+_HALLUCINATION_TAIL_PATTERNS = [
+    re.compile(r"inscreva[- ]?se no(sso)?( meu)? canal.*$", re.IGNORECASE),
+    re.compile(r"ative o sininho.*$", re.IGNORECASE),
+    re.compile(r"obrigado por assistir.*$", re.IGNORECASE),
+    re.compile(r"legendas pela comunidade.*$", re.IGNORECASE),
+    re.compile(r"(subtitles by )?the amara\.org community.*$", re.IGNORECASE),
+    re.compile(r"amara\.org.*$", re.IGNORECASE),
+    re.compile(r"acesse o (nosso )?site( www\.[^\s]+)?\.?\s*$", re.IGNORECASE),
+    # Review final BB2: padrão bare-www (sem lead-in) removido — comia URL
+    # legitimamente ditada no fim da gravação. Todos os casos reais de
+    # produção têm o lead-in "Acesse o (nosso) site", coberto acima.
+]
+
+_HALLUCINATION_TAIL_WINDOW = 160
+_HALLUCINATION_TAIL_MAX_PASSES = 3
+
+
+def strip_hallucinated_tail(text: str) -> str:
+    """Remove cauda de legenda de YouTube alucinada pelo large-v3 (Bug C, Task 3).
+
+    Examina só os últimos _HALLUCINATION_TAIL_WINDOW chars do texto. Se algum
+    padrão de _HALLUCINATION_TAIL_PATTERNS casar nessa cauda, corta a partir
+    do início do match mais à esquerda (entre todos os padrões que baterem) e
+    faz rstrip. Repete até _HALLUCINATION_TAIL_MAX_PASSES vezes — cobre caudas
+    compostas (ex.: "Inscreva-se no canal! Ative o sininho!") cuja soma passe
+    da janela de uma única passada.
+
+    Como só a cauda é examinada, uma menção real no MEIO do texto (usuário
+    citando "inscreva-se" ou ditando uma URL, com fala real depois) fica fora
+    da janela e é preservada.
+
+    Fail-safe: se o corte esvaziar o texto todo, retorna o original — nunca
+    degrada para vazio.
+    """
+    if not text:
+        return text
+
+    current = text
+    for _ in range(_HALLUCINATION_TAIL_MAX_PASSES):
+        window_start = max(0, len(current) - _HALLUCINATION_TAIL_WINDOW)
+        tail = current[window_start:]
+
+        match_start = None
+        for pattern in _HALLUCINATION_TAIL_PATTERNS:
+            m = pattern.search(tail)
+            if m and (match_start is None or m.start() < match_start):
+                match_start = m.start()
+
+        if match_start is None:
+            break
+
+        cut_at = window_start + match_start
+        removed = current[cut_at:].strip()
+        current = current[:cut_at].rstrip()
+        print(f'[WARN] cauda alucinada removida: "{removed}"')
+
+        if not current:
+            break
+
+    if not current.strip():
+        return text
+    return current
+
+
+def _join_segments(segments) -> str:
+    """Monta o texto final a partir dos segments do Whisper.
+
+    Ponto ÚNICO de montagem do raw_text — todos os 5 caminhos passam por
+    aqui: normal, fallback sem VAD (Bug A, Task 2) e os 3 fallbacks de infra
+    (silero/CPU/modelo — Task 5, deepening). Qualquer camada futura de
+    higiene pós-STT deve ser plugada aqui, nunca num caminho individual.
+    """
+    text = " ".join(s.text for s in segments).strip()
+    return strip_hallucinated_tail(text)
+
+
+def _should_retranscribe_without_vad(info) -> bool:
+    """Detector de perda excessiva do VAD (Bug A, Task 2 bug bounty 2).
+
+    True quando o VAD ENCONTROU fala substancial (>=1.0s) mas descartou
+    >40% de um áudio com mais de 5s de duração — sinal de que cortou fala
+    real, não silêncio. O fallback é para "VAD comeu fala demais", não para
+    "não há fala": se duration_after_vad < 1.0s, o VAD basicamente não achou
+    nada, e retranscrever sem VAD nesse caso reabre o incidente W1 (Amara.org
+    / "thank you" alucinados sobre silêncio genuíno — commit ad646fc). Esse
+    caso segue para o SKIP existente de texto vazio, não para este fallback.
+
+    Guard defensivo: se duration/duration_after_vad estiverem ausentes, None
+    ou não-numéricos (ex.: MagicMock em teste), retorna False sem crashar.
+    """
+    duration = getattr(info, "duration", None)
+    duration_after_vad = getattr(info, "duration_after_vad", None)
+    if not isinstance(duration, (int, float)) or not isinstance(duration_after_vad, (int, float)):
+        return False
+    if duration <= 5:
+        return False
+    if duration_after_vad < 1.0:
+        return False
+    return duration_after_vad < 0.6 * duration
 
 
 def _transcribe_no_vad_fallback(model, temp_path: str, kwargs: dict, err: Exception) -> tuple[str, object]:
@@ -102,7 +218,7 @@ def _transcribe_no_vad_fallback(model, temp_path: str, kwargs: dict, err: Except
     """
     print(f"[WARN]  VAD model indisponível ({type(err).__name__}) — usando transcrição sem VAD")
     segments, info = model.transcribe(temp_path, vad_filter=False, **kwargs)
-    return " ".join(s.text for s in segments).strip(), info
+    return _join_segments(segments), info
 
 
 def _transcribe_cpu_fallback(mode: str, temp_path: str, kwargs: dict, vad_params: dict, err: Exception) -> tuple[str, object]:
@@ -118,7 +234,7 @@ def _transcribe_cpu_fallback(mode: str, temp_path: str, kwargs: dict, vad_params
     state._CONFIG["WHISPER_DEVICE"] = "cpu"
     model_cpu = _audio.get_whisper_model(mode)
     segments, info = model_cpu.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
-    return " ".join(s.text for s in segments).strip(), info
+    return _join_segments(segments), info
 
 
 def _transcribe_model_fallback(mode: str, temp_path: str, kwargs: dict, vad_params: dict, err: Exception) -> tuple[str, object]:
@@ -133,7 +249,7 @@ def _transcribe_model_fallback(mode: str, temp_path: str, kwargs: dict, vad_para
     state._CONFIG["WHISPER_DEVICE"] = "cpu"
     model_fallback = _audio.get_whisper_model(mode)
     segments, info = model_fallback.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
-    return " ".join(s.text for s in segments).strip(), info
+    return _join_segments(segments), info
 
 
 # ── Core STT dispatch (Whisper or Gemini, with full fallback chain) ──────────
@@ -144,10 +260,16 @@ def _do_transcription(temp_path: str, mode: str) -> str:
     Roteia para Gemini STT ou Whisper local com base em STT_PROVIDER.
     Tenta com VAD primeiro; se VAD falhar por motivo de infraestrutura
     (silero/onnx ausente, CUDA indisponível, modelo ausente), tenta os
-    fallbacks correspondentes. Se o VAD simplesmente não detectar fala,
-    retorna string vazia — sem fallback sem VAD (Task 3, W1 reliability
-    sprint: elimina o blocklist de alucinações do Whisper; ver
+    fallbacks correspondentes. Se o VAD simplesmente não detectar fala
+    nenhuma (0 segments), retorna string vazia — sem fallback (Task 3, W1
+    reliability sprint: elimina o blocklist de alucinações do Whisper; ver
     _emit_empty_audio_error para o skip visível ao usuário).
+
+    Bug A (Task 2, bug bounty 2): quando o VAD ENCONTRA fala mas descarta
+    >40% de um áudio >5s (info.duration_after_vad muito menor que
+    info.duration), isso é sinal de corte de fala real — não silêncio.
+    Nesse caso re-transcreve uma vez sem VAD (ver
+    _should_retranscribe_without_vad) e usa o resultado da segunda passada.
     """
     from voice import audio as _audio
 
@@ -168,8 +290,20 @@ def _do_transcription(temp_path: str, mode: str) -> str:
     kwargs, vad_params = _build_transcribe_kwargs(model, mode)
 
     try:
-        segments, _ = model.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
-        raw_text = " ".join(s.text for s in segments).strip()
+        segments, info = model.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
+        segments = list(segments)  # materializar antes de ler info.duration_after_vad
+        raw_text = _join_segments(segments)
+
+        if _should_retranscribe_without_vad(info):
+            duration = info.duration
+            duration_after_vad = info.duration_after_vad
+            pct = 100 * (1 - duration_after_vad / duration)
+            print(
+                f"[WARN] VAD descartou {pct:.0f}% do áudio "
+                f"({duration_after_vad:.1f}s de {duration:.1f}s) — re-transcrevendo sem VAD"
+            )
+            segments2, _ = model.transcribe(temp_path, vad_filter=False, **kwargs)
+            raw_text = _join_segments(list(segments2))
     except Exception as _vad_err:
         err_msg = str(_vad_err).lower()
         # Bug #2: OOM durante transcrição — log claro ANTES do fallback CUDA→CPU.
@@ -211,7 +345,12 @@ def _write_audio_to_wav(frames: list, temp_path: str) -> object:
         wf.setnchannels(_audio.CHANNELS)
         wf.setsampwidth(2)
         wf.setframerate(_audio.SAMPLE_RATE)
-        wf.writeframes((audio_data * 32767).astype(_audio.np.int16).tobytes())
+        # Task 4 (bug bounty 2, item 2): sem clip, samples > 1.0/< -1.0 (ganho
+        # de mic alto ou gemini/pipeline gerando float fora de faixa) dão
+        # wrap-around no cast pra int16 em vez de saturar — vira ruído digital
+        # audível na gravação. np.clip satura em [-1.0, 1.0] antes do cast.
+        clipped = _audio.np.clip(audio_data, -1.0, 1.0)
+        wf.writeframes((clipped * 32767).astype(_audio.np.int16).tobytes())
     return audio_data
 
 

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from voice import state
-from voice.gemini_prompts import PROMPTS, PromptSpec
+from voice.gemini_prompts import PROMPTS, PromptSpec, sanitize_llm_output
 
 
 # ── Retry utilities (consumed by both providers' _call paths) ────────────────
@@ -194,6 +194,7 @@ def _run(
             gemini_uses_sdk_default=spec.gemini_uses_sdk_default,
         )
         if result:
+            result = sanitize_llm_output(result)
             if spec.output_guard is not None and not spec.output_guard(text, result):
                 print(
                     f"[WARN] correção desproporcional descartada "

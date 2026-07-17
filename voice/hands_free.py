@@ -41,7 +41,7 @@ def hands_free_loop() -> None:
     # that tests apply before invoking this loop.
     from voice import audio as _audio
 
-    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
+    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.5)
     speech_ms = state._CONFIG.get("HANDS_FREE_SPEECH_MS", 500)
     silence_ms = state._CONFIG.get("HANDS_FREE_SILENCE_MS", 2000)
     device_index = state._CONFIG.get("AUDIO_DEVICE_INDEX")

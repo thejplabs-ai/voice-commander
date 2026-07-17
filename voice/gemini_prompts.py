@@ -30,6 +30,9 @@
 #     - user_translate(text, context_prefix="")
 #     - user_command(instruction, selected_text)
 #     - user_correct(text)
+#   Output cleanup:
+#     - sanitize_llm_output(text) — strips preamble/<<< >>> leftovers from
+#       a correction model's response, edges only.
 #
 # SYSTEM_* constants + user_* helpers exist so OpenRouter (chat completions)
 # can reuse the same source-of-truth as the Gemini single-prompt builders.
@@ -40,6 +43,7 @@
 # Any change here must be reviewed against the smoke-test matrix in
 # .aios/reports/sentinel/fix-plan-gemini-prompts.md.
 
+import re
 from dataclasses import dataclass
 from typing import Callable, Literal
 
@@ -427,6 +431,52 @@ def _transcribe_output_guard(input_text: str, output_text: str) -> bool:
         return True
     ratio = len(output_text) / len(stripped_in)
     return 0.5 <= ratio <= 2.0
+
+
+# Matches a first line that IS the preamble (whole line, nothing else) —
+# e.g. "Aqui está o texto corrigido:" — but not a line where real content
+# follows on the same line after the colon (e.g. "Texto corrigido: Olá.").
+# Practical rule: short line, ends in ':', contains "corrigido"/"corrected".
+_PREAMBLE_LINE_RE = re.compile(
+    r"^\s*(?:aqui est[áa]|aqui vai|here is|segue)?[^\n]{0,40}?(?:texto |text )?"
+    r"(?:corrigido|corrected)[^\n:]{0,20}:\s*$",
+    re.IGNORECASE,
+)
+
+
+def sanitize_llm_output(text: str) -> str:
+    """Strip deterministic correction-model junk from the EDGES of `text` —
+    never touches content in the middle. Two known patterns from production
+    (218/530 runs, 2026-07 audit): preamble lines ("Aqui está o texto
+    corrigido:") and leftover <<< >>> delimiters from user_correct()'s
+    prompt wrapping (this module, `user_correct`).
+
+    Called once, centrally, by ai_provider._run() — covers every mode and
+    every provider (see that module for the call site).
+    """
+    working = text
+
+    # 1. Leading preamble line(s). Repeat while the first line matches.
+    while True:
+        newline_idx = working.find("\n")
+        first_line = working if newline_idx == -1 else working[:newline_idx]
+        if not _PREAMBLE_LINE_RE.match(first_line):
+            break
+        working = "" if newline_idx == -1 else working[newline_idx + 1:]
+
+    # 2. Leading "<<<" near the start (user_correct wraps input in <<< >>>).
+    delim_idx = working[:80].find("<<<")
+    if delim_idx != -1:
+        working = working[delim_idx + 3:].lstrip()
+
+    # 3. Trailing ">>>" if only whitespace (or nothing) follows it.
+    last_delim_idx = working.rfind(">>>")
+    if last_delim_idx != -1 and not working[last_delim_idx + 3:].strip():
+        working = working[:last_delim_idx]
+
+    result = working.strip()
+    # Fail-safe: never degrade a non-empty output to empty.
+    return result if result or not text.strip() else text
 
 
 PROMPTS: dict[str, PromptSpec] = {
