@@ -59,7 +59,7 @@ def _build_transcribe_kwargs(model, mode: str) -> tuple[dict, dict]:
     from voice.whisper import _DEFAULT_INITIAL_PROMPT as _PROMPT, _HOTWORDS as _HW
 
     lang_hint = state._CONFIG.get("WHISPER_LANGUAGE") or None
-    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.3)
+    vad_threshold = state._CONFIG.get("VAD_THRESHOLD", 0.5)
     beam_size = state._CONFIG.get("WHISPER_BEAM_SIZE", 1)
 
     initial_prompt = state._CONFIG.get("WHISPER_INITIAL_PROMPT") or _PROMPT
@@ -175,9 +175,10 @@ def strip_hallucinated_tail(text: str) -> str:
 def _join_segments(segments) -> str:
     """Monta o texto final a partir dos segments do Whisper.
 
-    Ponto único de montagem do raw_text — caminho normal E o fallback sem
-    VAD (Bug A, Task 2) passam por aqui. strip_hallucinated_tail() (Bug C,
-    Task 3) plugado logo em seguida cobre os dois caminhos de uma vez.
+    Ponto ÚNICO de montagem do raw_text — todos os 5 caminhos passam por
+    aqui: normal, fallback sem VAD (Bug A, Task 2) e os 3 fallbacks de infra
+    (silero/CPU/modelo — Task 5, deepening). Qualquer camada futura de
+    higiene pós-STT deve ser plugada aqui, nunca num caminho individual.
     """
     text = " ".join(s.text for s in segments).strip()
     return strip_hallucinated_tail(text)
@@ -215,7 +216,7 @@ def _transcribe_no_vad_fallback(model, temp_path: str, kwargs: dict, err: Except
     """
     print(f"[WARN]  VAD model indisponível ({type(err).__name__}) — usando transcrição sem VAD")
     segments, info = model.transcribe(temp_path, vad_filter=False, **kwargs)
-    return " ".join(s.text for s in segments).strip(), info
+    return _join_segments(segments), info
 
 
 def _transcribe_cpu_fallback(mode: str, temp_path: str, kwargs: dict, vad_params: dict, err: Exception) -> tuple[str, object]:
@@ -231,7 +232,7 @@ def _transcribe_cpu_fallback(mode: str, temp_path: str, kwargs: dict, vad_params
     state._CONFIG["WHISPER_DEVICE"] = "cpu"
     model_cpu = _audio.get_whisper_model(mode)
     segments, info = model_cpu.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
-    return " ".join(s.text for s in segments).strip(), info
+    return _join_segments(segments), info
 
 
 def _transcribe_model_fallback(mode: str, temp_path: str, kwargs: dict, vad_params: dict, err: Exception) -> tuple[str, object]:
@@ -246,7 +247,7 @@ def _transcribe_model_fallback(mode: str, temp_path: str, kwargs: dict, vad_para
     state._CONFIG["WHISPER_DEVICE"] = "cpu"
     model_fallback = _audio.get_whisper_model(mode)
     segments, info = model_fallback.transcribe(temp_path, vad_filter=True, vad_parameters=vad_params, **kwargs)
-    return " ".join(s.text for s in segments).strip(), info
+    return _join_segments(segments), info
 
 
 # ── Core STT dispatch (Whisper or Gemini, with full fallback chain) ──────────

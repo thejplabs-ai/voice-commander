@@ -130,3 +130,47 @@ def test_build_transcribe_kwargs_caps_temperature_and_enables_hallucination_guar
     assert kwargs["temperature"] == [0.0, 0.2, 0.4]
     assert kwargs["hallucination_silence_threshold"] == 2.0
     assert kwargs["word_timestamps"] is True
+
+
+# ---------------------------------------------------------------------------
+# Deepening (Task 5, bug bounty 2): infra fallbacks must assemble text via
+# _join_segments — the single assembly point that carries the tail-strip
+# defense. Before the refactor they duplicated the join inline and pasted
+# hallucinated tails unfiltered.
+# ---------------------------------------------------------------------------
+
+
+def _fake_model_returning(text: str):
+    seg = MagicMock()
+    seg.text = text
+    model = MagicMock()
+    model.transcribe.return_value = (iter([seg]), MagicMock())
+    return model
+
+
+def test_no_vad_infra_fallback_strips_hallucinated_tail():
+    model = _fake_model_returning(
+        "Fechei o escopo da wave hoje cedo. Inscreva-se no canal e ative o sininho"
+    )
+    raw, _ = tr._transcribe_no_vad_fallback(model, "x.wav", {}, RuntimeError("silero"))
+    assert raw == "Fechei o escopo da wave hoje cedo."
+
+
+def test_cpu_infra_fallback_strips_hallucinated_tail(monkeypatch):
+    from voice import audio as audio_mod
+    model = _fake_model_returning(
+        "Amanha reviso o contrato com calma. Acesse o nosso site www.supa.com.br"
+    )
+    monkeypatch.setattr(audio_mod, "get_whisper_model", lambda mode: model)
+    raw, _ = tr._transcribe_cpu_fallback("transcribe", "x.wav", {}, {}, RuntimeError("cuda"))
+    assert raw == "Amanha reviso o contrato com calma."
+
+
+def test_model_infra_fallback_strips_hallucinated_tail(monkeypatch):
+    from voice import audio as audio_mod
+    model = _fake_model_returning(
+        "O deploy ficou pronto no fim da tarde. Legendas pela comunidade Amara.org"
+    )
+    monkeypatch.setattr(audio_mod, "get_whisper_model", lambda mode: model)
+    raw, _ = tr._transcribe_model_fallback("transcribe", "x.wav", {}, {}, RuntimeError("model.bin"))
+    assert raw == "O deploy ficou pronto no fim da tarde."
